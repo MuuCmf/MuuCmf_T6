@@ -442,3 +442,11 @@ UPDATE `muucmf_menu` SET `url` = 'admin/Module/list' WHERE `muucmf_menu`.`id` = 
 UPDATE `muucmf_menu` SET `url` = 'admin/Module/list' WHERE `muucmf_menu`.`id` = '20216DCF-1138-09A3-346A-C92E08E33677';
 UPDATE `muucmf_menu` SET `url` = 'admin/member/list' WHERE `muucmf_menu`.`id` = 'DA4333DF-D814-819B-D657-401FE5153AB4';
 UPDATE `muucmf_menu` SET `url` = 'admin/member/list' WHERE `muucmf_menu`.`id` = 'D18841ED-C034-2E7A-D0B2-92D0AC647179';
+
+UPDATE `muucmf_extend_config` SET `sort` = '5' WHERE `muucmf_extend_config`.`id` = 51;
+
+INSERT INTO `muucmf_extend_config` (`id`, `name`, `type`, `title`, `group`, `extra`, `remark`, `create_time`, `update_time`, `status`, `value`, `sort`) VALUES
+(59, 'WX_PAY_PLATFORM_MODE', 'radio', '支付验证模式', 'weixinpay', 'cert:平台证书\npublic_key:微信支付公钥', '商户接收APIv3的请求应答、回调时验签使用，以下两种方式只能使用一种', 1779748605, 1779749269, 1, 'cert', 0),
+(60, 'WX_PAY_PLATFORM_PUBLIC_KEY', 'file', '微信支付公钥', 'weixinpay', '', '微信支付公钥用于验证微信支付身份', 1779748780, 1779749421, 1, '', 8),
+(61, 'WX_PAY_PLATFORM_PUBLIC_KEY_SERIAL', 'string', '微信支付公钥ID', 'weixinpay', '', '微信支付公钥模式下需填写', 1779749202, 1779749911, 1, '', 10);
+

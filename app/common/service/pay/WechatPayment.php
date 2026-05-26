@@ -7,16 +7,28 @@ use WeChatPay\Builder;
 use WeChatPay\Crypto\Rsa;
 use WeChatPay\Util\PemUtil;
 use think\Exception;
+use think\facade\Log;
 
 class WechatPayment extends PayService
 {
+    protected $v3Instance;
+    protected $useV3;
+
     function __construct($appid)
     {
         $this->type = 'wechat';
-        //服务配置文件
-        $config = $this->config =  $this->initConfig($appid);
-        $app =  Factory::payment($config);
-        parent::__construct($app);
+        $this->sandbox = false;
+        $this->config = $this->initConfig($appid);
+
+        // 是否使用 v3 接口, 默认开启
+        $this->useV3 = config('extend.WX_PAY_USE_V3', true);
+
+        if ($this->useV3) {
+            parent::__construct(null);
+        } else {
+            $app = Factory::payment($this->config);
+            parent::__construct($app);
+        }
     }
 
     /**
@@ -24,11 +36,13 @@ class WechatPayment extends PayService
      */
     public function initConfig($appid)
     {
-        //获取配置信息
         $mchid = config('extend.WX_PAY_MCH_ID');
         $key = config('extend.WX_PAY_KEY_SECRET');
         $serial = config('extend.WX_PAY_CERT_SERIAL');
         $platform_serial = config('extend.WX_PAY_WITHDRAW_PLATFORM_SERIAL');
+        $platform_mode = config('extend.WX_PAY_PLATFORM_MODE', 'cert');
+        $platform_public_key_serial = config('extend.WX_PAY_PLATFORM_PUBLIC_KEY_SERIAL', '');
+
         if (empty($mchid)) {
             throw new Exception('请填写商户ID');
         }
@@ -38,29 +52,86 @@ class WechatPayment extends PayService
         if (empty($serial)) {
             throw new Exception('请填写商户API证书序列号');
         }
-        return [
+
+        $config = [
             'app_id' => $appid,
             'mch_id' => $mchid,
             'key' => $key,
-            'serial' => $serial,  // 商户API证书序列号
+            'serial' => $serial,
             'cert_path' => app()->getRootPath() . 'public/attachment/' . config('extend.WX_PAY_CERT'),
             'key_path' => app()->getRootPath() . 'public/attachment/' . config('extend.WX_PAY_KEY'),
-            'platform_serial' => $platform_serial,  // 微信支付平台证书序列号
+            'platform_serial' => $platform_serial,
+            'platform_mode' => $platform_mode,
             'notify_url' => request()->domain() . "/api/pay/callback",
-            'sandbox' => $this->sandbox, //沙盒模式开关
+            'sandbox' => $this->sandbox,
         ];
+
+        if ($platform_mode === 'public_key') {
+            $config['platform_public_key_serial'] = $platform_public_key_serial;
+            $config['platform_public_key_path'] = app()->getRootPath()
+                . 'public/attachment/' . config('extend.WX_PAY_PLATFORM_PUBLIC_KEY');
+        }
+
+        return $config;
+    }
+
+    /**
+     * 获取 v3 API 实例
+     * 支持平台证书模式(cert)和平台公钥模式(public_key)
+     */
+    protected function getV3Instance()
+    {
+        if ($this->v3Instance) {
+            return $this->v3Instance;
+        }
+
+        $merchantId = $this->config['mch_id'];
+        $merchantPrivateKeyFilePath = 'file://' . $this->config['key_path'];
+        $merchantPrivateKeyInstance = Rsa::from($merchantPrivateKeyFilePath, Rsa::KEY_TYPE_PRIVATE);
+        $merchantCertificateSerial = $this->config['serial'];
+
+        if ($this->config['platform_mode'] === 'public_key') {
+            $platformFilePath = 'file://' . $this->config['platform_public_key_path'];
+            $platformPublicKeyInstance = Rsa::from($platformFilePath, Rsa::KEY_TYPE_PUBLIC);
+            $platformSerial = $this->config['platform_public_key_serial'];
+        } else {
+            $platformFilePath = 'file://' . app()->getRootPath()
+                . 'public/attachment/cert/wechatpay_' . $this->config['platform_serial'] . '.pem';
+            $platformPublicKeyInstance = Rsa::from($platformFilePath, Rsa::KEY_TYPE_PUBLIC);
+            $platformSerial = PemUtil::parseCertificateSerialNo($platformFilePath);
+        }
+
+        $this->v3Instance = Builder::factory([
+            'mchid' => $merchantId,
+            'serial' => $merchantCertificateSerial,
+            'privateKey' => $merchantPrivateKeyInstance,
+            'certs' => [
+                $platformSerial => $platformPublicKeyInstance,
+            ],
+        ]);
+
+        return $this->v3Instance;
     }
 
     /**
      * 支付
      * @param $data 数据
      * @param string $trade_type 支付类型
-     * @param string $notify_url 回调
      * @return mixed
      */
     public function pay($data, $trade_type = 'JSAPI')
     {
-        // TODO: Implement pay() method.
+        if ($this->useV3) {
+            return $this->payV3($data, $trade_type);
+        }
+        return $this->payV2($data, $trade_type);
+    }
+
+    /**
+     * v2 支付
+     */
+    protected function payV2($data, $trade_type = 'JSAPI')
+    {
         $data['trade_type'] = $trade_type;
         if (!empty($notify_url)) {
             $data['notify_url'] = $notify_url;
@@ -80,6 +151,194 @@ class WechatPayment extends PayService
     }
 
     /**
+     * v3 支付
+     */
+    protected function payV3($data, $trade_type = 'JSAPI')
+    {
+        switch ($trade_type) {
+            case 'JSAPI':
+                return $this->payJsapiV3($data);
+            case 'NATIVE':
+                return $this->payNativeV3($data);
+            case 'MWEB':
+                return $this->payMwebV3($data);
+            default:
+                throw new Exception('不支持的支付类型');
+        }
+    }
+
+    /**
+     * JSAPI 支付 v3
+     */
+    protected function payJsapiV3($data)
+    {
+        try {
+            $instance = $this->getV3Instance();
+
+            $payload = [
+                'appid' => $data['appid'] ?? $this->config['app_id'],
+                'mchid' => $this->config['mch_id'],
+                'description' => $data['body'],
+                'out_trade_no' => $data['out_trade_no'],
+                'notify_url' => $data['notify_url'],
+                'amount' => [
+                    'total' => $data['total_fee'],
+                    'currency' => 'CNY'
+                ],
+                'payer' => [
+                    'openid' => $data['openid']
+                ]
+            ];
+
+            $resp = $instance
+                ->chain('v3/pay/transactions/jsapi')
+                ->post(['json' => $payload]);
+
+            $result = json_decode($resp->getBody(), true);
+
+            if ($resp->getStatusCode() != 200) {
+                throw new Exception($result['message'] ?? '统一下单失败');
+            }
+
+            return $this->buildJsapiConfig($result['prepay_id']);
+
+        } catch (\Exception $e) {
+            throw new Exception('JSAPI支付失败: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Native 支付 v3
+     */
+    protected function payNativeV3($data)
+    {
+        try {
+            $instance = $this->getV3Instance();
+
+            $payload = [
+                'appid' => $data['appid'] ?? $this->config['app_id'],
+                'mchid' => $this->config['mch_id'],
+                'description' => $data['body'],
+                'out_trade_no' => $data['out_trade_no'],
+                'notify_url' => $data['notify_url'],
+                'amount' => [
+                    'total' => $data['total_fee'],
+                    'currency' => 'CNY'
+                ]
+            ];
+
+            $resp = $instance
+                ->chain('v3/pay/transactions/native')
+                ->post(['json' => $payload]);
+
+            $result = json_decode($resp->getBody(), true);
+
+            if ($resp->getStatusCode() != 200) {
+                throw new Exception($result['message'] ?? '统一下单失败');
+            }
+
+            return [
+                'code_url' => $result['code_url']
+            ];
+
+        } catch (\Exception $e) {
+            throw new Exception('Native支付失败: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * MWEB 支付 v3
+     */
+    protected function payMwebV3($data)
+    {
+        try {
+            $instance = $this->getV3Instance();
+
+            $payload = [
+                'appid' => $data['appid'] ?? $this->config['app_id'],
+                'mchid' => $this->config['mch_id'],
+                'description' => $data['body'],
+                'out_trade_no' => $data['out_trade_no'],
+                'notify_url' => $data['notify_url'],
+                'amount' => [
+                    'total' => $data['total_fee'],
+                    'currency' => 'CNY'
+                ],
+                'scene_info' => [
+                    'payer_client_ip' => request()->ip(),
+                    'h5_info' => [
+                        'type' => 'Wap'
+                    ]
+                ]
+            ];
+
+            $resp = $instance
+                ->chain('v3/pay/transactions/h5')
+                ->post(['json' => $payload]);
+
+            $result = json_decode($resp->getBody(), true);
+
+            if ($resp->getStatusCode() != 200) {
+                throw new Exception($result['message'] ?? '统一下单失败');
+            }
+
+            return [
+                'h5_url' => $result['h5_url']
+            ];
+
+        } catch (\Exception $e) {
+            throw new Exception('H5支付失败: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * 构建 JSAPI 调起参数
+     */
+    protected function buildJsapiConfig($prepay_id)
+    {
+        $appid = $this->config['app_id'];
+        $mchid = $this->config['mch_id'];
+        $nonceStr = $this->generateNonceStr();
+        $timestamp = time();
+        $package = 'prepay_id=' . $prepay_id;
+
+        $sign = $this->buildSignForJsapi($appid, $mchid, $nonceStr, $timestamp, $package);
+
+        return [
+            'appId' => $appid,
+            'timeStamp' => (string)$timestamp,
+            'nonceStr' => $nonceStr,
+            'package' => $package,
+            'signType' => 'RSA',
+            'paySign' => $sign
+        ];
+    }
+
+    /**
+     * JSAPI 签名 (v3)
+     */
+    protected function buildSignForJsapi($appid, $mchid, $nonceStr, $timestamp, $package)
+    {
+        $message = $appid . "\n" . $timestamp . "\n" . $nonceStr . "\n" . $package . "\n";
+
+        $privateKey = Rsa::from('file://' . $this->config['key_path'], Rsa::KEY_TYPE_PRIVATE);
+        return Rsa::sign($message, $privateKey, OPENSSL_ALGO_SHA256);
+    }
+
+    /**
+     * 生成随机字符串
+     */
+    protected function generateNonceStr($length = 32)
+    {
+        $chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        $str = '';
+        for ($i = 0; $i < $length; $i++) {
+            $str .= $chars[mt_rand(0, strlen($chars) - 1)];
+        }
+        return $str;
+    }
+
+    /**
      * @title 退款
      * @param $refund_info
      * @return bool
@@ -87,28 +346,222 @@ class WechatPayment extends PayService
      */
     public function refund($refund_info)
     {
-        // TODO: Implement refund() method.
-        // 参数分别为：商户订单号、商户退款单号、订单金额、退款金额、其他参数
+        if ($this->useV3) {
+            return $this->refundV3($refund_info);
+        }
+        return $this->refundV2($refund_info);
+    }
+
+    /**
+     * v2 退款
+     */
+    protected function refundV2($refund_info)
+    {
         $result = $this->app->refund->byOutTradeNumber($refund_info['order_no'], $refund_info['refund_no'], $refund_info['total_fee'], $refund_info['refund_fee'], [
             'refund_desc' => $refund_info['title']
         ]);
-        //if ($result['return_code'] == 'SUCCESS' && $result['result_code'] == 'SUCCESS') {
         return $result;
-        //}
     }
 
-    /**.
-     * @title 回调
-     * @param $params
-     * @return bool
+    /**
+     * v3 退款
      */
+    protected function refundV3($refund_info)
+    {
+        try {
+            $instance = $this->getV3Instance();
+
+            $payload = [
+                'out_trade_no' => $refund_info['order_no'],
+                'out_refund_no' => $refund_info['refund_no'],
+                'amount' => [
+                    'refund' => $refund_info['refund_fee'],
+                    'total' => $refund_info['total_fee'],
+                    'currency' => 'CNY'
+                ],
+                'reason' => $refund_info['title'] ?? '用户申请退款'
+            ];
+
+            $resp = $instance
+                ->chain('v3/refund/domestic/refunds')
+                ->post(['json' => $payload]);
+
+            $result = json_decode($resp->getBody(), true);
+
+            return [
+                'return_code' => 'SUCCESS',
+                'result_code' => 'SUCCESS',
+                'data' => $result
+            ];
+
+        } catch (\Exception $e) {
+            return [
+                'return_code' => 'FAIL',
+                'errMsg' => $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * 关闭订单
+     * @param string $order_no 商户订单号
+     * @return mixed
+     */
+    public function close($order_no)
+    {
+        if ($this->useV3) {
+            return $this->closeV3($order_no);
+        }
+        return $this->closeV2($order_no);
+    }
+
+    /**
+     * v2 关闭订单
+     */
+    protected function closeV2($order_no)
+    {
+        return $this->app->order->close($order_no);
+    }
+
+    /**
+     * v3 关闭订单
+     */
+    protected function closeV3($order_no)
+    {
+        try {
+            $instance = $this->getV3Instance();
+
+            $payload = [
+                'mchid' => $this->config['mch_id']
+            ];
+
+            $resp = $instance
+                ->chain('v3/pay/transactions/out-trade-no/' . $order_no . '/close')
+                ->post(['json' => $payload]);
+
+            return json_decode($resp->getBody(), true);
+
+        } catch (\Exception $e) {
+            return ['return_code' => 'FAIL', 'errMsg' => $e->getMessage()];
+        }
+    }
     public function notify($params)
     {
-        // TODO: Implement notify() method.
+        if ($this->useV3) {
+            return $this->notifyV3($params);
+        }
+        return $this->notifyV2($params);
+    }
+
+    /**
+     * v2 回调
+     */
+    protected function notifyV2($params)
+    {
         if ($params['return_code'] == 'SUCCESS' && $params['result_code'] == 'SUCCESS') {
             return $params['out_trade_no'];
         }
         return false;
+    }
+
+    /**
+     * v3 回调
+     */
+    protected function notifyV3($params)
+    {
+        if (isset($params['trade_state']) && $params['trade_state'] == 'SUCCESS') {
+            return $params['out_trade_no'];
+        }
+        return false;
+    }
+
+    /**
+     * 解密回调通知
+     */
+    public function decryptNotify($notify_data)
+    {
+        try {
+            $json = json_decode($notify_data, true);
+
+            $ciphertext = $json['resource']['ciphertext'];
+            $nonce = $json['resource']['nonce'];
+            $associated_data = $json['resource']['associated_data'];
+
+            $plaintext = $this->decryptToString(
+                $associated_data,
+                $nonce,
+                $ciphertext
+            );
+
+            return json_decode($plaintext, true);
+
+        } catch (\Exception $e) {
+            throw new Exception('回调解密失败: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * 验证 v3 回调签名
+     * 支持平台证书模式(cert)和平台公钥模式(public_key)
+     * @param string $body      原始请求体
+     * @param array  $headers   HTTP 头信息
+     * @return bool
+     */
+    public function verifySign($body, $headers)
+    {
+        $timestamp = $headers['wechatpay-timestamp'] ?? '';
+        $nonce = $headers['wechatpay-nonce'] ?? '';
+        $signature = $headers['wechatpay-signature'] ?? '';
+        $serial = $headers['wechatpay-serial'] ?? '';
+        $message = $timestamp . "\n" . $nonce . "\n" . $body . "\n";
+
+        Log::write('v3验签诊断: timestamp=' . $timestamp
+            . ' nonce=' . $nonce
+            . ' signatureLen=' . strlen($signature)
+            . ' serial=' . $serial
+            . ' bodyLen=' . strlen($body)
+            . ' bodyMd5=' . md5($body)
+            . ' platform_mode=' . ($this->config['platform_mode'] ?? 'cert'));
+
+        try {
+            if ($this->config['platform_mode'] === 'public_key') {
+                $platformFilePath = 'file://' . $this->config['platform_public_key_path'];
+                Log::write('v3验签: 使用公钥模式, 路径=' . $this->config['platform_public_key_path']);
+                $platformPublicKeyInstance = Rsa::from($platformFilePath, Rsa::KEY_TYPE_PUBLIC);
+            } else {
+                $certDir = app()->getRootPath() . 'public/attachment/cert/';
+                $certPath = $certDir . 'wechatpay_' . $serial . '.pem';
+
+                if (!file_exists($certPath) && !empty($this->config['platform_serial'])) {
+                    $fallbackPath = $certDir . 'wechatpay_' . $this->config['platform_serial'] . '.pem';
+                    Log::write('v3验签: HTTP-serial文件不存在, fallback到 ' . $fallbackPath);
+                    if (file_exists($fallbackPath)) {
+                        $certPath = $fallbackPath;
+                    }
+                }
+
+                Log::write('v3验签: 证书路径=' . $certPath . ' 存在=' . (file_exists($certPath) ? 'true' : 'false'));
+
+                if (!file_exists($certPath)) {
+                    Log::write('平台证书文件不存在 HTTP-Serial:' . $serial . ' Config-Serial:' . ($this->config['platform_serial'] ?? '') . '，请执行证书下载');
+                    return false;
+                }
+
+                $platformFilePath = 'file://' . $certPath;
+                $platformPublicKeyInstance = Rsa::from($platformFilePath, Rsa::KEY_TYPE_PUBLIC);
+
+                $pemSerial = PemUtil::parseCertificateSerialNo($platformFilePath);
+                Log::write('v3验签: PEM内序列号=' . $pemSerial . ' HTTP-Serial=' . $serial . ' 匹配=' . ($pemSerial === $serial ? 'true' : 'false'));
+                Log::write('v3验签: 证书文件MD5=' . md5_file($certPath));
+            }
+
+            $result = Rsa::verify($message, $signature, $platformPublicKeyInstance);
+            Log::write('v3验签结果: ' . ($result ? '成功' : '失败') . ' serial=' . $serial);
+            return $result;
+        } catch (\Exception $e) {
+            Log::write('v3 验签异常: ' . $e->getMessage() . ' HTTP-Serial:' . $serial);
+            return false;
+        }
     }
 
     /**
@@ -118,7 +571,39 @@ class WechatPayment extends PayService
      */
     public function queryByOutTradeNumber($order_no)
     {
+        if ($this->useV3) {
+            return $this->queryByOutTradeNumberV3($order_no);
+        }
+        return $this->queryByOutTradeNumberV2($order_no);
+    }
+
+    /**
+     * v2 商户订单号查询订单
+     */
+    protected function queryByOutTradeNumberV2($order_no)
+    {
         return $this->app->order->queryByOutTradeNumber($order_no);
+    }
+
+    /**
+     * v3 商户订单号查询订单
+     */
+    protected function queryByOutTradeNumberV3($order_no)
+    {
+        try {
+            $instance = $this->getV3Instance();
+
+            $resp = $instance
+                ->chain('v3/pay/transactions/out-trade-no/' . $order_no)
+                ->get([
+                    'query' => ['mchid' => $this->config['mch_id']]
+                ]);
+
+            return json_decode($resp->getBody(), true);
+
+        } catch (\Exception $e) {
+            return ['return_code' => 'FAIL', 'errMsg' => $e->getMessage()];
+        }
     }
 
     /**
@@ -128,14 +613,6 @@ class WechatPayment extends PayService
      */
     public function toBalance($data)
     {
-        //        $data = [
-        //            'partner_trade_no' => '1233455', // 商户订单号，需保持唯一性(只能是字母或者数字，不能包含有符号)
-        //            'openid' => 'oxTWIuGaIt6gTKsQRLau2M0yL16E',
-        //            'check_name' => 'FORCE_CHECK', // NO_CHECK：不校验真实姓名, FORCE_CHECK：强校验真实姓名
-        //            're_user_name' => '王小帅', // 如果 check_name 设置为FORCE_CHECK，则必填用户真实姓名
-        //            'amount' => 10000, // 企业付款金额，单位为分
-        //            'desc' => '理赔', // 企业付款操作说明信息。必填
-        //        ];
         return $this->app->transfer->toBalance($data);
     }
 
@@ -145,34 +622,12 @@ class WechatPayment extends PayService
     public function toBalanceV3($data)
     {
         try {
-            // 商户号
-            $merchantId = $this->config['mch_id'];
-            // 从本地文件中加载「商户API私钥」，「商户API私钥」会用来生成请求的签名
-            $merchantPrivateKeyFilePath = 'file://' . $this->config['key_path'];
-            $merchantPrivateKeyInstance = Rsa::from($merchantPrivateKeyFilePath, Rsa::KEY_TYPE_PRIVATE);
-            // 「商户API证书」的「证书序列号」
-            $merchantCertificateSerial = $this->config['serial'];
-            // 从本地文件中加载「微信支付平台证书」，用来验证微信支付应答的签名
-            $platformCertificateFilePath = 'file://' . app()->getRootPath() . 'public/attachment/cert/wechatpay_' . $this->config['platform_serial'] . '.pem';
-            $platformPublicKeyInstance = Rsa::from($platformCertificateFilePath, Rsa::KEY_TYPE_PUBLIC);
-            // 从「微信支付平台证书」中获取「证书序列号」
-            $platformCertificateSerial = PemUtil::parseCertificateSerialNo($platformCertificateFilePath);
-            // 构造一个 APIv3 客户端实例
-            $instance = Builder::factory([
-                'mchid'      => $merchantId,
-                'serial'     => $merchantCertificateSerial,
-                'privateKey' => $merchantPrivateKeyInstance,
-                'certs'      => [
-                    $platformCertificateSerial => $platformPublicKeyInstance,
-                ],
-            ]);
+            $instance = $this->getV3Instance();
 
             $resp = $instance
                 ->chain('v3/transfer/batches')
                 ->post(['json' => $data]);
 
-            // echo $resp->getStatusCode(), PHP_EOL;
-            // echo $resp->getBody(), PHP_EOL;
             return [
                 'return_code' => 'SUCCESS',
                 'result_code' => 'SUCCESS',
@@ -180,19 +635,10 @@ class WechatPayment extends PayService
                 'body' => json_decode($resp->getBody(), true)
             ];
         } catch (\Exception $e) {
-            // 进行错误处理
-            //echo $e->getMessage(), PHP_EOL;
             return [
                 'errCode' => 0,
                 'errMsg' => $e->getMessage()
             ];
-            if ($e instanceof \GuzzleHttp\Exception\RequestException && $e->hasResponse()) {
-                $r = $e->getResponse();
-                echo $r->getStatusCode() . ' ' . $r->getReasonPhrase(), PHP_EOL;
-                echo $r->getBody(), PHP_EOL;
-                exit;
-            }
-            //echo $e->getTraceAsString(), PHP_EOL;
         }
     }
 
@@ -202,93 +648,38 @@ class WechatPayment extends PayService
     public function transferV3($data)
     {
         try {
-            // 商户号
-            $merchantId = $this->config['mch_id'];
-            // 从本地文件中加载「商户API私钥」，「商户API私钥」会用来生成请求的签名
-            $merchantPrivateKeyFilePath = 'file://' . $this->config['key_path'];
-            $merchantPrivateKeyInstance = Rsa::from($merchantPrivateKeyFilePath, Rsa::KEY_TYPE_PRIVATE);
-            // 「商户API证书」的「证书序列号」
-            $merchantCertificateSerial = $this->config['serial'];
-            // 从本地文件中加载「微信支付平台证书」，用来验证微信支付应答的签名
-            $platformCertificateFilePath = 'file://' . app()->getRootPath() . 'public/attachment/cert/wechatpay_' . $this->config['platform_serial'] . '.pem';
-            $platformPublicKeyInstance = Rsa::from($platformCertificateFilePath, Rsa::KEY_TYPE_PUBLIC);
-            // 从「微信支付平台证书」中获取「证书序列号」
-            $platformCertificateSerial = PemUtil::parseCertificateSerialNo($platformCertificateFilePath);
-            // 构造一个 APIv3 客户端实例
-            $instance = Builder::factory([
-                'mchid'      => $merchantId,
-                'serial'     => $merchantCertificateSerial,
-                'privateKey' => $merchantPrivateKeyInstance,
-                'certs'      => [
-                    $platformCertificateSerial => $platformPublicKeyInstance,
-                ],
-            ]);
+            $instance = $this->getV3Instance();
 
             $resp = $instance
                 ->chain('/v3/fund-app/mch-transfer/transfer-bills')
                 ->post(['json' => $data]);
-
-            // echo $resp->getStatusCode(), PHP_EOL;
-            // echo $resp->getBody(), PHP_EOL;
 
             return [
                 'status_code' => $resp->getStatusCode(),
                 'body' => json_decode($resp->getBody(), true)
             ];
         } catch (\Exception $e) {
-            // 进行错误处理
             return [
                 'errCode' => 0,
                 'errMsg' => $e->getMessage()
             ];
-            if ($e instanceof \GuzzleHttp\Exception\RequestException && $e->hasResponse()) {
-                $r = $e->getResponse();
-                echo $r->getStatusCode() . ' ' . $r->getReasonPhrase(), PHP_EOL;
-                echo $r->getBody(), PHP_EOL;
-                exit;
-            }
-            //echo $e->getTraceAsString(), PHP_EOL;
         }
     }
 
     public function cancelTransfer($out_bill_no)
     {
         try {
-            // 商户号
-            $merchantId = $this->config['mch_id'];
-            // 从本地文件中加载「商户API私钥」，「商户API私钥」会用来生成请求的签名
-            $merchantPrivateKeyFilePath = 'file://' . $this->config['key_path'];
-            $merchantPrivateKeyInstance = Rsa::from($merchantPrivateKeyFilePath, Rsa::KEY_TYPE_PRIVATE);
-            // 「商户API证书」的「证书序列号」
-            $merchantCertificateSerial = $this->config['serial'];
-            // 从本地文件中加载「微信支付平台证书」，用来验证微信支付应答的签名
-            $platformCertificateFilePath = 'file://' . app()->getRootPath() . 'public/attachment/cert/wechatpay_' . $this->config['platform_serial'] . '.pem';
-            $platformPublicKeyInstance = Rsa::from($platformCertificateFilePath, Rsa::KEY_TYPE_PUBLIC);
-            // 从「微信支付平台证书」中获取「证书序列号」
-            $platformCertificateSerial = PemUtil::parseCertificateSerialNo($platformCertificateFilePath);
-            // 构造一个 APIv3 客户端实例
-            $instance = Builder::factory([
-                'mchid'      => $merchantId,
-                'serial'     => $merchantCertificateSerial,
-                'privateKey' => $merchantPrivateKeyInstance,
-                'certs'      => [
-                    $platformCertificateSerial => $platformPublicKeyInstance,
-                ],
-            ]);
+            $instance = $this->getV3Instance();
 
             $resp = $instance
                 ->chain("/v3/fund-app/mch-transfer/transfer-bills/out-bill-no/{$out_bill_no}/cancel")
                 ->post();
-
-            // echo $resp->getStatusCode(), PHP_EOL;
-            // echo $resp->getBody(), PHP_EOL;
 
             return [
                 'status_code' => $resp->getStatusCode(),
                 'body' => json_decode($resp->getBody(), true)
             ];
         } catch (\Exception $e) {
-            //echo $e->getMessage(), PHP_EOL;
         }
     }
 
@@ -301,38 +692,12 @@ class WechatPayment extends PayService
      */
     public function getFormCert()
     {
-        // 商户号
-        $merchantId = $this->config['mch_id'];
-        // 从本地文件中加载「商户API私钥」，「商户API私钥」会用来生成请求的签名
-        $merchantPrivateKeyFilePath = 'file://' . $this->config['key_path'];
-        $merchantPrivateKeyInstance = Rsa::from($merchantPrivateKeyFilePath, Rsa::KEY_TYPE_PRIVATE);
+        $instance = $this->getV3Instance();
 
-        // 「商户API证书」的「证书序列号」
-        $merchantCertificateSerial = $this->config['serial'];
-
-        // 从本地文件中加载「微信支付平台证书」，用来验证微信支付应答的签名
-        $platformCertificateFilePath = 'file://' . app()->getRootPath() . 'public/attachment/cert/wechatpay_' . $this->config['platform_serial'] . '.pem';
-        $platformPublicKeyInstance = Rsa::from($platformCertificateFilePath, Rsa::KEY_TYPE_PUBLIC);
-
-        // 从「微信支付平台证书」中获取「证书序列号」
-        $platformCertificateSerial = PemUtil::parseCertificateSerialNo($platformCertificateFilePath);
-
-        // 构造一个 APIv3 客户端实例
-        $instance = Builder::factory([
-            'mchid'      => $merchantId,
-            'serial'     => $merchantCertificateSerial,
-            'privateKey' => $merchantPrivateKeyInstance,
-            'certs'      => [
-                $platformCertificateSerial => $platformPublicKeyInstance,
-            ],
-        ]);
-
-        // 发送请求
         $resp = $instance->chain('v3/certificates')->get(
-            ['debug' => false] // 调试模式，https://docs.guzzlephp.org/en/stable/request-options.html#debug
+            ['debug' => false]
         );
 
-        //echo $resp->getBody(), PHP_EOL;
         $res = json_decode($resp->getBody(), true);
 
         if (is_array($res) && !empty($res['data'])) {

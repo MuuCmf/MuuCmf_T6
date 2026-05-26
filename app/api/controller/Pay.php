@@ -181,7 +181,7 @@ class Pay extends Api
             // 获取支付参数
             $config = ChannelServer::config($order_data['channel'], $this->shopid);
             // 微信支付
-            if ($order_data['channel'] == 'weixin_h5' || $order_data['channel'] == 'weixin_mp') {
+            if ($order_data['channel'] == 'weixin_h5' || $order_data['channel'] == 'weixin_mp' || $order_data['channel'] == 'weixin_work') {
                 $PayService = PayServer::init($config['appid'], $this->params['pay_channel']);
                 $result = $PayService->server->queryByOutTradeNumber($order_no);
 
@@ -197,6 +197,23 @@ class Pay extends Api
      */
     public function close()
     {
+        if (request()->isPost()) {
+            try {
+                $order_no = $this->params['order_no'];
+                $order_data = $this->OrderModel->getDataByOrderNo($order_no);
+                if (!$order_data) {
+                    throw new Exception('订单不存在');
+                }
+
+                $config = ChannelServer::config($order_data['channel'], $this->shopid);
+                $PayService = PayServer::init($config['appid'], $this->params['pay_channel']);
+                $result = $PayService->server->close($order_no);
+
+                return $this->success('success', $result);
+            } catch (Exception $e) {
+                return $this->error($e->getMessage());
+            }
+        }
     }
 
     /**
@@ -299,11 +316,45 @@ class Pay extends Api
             $this->params['channel'] == 'h5' ||
             $this->params['channel'] == 'pc'
         )) {
-            $jsonxml = json_encode(simplexml_load_string($notify_data, 'SimpleXMLElement', LIBXML_NOCDATA));
-            $notify = json_decode($jsonxml, true);
             //实例化支付服务
             $config = ChannelServer::config($this->params['channel'], $this->shopid);
             $PayService = PayServer::init($config['appid'], $this->params['pay_channel']);
+
+            // v3 回调处理 默认开启
+            if (config('extend.WX_PAY_USE_V3', true)) {
+                // 验证签名
+                $headers = [
+                    'wechatpay-timestamp' => $_SERVER['HTTP_WECHATPAY_TIMESTAMP'] ?? '',
+                    'wechatpay-nonce' => $_SERVER['HTTP_WECHATPAY_NONCE'] ?? '',
+                    'wechatpay-signature' => $_SERVER['HTTP_WECHATPAY_SIGNATURE'] ?? '',
+                    'wechatpay-serial' => $_SERVER['HTTP_WECHATPAY_SERIAL'] ?? '',
+                ];
+
+                if (!$PayService->server->verifySign($notify_data, $headers)) {
+                    Log::write('v3 回调签名验证失败');
+                    http_response_code(401);
+                    exit();
+                }
+
+                // 解密回调数据
+                $notify = $PayService->server->decryptNotify($notify_data);
+
+                // 返回商户订单号
+                $order_no = $PayService->server->notify($notify);
+                if (!$order_no) {
+                    http_response_code(200);
+                    exit();
+                }
+
+                $this->updateOrders($order_no);
+
+                http_response_code(200);
+                exit();
+            }
+
+            // v2 回调处理
+            $jsonxml = json_encode(simplexml_load_string($notify_data, 'SimpleXMLElement', LIBXML_NOCDATA));
+            $notify = json_decode($jsonxml, true);
             //返回商户订单号
             $order_no = $PayService->server->notify($notify);
             //判断订单是否已支付
@@ -389,7 +440,7 @@ class Pay extends Api
         // 获取订单数据
         $order_info = $this->OrderModel->getDataByOrderNo($order_no);
         if (!$order_info) {
-            if ($this->params['channel'] == 'weixin_mp' || $this->params['channel'] == 'weixin_h5') {
+            if (in_array($this->params['channel'], ['weixin_mp', 'weixin_h5', 'weixin_work'])) {
                 return $this->payXmlMsg('FAIL', '没有查询到订单');
             }
             if ($this->params['channel'] == 'douyin_mp') {
@@ -397,7 +448,7 @@ class Pay extends Api
             }
         }
         if ($order_info['paid'] == 1) {
-            if ($this->params['channel'] == 'weixin_mp' || $this->params['channel'] == 'weixin_h5') {
+            if (in_array($this->params['channel'], ['weixin_mp', 'weixin_h5', 'weixin_work'])) {
                 return $this->payXmlMsg('SUCCESS', '订单支付完成');
             }
             if ($this->params['channel'] == 'douyin_mp') {
