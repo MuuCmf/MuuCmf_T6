@@ -87,7 +87,6 @@ class TcVod
      * 试看时长，单位为秒，以十进制表示。
      * 如果要指定试看时长，时长必须不小于30秒。
      * 具体含义和取值参见 防盗链参数 中的 exper 参数。
-
      */
     public function getPsign($fileId, $exper = 0)
     {
@@ -118,7 +117,10 @@ class TcVod
         $procedure = config('extend.VOD_TENCENT_PROCEDURE');
         $procedure_name = config('extend.VOD_TENCENT_PROCEDURE_NAME');
 
-        if ($procedure == 1) {
+        // 当前支持的转码任务流 仅支持 SimpleAesEncryptPreset 和 WidevineFairPlayPreset
+        if ($procedure == 1 && 
+        !empty($procedure_name) && 
+        ($procedure_name == 'SimpleAesEncryptPreset' || $procedure_name == 'WidevineFairPlayPreset')) {
             // 私有加密或 DRM 保护的 转自适应码流 输出。
             $audioVideoType = 'ProtectedAdaptive';
         } else {
@@ -127,7 +129,6 @@ class TcVod
         }
 
         $contentInfo["audioVideoType"] = $audioVideoType;
-
         if ($procedure == 1 && $procedure_name == 'SimpleAesEncryptPreset') {
             $contentInfo["drmAdaptiveInfo"]["privateEncryptionDefinition"] = 12;
         }
@@ -147,7 +148,7 @@ class TcVod
         ];
 
         $drmLicenseInfo = [
-            "expureTimeStamp" => $psignExpire
+            "expireTimeStamp" => $psignExpire
         ];
 
         $payload = [

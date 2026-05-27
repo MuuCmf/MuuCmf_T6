@@ -1,0 +1,144 @@
+<?php
+
+/**
+ * ThinkPHP 6 辅助函数 PHPStan 存根文件
+ * 为静态分析工具提供准确的类型信息
+ */
+
+/**
+ * 获取输入数据 支持默认值和过滤
+ * @param string $key     获取的变量名
+ * @param mixed  $default 默认值
+ * @param string $filter  过滤方法
+ * @return mixed
+ */
+function input(string $key = '', $default = null, $filter = ''): mixed {}
+
+/**
+ * 缓存管理
+ * @param string|null $name    缓存名称
+ * @param mixed       $value   缓存值
+ * @param mixed       $options 缓存参数
+ * @param string|null $tag     缓存标签
+ * @return mixed
+ */
+function cache(string $name = null, $value = '', $options = null, $tag = null): mixed {}
+
+/**
+ * 获取和设置配置参数
+ * @param string|array $name  参数名
+ * @param mixed        $value 参数值
+ * @return mixed
+ */
+function config($name = '', $value = null): mixed {}
+
+/**
+ * Cookie管理
+ * @param string $name   cookie名称
+ * @param mixed  $value  cookie值
+ * @param mixed  $option 参数
+ * @return mixed
+ */
+function cookie(string $name, $value = '', $option = null): mixed {}
+
+/**
+ * 获取环境变量值
+ * @param string|null $name    环境变量名（支持二级 .号分割）
+ * @param string|null $default 默认值
+ * @return mixed
+ */
+function env(string $name = null, $default = null): mixed {}
+
+/**
+ * 触发事件
+ * @param mixed $event 事件名（或者类名）
+ * @param mixed $args  参数
+ * @return mixed
+ */
+function event($event, $args = null): mixed {}
+
+/**
+ * 获取语言变量值
+ * @param string $name 语言变量名
+ * @param array  $vars 动态变量值
+ * @param string $lang 语言
+ * @return mixed
+ */
+function lang(string $name, array $vars = [], string $lang = ''): mixed {}
+
+/**
+ * Session管理
+ * @param string $name  session名称
+ * @param mixed  $value session值
+ * @return mixed
+ */
+function session($name = '', $value = ''): mixed {}
+
+/**
+ * 字符串命名风格转换
+ * @param string $name    字符串
+ * @param int    $type    转换类型
+ * @param bool   $ucfirst 首字母是否大写（驼峰规则）
+ * @return string
+ */
+function parse_name(string $name, int $type = 0, bool $ucfirst = true): string {}
+
+/**
+ * 获取当前Request对象实例
+ * @return \think\Request
+ */
+function request(): \think\Request {}
+
+/**
+ * 抛出HTTP异常
+ * @param int|\think\Response $code    状态码 或者 Response对象实例
+ * @param string              $message 错误信息
+ * @param array               $header  参数
+ * @return never
+ */
+function abort($code, string $message = '', array $header = []): never {}
+
+/**
+ * 快速获取容器中的实例 支持依赖注入
+ * @template T
+ * @param string|class-string<T> $name        类名或标识 默认获取当前应用实例
+ * @param array                  $args        参数
+ * @param bool                   $newInstance 是否每次创建新的实例
+ * @return T|object|\think\App
+ */
+function app(string $name = '', array $args = [], bool $newInstance = false): object {}
+
+/**
+ * Url生成
+ * @param string      $url    路由地址
+ * @param array       $vars   变量
+ * @param bool|string $suffix 生成的URL后缀
+ * @param bool|string $domain 域名
+ * @return \think\route\Url
+ */
+function url(string $url = '', array $vars = [], $suffix = true, $domain = false): \think\route\Url {}
+
+/**
+ * 渲染模板输出
+ * @param string $template 模板文件
+ * @param array  $vars     模板变量
+ * @param int    $code     状态码
+ * @return \think\response\View
+ */
+function view(string $template = '', array $vars = [], int $code = 200): \think\response\View {}
+
+/**
+ * 获取\think\response\Json对象实例
+ * @param mixed $data    返回的数据
+ * @param int   $code    状态码
+ * @param array $header  头部
+ * @param array $options 参数
+ * @return \think\response\Json
+ */
+function json($data = [], int $code = 200, array $header = [], array $options = []): \think\response\Json {}
+
+/**
+ * 调试变量并且中断输出
+ * @return never
+ */
+function halt(...$vars): never {}

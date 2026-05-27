@@ -1,0 +1,12 @@
+parameters:
+    level: 5
+    paths:
+        - app/
+    scanFiles:
+        - stubs/thinkphp.stub
+    scanDirectories:
+        - extend/
+    excludePaths:
+        - vendor/
+    bootstrapFiles:
+        - stubs/thinkphp.stub
