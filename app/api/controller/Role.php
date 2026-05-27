@@ -51,9 +51,14 @@ class Role extends Api
         $allowed_fields = ['id', 'create_time', 'update_time'];
         $allowed_types = ['asc', 'desc'];
         // 白名单验证
-        $order_field = in_array($order_field, $allowed_fields) ? $order_field : 'create_time';
-        $order_type = in_array($order_type, $allowed_types) ? $order_type : 'desc';
-        $order = 'sort DESC,' . $order_field . ' ' . $order_type;
+        $order_field = in_array(strtolower($order_field), $allowed_fields) ? $order_field : 'create_time';
+        $order_type = in_array(strtolower($order_type), $allowed_types) ? $order_type : 'desc';
+        // 排序字段id时，按sort排序
+        if ($order_field == 'id') {
+            $order = 'sort DESC,' . $order_field . ' ' . $order_type;
+        } else {
+            $order = $order_field . ' ' . $order_type;
+        }
 
         // 约束rows范围
         $rows = min($rows, 100);
