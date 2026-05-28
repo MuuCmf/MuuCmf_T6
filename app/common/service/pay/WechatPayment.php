@@ -8,6 +8,7 @@ use WeChatPay\Crypto\Rsa;
 use WeChatPay\Util\PemUtil;
 use think\Exception;
 use think\facade\Log;
+use app\common\model\Attachment;
 
 class WechatPayment extends PayService
 {
@@ -91,26 +92,129 @@ class WechatPayment extends PayService
         $merchantCertificateSerial = $this->config['serial'];
 
         if ($this->config['platform_mode'] === 'public_key') {
-            $platformFilePath = 'file://' . $this->config['platform_public_key_path'];
-            $platformPublicKeyInstance = Rsa::from($platformFilePath, Rsa::KEY_TYPE_PUBLIC);
-            $platformSerial = $this->config['platform_public_key_serial'];
+            $publicKeyPath = $this->config['platform_public_key_path'] ?? '';
+            $publicKeySerial = $this->config['platform_public_key_serial'] ?? '';
+
+            if (empty($publicKeyPath)) {
+                throw new Exception('公钥模式配置不完整：未上传微信支付公钥文件(WX_PAY_PLATFORM_PUBLIC_KEY)');
+            }
+            if (empty($publicKeySerial)) {
+                throw new Exception('公钥模式配置不完整：未填写微信支付公钥ID(WX_PAY_PLATFORM_PUBLIC_KEY_SERIAL)');
+            }
+
+            $certs = [];
+
+            if (file_exists($publicKeyPath)) {
+                $certs[$publicKeySerial] = Rsa::from('file://' . $publicKeyPath, Rsa::KEY_TYPE_PUBLIC);
+            } else {
+                $certs[$publicKeySerial] = $this->loadPublicKeyFromRemote($publicKeyPath);
+            }
+
+            $platformSerial = $publicKeySerial;
         } else {
+            $certs = [];
             $platformFilePath = 'file://' . app()->getRootPath()
                 . 'public/attachment/cert/wechatpay_' . $this->config['platform_serial'] . '.pem';
-            $platformPublicKeyInstance = Rsa::from($platformFilePath, Rsa::KEY_TYPE_PUBLIC);
             $platformSerial = PemUtil::parseCertificateSerialNo($platformFilePath);
+            $certs[$platformSerial] = Rsa::from($platformFilePath, Rsa::KEY_TYPE_PUBLIC);
         }
 
         $this->v3Instance = Builder::factory([
             'mchid' => $merchantId,
             'serial' => $merchantCertificateSerial,
             'privateKey' => $merchantPrivateKeyInstance,
-            'certs' => [
-                $platformSerial => $platformPublicKeyInstance,
-            ],
+            'certs' => $certs,
         ]);
 
         return $this->v3Instance;
+    }
+
+    /**
+     * 从远程存储加载公钥内容
+     */
+    protected function loadPublicKeyFromRemote($localPath)
+    {
+        $filename = basename($localPath);
+        $attachmentPath = str_replace(app()->getRootPath() . 'public/attachment/', '', $localPath);
+
+        $attachModel = new Attachment();
+        $attachData = $attachModel->where('attachment', $attachmentPath)->find();
+
+        if (!$attachData) {
+            throw new Exception('公钥文件不存在，且未找到对应的附件记录：' . $localPath);
+        }
+
+        $driver = $attachData['driver'];
+
+        if ($driver === 'cos') {
+            return $this->loadPublicKeyFromCos($attachmentPath);
+        }
+
+        if ($driver === 'oss') {
+            return $this->loadPublicKeyFromOss($attachmentPath);
+        }
+
+        throw new Exception('不支持的附件存储驱动：' . $driver);
+    }
+
+    /**
+     * 从腾讯云COS加载公钥
+     */
+    protected function loadPublicKeyFromCos($attachmentPath)
+    {
+        $secretId = config('extend.COS_TENCENT_SECRETID');
+        $secretKey = config('extend.COS_TENCENT_SECRETKEY');
+        $region = config('extend.COS_TENCENT_REGION');
+        $bucket = config('extend.COS_TENCENT_BUCKET');
+
+        if (empty($secretId) || empty($secretKey) || empty($region) || empty($bucket)) {
+            throw new Exception('腾讯云COS配置不完整，无法加载远程公钥文件');
+        }
+
+        $cosClient = new \Qcloud\Cos\Client([
+            'region' => $region,
+            'schema' => 'http',
+            'credentials' => [
+                'secretId'  => $secretId,
+                'secretKey' => $secretKey,
+            ],
+        ]);
+
+        try {
+            $key = 'attachment/' . $attachmentPath;
+            $result = $cosClient->getObject([
+                'Bucket' => $bucket,
+                'Key' => $key,
+            ]);
+            $content = (string)$result['Body'];
+            return Rsa::from($content, Rsa::KEY_TYPE_PUBLIC);
+        } catch (\Exception $e) {
+            throw new Exception('从腾讯云COS下载公钥文件失败：' . $e->getMessage());
+        }
+    }
+
+    /**
+     * 从阿里云OSS加载公钥
+     */
+    protected function loadPublicKeyFromOss($attachmentPath)
+    {
+        $accessKeyId = config('extend.OSS_ALIYUN_ACCESSKEYID');
+        $accessKeySecret = config('extend.OSS_ALIYUN_ACCESSKEYSECRET');
+        $endpoint = config('extend.OSS_ALIYUN_ENDPOINT');
+        $bucket = config('extend.OSS_ALIYUN_BUCKET');
+
+        if (empty($accessKeyId) || empty($accessKeySecret) || empty($endpoint) || empty($bucket)) {
+            throw new Exception('阿里云OSS配置不完整，无法加载远程公钥文件');
+        }
+
+        try {
+            $ossClient = new \OSS\OssClient($accessKeyId, $accessKeySecret, $endpoint);
+            $key = 'attachment/' . $attachmentPath;
+            $content = $ossClient->getObject($bucket, $key);
+            return Rsa::from($content, Rsa::KEY_TYPE_PUBLIC);
+        } catch (\Exception $e) {
+            throw new Exception('从阿里云OSS下载公钥文件失败：' . $e->getMessage());
+        }
     }
 
     /**
@@ -524,10 +628,17 @@ class WechatPayment extends PayService
             . ' platform_mode=' . ($this->config['platform_mode'] ?? 'cert'));
 
         try {
+            $platformPublicKeyInstance = null;
+
             if ($this->config['platform_mode'] === 'public_key') {
-                $platformFilePath = 'file://' . $this->config['platform_public_key_path'];
-                Log::write('v3验签: 使用公钥模式, 路径=' . $this->config['platform_public_key_path']);
-                $platformPublicKeyInstance = Rsa::from($platformFilePath, Rsa::KEY_TYPE_PUBLIC);
+                $publicKeyPath = $this->config['platform_public_key_path'] ?? '';
+                $publicKeySerial = $this->config['platform_public_key_serial'] ?? '';
+
+                if (file_exists($publicKeyPath)) {
+                    $platformPublicKeyInstance = Rsa::from('file://' . $publicKeyPath, Rsa::KEY_TYPE_PUBLIC);
+                } else {
+                    $platformPublicKeyInstance = $this->loadPublicKeyFromRemote($publicKeyPath);
+                }
             } else {
                 $certDir = app()->getRootPath() . 'public/attachment/cert/';
                 $certPath = $certDir . 'wechatpay_' . $serial . '.pem';
