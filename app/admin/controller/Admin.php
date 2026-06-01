@@ -88,6 +88,9 @@ class Admin extends Base
         $is_install = (new ModuleModel())->checkInstalled('micro');
         if($is_install){
             $namespace = "\\app\\micro\\model\\MicroConfig";
+            if(!class_exists($namespace)){
+                return;
+            }
             $MicroConfigModel = new $namespace;
             $micro_config_data  = $MicroConfigModel->getConfig($this->shopid);
         }
