@@ -40,13 +40,6 @@ Route::group('auth', function () {
     Route::get('access', 'admin/Auth/access');
 });
 
-Route::group('author', function () {
-    // 权限组管理
-    Route::any('list', 'admin/Author/list');
-    Route::any('lists', 'admin/Author/list');
-    Route::post('edit', 'admin/Author/edit');
-});
-
 Route::group('config', function () {
     // 配置分组列表
     Route::any('group/list', 'admin/Config/groupList');
