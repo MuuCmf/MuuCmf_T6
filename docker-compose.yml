@@ -6,8 +6,8 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        BUILD_DATE: ${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
-        VCS_REF: ${VCS_REF:-$(git rev-parse --short HEAD)}
+        BUILD_DATE: ${BUILD_DATE:-}
+        VCS_REF: ${VCS_REF:-}
     container_name: muucmf-app
     restart: unless-stopped
     volumes:
@@ -15,9 +15,11 @@ services:
       - ./config:/var/www/html/config
       - ./public:/var/www/html/public
       - ./route:/var/www/html/route
+      - ./vendor:/var/www/html/vendor
       - ./extend:/var/www/html/extend
       - ./data:/var/www/html/data
       - ./data/runtime:/var/www/html/runtime
+      - ./.env:/var/www/html/.env
     environment:
       - APP_ENV=${APP_ENV:-production}
       - APP_DEBUG=${APP_DEBUG:-false}
@@ -41,8 +43,8 @@ services:
       context: .
       dockerfile: Dockerfile.worker
       args:
-        BUILD_DATE: ${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
-        VCS_REF: ${VCS_REF:-$(git rev-parse --short HEAD)}
+        BUILD_DATE: ${BUILD_DATE:-}
+        VCS_REF: ${VCS_REF:-}
     container_name: muucmf-worker
     restart: unless-stopped
     volumes:
@@ -50,8 +52,10 @@ services:
       - ./config:/var/www/html/config
       - ./public:/var/www/html/public
       - ./route:/var/www/html/route
+      - ./vendor:/var/www/html/vendor
       - ./extend:/var/www/html/extend
       - ./data/runtime:/var/www/html/runtime
+      - ./.env:/var/www/html/.env
     environment:
       - APP_ENV=${APP_ENV:-production}
       - APP_DEBUG=${APP_DEBUG:-false}
@@ -93,7 +97,7 @@ services:
     container_name: muucmf-mysql
     restart: unless-stopped
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
     volumes:
       - mysql-data:/var/lib/mysql
       - ./docker/mysql/my.cnf:/etc/mysql/conf.d/my.cnf:ro

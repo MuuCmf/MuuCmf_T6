@@ -3,7 +3,7 @@ FROM composer:2.5 AS composer
 WORKDIR /app
 
 COPY composer.json composer.lock ./
-RUN composer install --prefer-dist --no-dev --no-autoloader --no-scripts --ignore-platform-req=ext-gd
+RUN composer install --prefer-dist --no-dev --no-autoloader --no-scripts --ignore-platform-req=ext-*
 
 COPY . .
 RUN composer dump-autoload --optimize --classmap-authoritative
