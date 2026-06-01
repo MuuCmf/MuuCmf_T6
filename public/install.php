@@ -10,16 +10,16 @@ if (function_exists('date_default_timezone_set')) {
 input($_GET);
 input($_POST);
 
-function input(&$data)
+function input(array &$data)
 {
-    foreach ((array)$data as $key => $value) {
+    foreach ($data as $key => &$value) {
         if (is_string($value)) {
-            // Only trim whitespace - let PDO handle SQL escaping and handle HTML escaping at output time
-            $data[$key] = trim($value);
+            $value = trim($value);
         } else {
-            $data[$key] = input($value);
+            input($value);
         }
     }
+    unset($value);
 }
 
 $site_name = 'MuuCmf T6 开源应用开发框架';
