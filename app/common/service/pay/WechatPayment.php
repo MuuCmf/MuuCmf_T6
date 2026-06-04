@@ -237,9 +237,6 @@ class WechatPayment extends PayService
     protected function payV2($data, $trade_type = 'JSAPI')
     {
         $data['trade_type'] = $trade_type;
-        if (!empty($notify_url)) {
-            $data['notify_url'] = $notify_url;
-        }
         $res = $this->app->order->unify($data);
         if ($res['return_code'] == 'FAIL') {
             throw new Exception($res['return_msg']);
@@ -266,6 +263,8 @@ class WechatPayment extends PayService
                 return $this->payNativeV3($data);
             case 'MWEB':
                 return $this->payMwebV3($data);
+            case 'APP':
+                return $this->payAppV3($data);
             default:
                 throw new Exception('不支持的支付类型');
         }
@@ -396,6 +395,67 @@ class WechatPayment extends PayService
     }
 
     /**
+     * APP 支付 v3
+     */
+    protected function payAppV3($data)
+    {
+        try {
+            $instance = $this->getV3Instance();
+
+            $payload = [
+                'appid' => $data['appid'] ?? $this->config['app_id'],
+                'mchid' => $this->config['mch_id'],
+                'description' => $data['body'],
+                'out_trade_no' => $data['out_trade_no'],
+                'notify_url' => $data['notify_url'],
+                'amount' => [
+                    'total' => $data['total_fee'],
+                    'currency' => 'CNY'
+                ]
+            ];
+
+            $resp = $instance
+                ->chain('v3/pay/transactions/app')
+                ->post(['json' => $payload]);
+
+            $result = json_decode($resp->getBody(), true);
+
+            if ($resp->getStatusCode() != 200) {
+                throw new Exception($result['message'] ?? '统一下单失败');
+            }
+
+            return $this->buildAppConfig($result['prepay_id']);
+
+        } catch (\Exception $e) {
+            throw new Exception('APP支付失败: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * 构建 APP 调起参数
+     */
+    protected function buildAppConfig($prepay_id)
+    {
+        $appid = $this->config['app_id'];
+        $mchid = $this->config['mch_id'];
+        $nonceStr = $this->generateNonceStr();
+        $timestamp = time();
+        $package = 'prepay_id=' . $prepay_id;
+
+        $sign = $this->buildSignForJsapi($appid, $mchid, $nonceStr, $timestamp, $package);
+
+        return [
+            'appId' => $appid,
+            'partnerId' => $mchid,
+            'timeStamp' => (string)$timestamp,
+            'nonceStr' => $nonceStr,
+            'package' => $package,
+            'signType' => 'RSA',
+            'paySign' => $sign
+        ];
+    }
+
+    /**
      * 构建 JSAPI 调起参数
      */
     protected function buildJsapiConfig($prepay_id)
@@ -492,6 +552,10 @@ class WechatPayment extends PayService
 
             $result = json_decode($resp->getBody(), true);
 
+            if ($resp->getStatusCode() != 200) {
+                throw new Exception($result['message'] ?? '退款申请失败');
+            }
+
             return [
                 'return_code' => 'SUCCESS',
                 'result_code' => 'SUCCESS',
@@ -499,10 +563,7 @@ class WechatPayment extends PayService
             ];
 
         } catch (\Exception $e) {
-            return [
-                'return_code' => 'FAIL',
-                'errMsg' => $e->getMessage()
-            ];
+            throw new Exception('退款失败: ' . $e->getMessage());
         }
     }
 
@@ -619,6 +680,12 @@ class WechatPayment extends PayService
         $serial = $headers['wechatpay-serial'] ?? '';
         $message = $timestamp . "\n" . $nonce . "\n" . $body . "\n";
 
+        // 校验 timestamp 是否在合理时间窗口内（5分钟），防止重放攻击
+        if (empty($timestamp) || abs(time() - intval($timestamp)) > 300) {
+            Log::write('v3验签失败: 时间戳不在允许窗口内 timestamp=' . $timestamp . ' server_time=' . time());
+            return false;
+        }
+
         Log::write('v3验签诊断: timestamp=' . $timestamp
             . ' nonce=' . $nonce
             . ' signatureLen=' . strlen($signature)
@@ -643,21 +710,12 @@ class WechatPayment extends PayService
                 $certDir = app()->getRootPath() . 'public/attachment/cert/';
                 $certPath = $certDir . 'wechatpay_' . $serial . '.pem';
 
-                if (!file_exists($certPath) && !empty($this->config['platform_serial'])) {
-                    $fallbackPath = $certDir . 'wechatpay_' . $this->config['platform_serial'] . '.pem';
-                    Log::write('v3验签: HTTP-serial文件不存在, fallback到 ' . $fallbackPath);
-                    if (file_exists($fallbackPath)) {
-                        $certPath = $fallbackPath;
-                    }
-                }
-
-                Log::write('v3验签: 证书路径=' . $certPath . ' 存在=' . (file_exists($certPath) ? 'true' : 'false'));
-
                 if (!file_exists($certPath)) {
-                    Log::write('平台证书文件不存在 HTTP-Serial:' . $serial . ' Config-Serial:' . ($this->config['platform_serial'] ?? '') . '，请执行证书下载');
+                    Log::write('v3验签失败: HTTP-Serial(' . $serial . ')对应的平台证书文件不存在 mch_id=' . $this->config['mch_id'] . '，请执行 getFormCert 下载平台证书');
                     return false;
                 }
 
+                Log::write('v3验签: 证书路径=' . $certPath . ' 存在= true');
                 $platformFilePath = 'file://' . $certPath;
                 $platformPublicKeyInstance = Rsa::from($platformFilePath, Rsa::KEY_TYPE_PUBLIC);
 
@@ -791,6 +849,11 @@ class WechatPayment extends PayService
                 'body' => json_decode($resp->getBody(), true)
             ];
         } catch (\Exception $e) {
+            Log::write('转账取消失败 out_bill_no=' . $out_bill_no . ' error=' . $e->getMessage());
+            return [
+                'status_code' => 0,
+                'error' => $e->getMessage()
+            ];
         }
     }
 
@@ -817,7 +880,7 @@ class WechatPayment extends PayService
 
                 $path = app()->getRootPath() . 'public/attachment/cert/wechatpay_' . $v['serial_no'] . '.pem';
                 @file_put_contents($path, $cert_content);
-                chmod($path, 0777);
+                chmod($path, 0644);
             }
         }
     }

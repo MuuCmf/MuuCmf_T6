@@ -66,6 +66,15 @@ class Channel
                     throw  new Exception('抖音小程序配置信息不存在');
                 }
                 break;
+            // APP 支付（安卓/iOS/鸿蒙）：使用微信公众号配置中的 appid
+            case 'app_android':
+            case 'app_ios':
+            case 'app_harmony':
+                $data = (new WechatConfig())->getWechatConfigByShopId($shopid);
+                if (empty($data)) {
+                    throw  new Exception('微信公众号配置文件不存在，请先配置公众号信息');
+                }
+                break;
 
             default:
                 $data = [];

@@ -122,6 +122,9 @@ class Pay extends Api
                     if ($order_data['channel'] == 'pc') {
                         $trade_type = 'NATIVE';
                     }
+                    if (in_array($order_data['channel'], ['app_android', 'app_ios', 'app_harmony'])) {
+                        $trade_type = 'APP';
+                    }
                     $result_pay = $PayService->server->pay($pay_data, $trade_type);
                     
                     // 初始返回url
@@ -314,7 +317,10 @@ class Pay extends Api
             $this->params['channel'] == 'weixin_h5' ||
             $this->params['channel'] == 'weixin_work' ||
             $this->params['channel'] == 'h5' ||
-            $this->params['channel'] == 'pc'
+            $this->params['channel'] == 'pc' ||
+            $this->params['channel'] == 'app_android' ||
+            $this->params['channel'] == 'app_ios' ||
+            $this->params['channel'] == 'app_harmony'
         )) {
             //实例化支付服务
             $config = ChannelServer::config($this->params['channel'], $this->shopid);
@@ -440,15 +446,18 @@ class Pay extends Api
         // 获取订单数据
         $order_info = $this->OrderModel->getDataByOrderNo($order_no);
         if (!$order_info) {
-            if (in_array($this->params['channel'], ['weixin_mp', 'weixin_h5', 'weixin_work'])) {
+            if (in_array($this->params['channel'], ['weixin_mp', 'weixin_h5', 'weixin_work', 'h5', 'pc', 'app_android', 'app_ios', 'app_harmony'])) {
                 return $this->payXmlMsg('FAIL', '没有查询到订单');
             }
             if ($this->params['channel'] == 'douyin_mp') {
                 return DouyinMiniProgramServer::returnMsg(-1, 'error');
             }
+            if ($this->params['channel'] == 'baidu_mp') {
+                return BaiduMiniProgramServer::returnMsg(-1, 'error');
+            }
         }
         if ($order_info['paid'] == 1) {
-            if (in_array($this->params['channel'], ['weixin_mp', 'weixin_h5', 'weixin_work'])) {
+            if (in_array($this->params['channel'], ['weixin_mp', 'weixin_h5', 'weixin_work', 'h5', 'pc', 'app_android', 'app_ios', 'app_harmony'])) {
                 return $this->payXmlMsg('SUCCESS', '订单支付完成');
             }
             if ($this->params['channel'] == 'douyin_mp') {

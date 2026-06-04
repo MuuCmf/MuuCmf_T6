@@ -30,6 +30,15 @@ class Extend extends Admin
     /**
      * 短信发送参数配置
      */
+    /**
+     * 获取缓存键前缀（与 DbConfig 中间件保持一致）
+     */
+    protected function getExtConfigCacheKey()
+    {
+        $cache_prefix = md5(app()->getRootPath());
+        return $cache_prefix . request()->host() . '_MUUCMF_EXT_CONFIG_DATA';
+    }
+
     public function sms() {
 
         if (request()->isPost()) {
@@ -42,7 +51,7 @@ class Extend extends Admin
                 }
             }
             // 清理缓存
-            Cache::delete(request()->host() . '_MUUCMF_EXT_CONFIG_DATA');
+            Cache::delete($this->getExtConfigCacheKey());
 
             return $this->success('保存成功',$config, 'refresh');
 
@@ -64,7 +73,7 @@ class Extend extends Admin
                 }
             }
             // 清理缓存
-            Cache::delete(request()->host() . '_MUUCMF_EXT_CONFIG_DATA');
+            Cache::delete($this->getExtConfigCacheKey());
 
             return $this->success('保存成功',$config, 'refresh');
         }
@@ -85,7 +94,7 @@ class Extend extends Admin
                 }
             }
             // 清理缓存
-            Cache::delete(request()->host() . '_MUUCMF_EXT_CONFIG_DATA');
+            Cache::delete($this->getExtConfigCacheKey());
     
             return $this->success('保存成功',$config, 'refresh');
         }
@@ -106,7 +115,7 @@ class Extend extends Admin
                 }
             }
             // 清理缓存
-            Cache::delete(request()->host() . '_MUUCMF_EXT_CONFIG_DATA');
+            Cache::delete($this->getExtConfigCacheKey());
     
             return $this->success('保存成功',$config, 'refresh');
         }
@@ -201,7 +210,7 @@ class Extend extends Admin
             $data['status'] = 1;//默认状态为启用
             $res = $resId = $this->extendConfigModel->edit($data);
             if($res){
-                Cache::delete(request()->host() . '_MUUCMF_EXT_CONFIG_DATA');
+                Cache::delete($this->getExtConfigCacheKey());
                 //记录行为
                 action_log('update_config', 'extend_config', $resId, is_login());
 
@@ -224,7 +233,7 @@ class Extend extends Admin
         }
 
         if (Db::name('ExtendConfig')->where('id','in', $id)->delete()) {
-            Cache::delete(request()->host() . '_MUUCMF_EXT_CONFIG_DATA');
+            Cache::delete($this->getExtConfigCacheKey());
             //记录行为
             action_log('update_config', 'extend_config', $id, is_login());
             return $this->success('删除成功');
