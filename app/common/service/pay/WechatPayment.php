@@ -65,6 +65,8 @@ class WechatPayment extends PayService
             'platform_mode' => $platform_mode,
             'notify_url' => request()->domain() . "/api/pay/callback",
             'sandbox' => $this->sandbox,
+            // SNI域名：强制TLS握手携带指定域名，绕过服务器Nginx默认站点证书问题
+            'sni_host' => config('extend.WX_PAY_SNI_HOST', 'api.mch.weixin.qq.com'),
         ];
 
         if ($platform_mode === 'public_key') {
@@ -119,12 +121,31 @@ class WechatPayment extends PayService
             $certs[$platformSerial] = Rsa::from($platformFilePath, Rsa::KEY_TYPE_PUBLIC);
         }
 
-        $this->v3Instance = Builder::factory([
+        $sniHost = $this->config['sni_host'] ?? 'api.mch.weixin.qq.com';
+
+        // 构建SNI+Host curl选项，强制TLS握手携带域名，绕过服务器Nginx默认站点证书问题
+        $curlOptions = [];
+        if (defined('CURLOPT_SSL_HOST_NAME')) {
+            // PHP 7.1+ 原生支持设置SNI域名
+            $curlOptions[CURLOPT_SSL_HOST_NAME] = $sniHost;
+        }
+        // 兜底：使用CURLOPT_RESOLVE同时固定DNS解析+SNI（需配合实际IP）
+        // $curlOptions[CURLOPT_RESOLVE] = ["{$sniHost}:443:实际IP地址"];
+
+        $builderConfig = [
             'mchid' => $merchantId,
             'serial' => $merchantCertificateSerial,
             'privateKey' => $merchantPrivateKeyInstance,
             'certs' => $certs,
-        ]);
+        ];
+
+        if (!empty($curlOptions)) {
+            $builderConfig['curl'] = $curlOptions;
+            // Guzzle Headers方式指定Host头（与SNI配合使用）
+            $builderConfig['headers'] = ['Host' => $sniHost];
+        }
+
+        $this->v3Instance = Builder::factory($builderConfig);
 
         return $this->v3Instance;
     }
