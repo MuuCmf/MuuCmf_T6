@@ -7,16 +7,16 @@ define('DBCHARSET', 'utf8');   //设置数据库默认编码
 if (function_exists('date_default_timezone_set')) {
     date_default_timezone_set('Asia/Shanghai');
 }
-input($_GET);
-input($_POST);
+install_input($_GET);
+install_input($_POST);
 
-function input(array &$data)
+function install_input(array &$data)
 {
     foreach ($data as $key => &$value) {
         if (is_string($value)) {
             $value = trim($value);
         } else {
-            input($value);
+            install_input($value);
         }
     }
     unset($value);

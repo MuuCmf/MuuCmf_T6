@@ -35,8 +35,7 @@ class Extend extends Admin
      */
     protected function getExtConfigCacheKey()
     {
-        $cache_prefix = md5(app()->getRootPath());
-        return $cache_prefix . request()->host() . '_MUUCMF_EXT_CONFIG_DATA';
+        return request()->host() . '_MUUCMF_EXT_CONFIG_DATA';
     }
 
     public function sms() {
