@@ -3,17 +3,20 @@
 namespace app\admin\controller;
 
 use app\common\model\SeoRule as SeoRuleModel;
-use app\admin\builder\AdminListBuilder;
 
 class Seo extends Admin
 {
-    protected $seoRuleModel;
+    protected SeoRuleModel $seoRuleModel;
+
     public function __construct()
     {
         parent::__construct();
         $this->seoRuleModel = new SeoRuleModel();
     }
 
+    /**
+     * 规则列表
+     */
     public function list()
     {
         //读取规则列表
@@ -88,15 +91,30 @@ class Seo extends Admin
     /**
      * 配置状态
      */
-    public function status($ids, $status)
+    public function status()
     {
-        $builder = new AdminListBuilder();
-        return $builder->doSetStatus('SeoRule', $ids, $status);
-    }
+        $ids = input('ids');
+        if (empty($ids)) {
+            return $this->error('请选择要操作的数据');
+        }
+        !is_array($ids) && $ids = explode(',', $ids);
+        $status = input('status', 0, 'intval');
+        $title = '更新';
+        if ($status == 0) {
+            $title = '禁用';
+        }
+        if ($status == 1) {
+            $title = '启用';
+        }
+        if ($status == -1) {
+            $title = '删除';
+        }
+        $data['status'] = $status;
 
-    public function doClear($ids)
-    {
-        $builder = new AdminListBuilder();
-        return $builder->doDeleteTrue('SeoRule', $ids);
+        $result = $this->seoRuleModel->where('id', 'in', $ids)->update($data);
+        if (!$result) {
+            return $this->error('操作失败');
+        }
+        return $this->success($title . '成功', url('list'));
     }
 }
