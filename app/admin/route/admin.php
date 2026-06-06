@@ -310,3 +310,40 @@ Route::group('withdraw', function () {
     // 取消提现申请
     Route::post('cancel', 'admin/Withdraw/cancel');
 });
+
+// 智能体管理路由
+Route::group('muu_agent', function () {
+    // 基础信息
+    Route::get('index', 'admin/muuAgent.Index/index');
+
+    // 智能体管理
+    Route::get('agent/list', 'admin/muuAgent.Agent/lists');
+    Route::get('agent/detail', 'admin/muuAgent.Agent/detail');
+    Route::post('agent/create', 'admin/muuAgent.Agent/create');
+    Route::post('agent/edit', 'admin/muuAgent.Agent/edit');
+    Route::post('agent/del', 'admin/muuAgent.Agent/del');
+    Route::post('agent/publish', 'admin/muuAgent.Agent/publish');
+
+    // 对话管理
+    Route::post('chat/send', 'admin/muuAgent.Chat/send');
+    Route::get('chat/conversation', 'admin/muuAgent.Chat/conversation');
+    Route::get('chat/history', 'admin/muuAgent.Chat/history');
+    Route::post('chat/del', 'admin/muuAgent.Chat/del');
+
+    // 知识库管理
+    Route::get('kb/list', 'admin/muuAgent.Kb/lists');
+    Route::get('kb/detail', 'admin/muuAgent.Kb/detail');
+    Route::post('kb/create', 'admin/muuAgent.Kb/create');
+    Route::post('kb/edit', 'admin/muuAgent.Kb/edit');
+    Route::post('kb/del', 'admin/muuAgent.Kb/del');
+    Route::post('kb/upload', 'admin/muuAgent.Kb/upload');
+    Route::get('kb/documents', 'admin/muuAgent.Kb/documents');
+
+    // 提示词模板管理
+    Route::get('prompt/list', 'admin/muuAgent.Prompt/lists');
+    Route::get('prompt/detail', 'admin/muuAgent.Prompt/detail');
+    Route::post('prompt/create', 'admin/muuAgent.Prompt/create');
+    Route::post('prompt/edit', 'admin/muuAgent.Prompt/edit');
+    Route::post('prompt/del', 'admin/muuAgent.Prompt/del');
+    Route::get('prompt/categories', 'admin/muuAgent.Prompt/categories');
+});
