@@ -3,7 +3,6 @@ namespace app\admin\controller;
 
 use think\facade\Db;
 use think\facade\Cache;
-use app\admin\builder\AdminConfigBuilder;
 use app\common\model\ExtendConfig as MuuExtendConfigModel;
 use app\admin\validate\Common as CommonValidate;
 use think\exception\ValidateException;
@@ -13,8 +12,7 @@ use think\exception\ValidateException;
  */
 class Extend extends Admin
 {
-    protected $moduleModel;
-    protected $extendConfigModel;
+    protected MuuExtendConfigModel $extendConfigModel;
 
     /**
      * 构造方法

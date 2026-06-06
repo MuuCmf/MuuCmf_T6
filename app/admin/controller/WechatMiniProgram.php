@@ -3,14 +3,14 @@
 namespace app\admin\controller;
 
 use think\exception\ValidateException;
-use app\admin\builder\AdminConfigBuilder;
 use app\common\logic\TemplateMessage;
 use app\common\model\WechatMpConfig;
 use app\admin\validate\WechatMiniProgram as WechatMiniProgramValidate;
 
 class WechatMiniProgram extends Admin
 {
-    private $MiniProgramModel;
+    private WechatMpConfig $MiniProgramModel;
+    
     function __construct()
     {
         parent::__construct();

@@ -1,12 +1,11 @@
 <?php
 namespace app\admin\controller;
 
-use app\admin\builder\AdminConfigBuilder;
 use app\common\model\BaiduMpConfig;
 
 class BaiduMiniprogram extends Admin
 {
-    private $MiniProgramModel;
+    private BaiduMpConfig $MiniProgramModel;
     function __construct()
     {
         parent::__construct();
