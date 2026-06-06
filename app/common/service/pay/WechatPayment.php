@@ -69,11 +69,12 @@ class WechatPayment extends PayService
             'sni_host' => config('extend.WX_PAY_SNI_HOST', 'api.mch.weixin.qq.com'),
         ];
 
-        if ($platform_mode === 'public_key') {
-            $config['platform_public_key_serial'] = $platform_public_key_serial;
-            $config['platform_public_key_path'] = app()->getRootPath()
-                . 'public/attachment/' . config('extend.WX_PAY_PLATFORM_PUBLIC_KEY');
-        }
+        // 兼容验签：始终加载公钥配置，过渡期内两种验签方式都可能用到
+        $publicKeyFile = config('extend.WX_PAY_PLATFORM_PUBLIC_KEY', '');
+        $config['platform_public_key_serial'] = $platform_public_key_serial;
+        $config['platform_public_key_path'] = $publicKeyFile
+            ? app()->getRootPath() . 'public/attachment/' . $publicKeyFile
+            : '';
 
         return $config;
     }
@@ -93,32 +94,47 @@ class WechatPayment extends PayService
         $merchantPrivateKeyInstance = Rsa::from($merchantPrivateKeyFilePath, Rsa::KEY_TYPE_PRIVATE);
         $merchantCertificateSerial = $this->config['serial'];
 
-        if ($this->config['platform_mode'] === 'public_key') {
-            $publicKeyPath = $this->config['platform_public_key_path'] ?? '';
-            $publicKeySerial = $this->config['platform_public_key_serial'] ?? '';
+        $certs = [];
 
+        // 兼容验签：始终尝试加载平台证书，确保微信用平台证书签名应答时也能验签
+        $platformSerial = $this->config['platform_serial'] ?? '';
+        if (!empty($platformSerial)) {
+            $platformFilePath = app()->getRootPath()
+                . 'public/attachment/cert/wechatpay_' . $platformSerial . '.pem';
+            if (file_exists($platformFilePath)) {
+                $pemSerial = PemUtil::parseCertificateSerialNo('file://' . $platformFilePath);
+                $certs[$pemSerial] = Rsa::from('file://' . $platformFilePath, Rsa::KEY_TYPE_PUBLIC);
+            }
+        }
+
+        // 兼容验签：始终尝试加载微信支付公钥，让微信知道商户支持公钥验签
+        // 过渡期内平台证书和公钥同时存在于 certs 中，微信会逐步将应答切换到公钥签名
+        $publicKeyPath = $this->config['platform_public_key_path'] ?? '';
+        $publicKeySerial = $this->config['platform_public_key_serial'] ?? '';
+        if (!empty($publicKeyPath) && !empty($publicKeySerial)) {
+            if (file_exists($publicKeyPath)) {
+                $certs[$publicKeySerial] = Rsa::from('file://' . $publicKeyPath, Rsa::KEY_TYPE_PUBLIC);
+            } else {
+                $certs[$publicKeySerial] = $this->loadPublicKeyFromRemote($publicKeyPath);
+            }
+        }
+
+        if ($this->config['platform_mode'] === 'public_key') {
+            // 公钥模式：公钥和平台证书都已加载，公钥为必需配置
             if (empty($publicKeyPath)) {
                 throw new Exception('公钥模式配置不完整：未上传微信支付公钥文件(WX_PAY_PLATFORM_PUBLIC_KEY)');
             }
             if (empty($publicKeySerial)) {
                 throw new Exception('公钥模式配置不完整：未填写微信支付公钥ID(WX_PAY_PLATFORM_PUBLIC_KEY_SERIAL)');
             }
-
-            $certs = [];
-
-            if (file_exists($publicKeyPath)) {
-                $certs[$publicKeySerial] = Rsa::from('file://' . $publicKeyPath, Rsa::KEY_TYPE_PUBLIC);
-            } else {
-                $certs[$publicKeySerial] = $this->loadPublicKeyFromRemote($publicKeyPath);
-            }
-
-            $platformSerial = $publicKeySerial;
         } else {
-            $certs = [];
-            $platformFilePath = 'file://' . app()->getRootPath()
-                . 'public/attachment/cert/wechatpay_' . $this->config['platform_serial'] . '.pem';
-            $platformSerial = PemUtil::parseCertificateSerialNo($platformFilePath);
-            $certs[$platformSerial] = Rsa::from($platformFilePath, Rsa::KEY_TYPE_PUBLIC);
+            // 平台证书模式：如果上面未加载到平台证书，用原有逻辑兜底
+            if (empty($certs) && !empty($platformSerial)) {
+                $platformFilePath = 'file://' . app()->getRootPath()
+                    . 'public/attachment/cert/wechatpay_' . $platformSerial . '.pem';
+                $pemSerial = PemUtil::parseCertificateSerialNo($platformFilePath);
+                $certs[$pemSerial] = Rsa::from($platformFilePath, Rsa::KEY_TYPE_PUBLIC);
+            }
         }
 
         $sniHost = $this->config['sni_host'] ?? 'api.mch.weixin.qq.com';
@@ -718,9 +734,24 @@ class WechatPayment extends PayService
         try {
             $platformPublicKeyInstance = null;
 
-            if ($this->config['platform_mode'] === 'public_key') {
+            // 兼容验签：根据回调头 Wechatpay-Serial 判断用平台证书还是公钥验签
+            // 公钥ID以 "PUB_KEY_ID_" 开头，平台证书序列号为纯十六进制
+            $isPublicKeySerial = (strpos($serial, 'PUB_KEY_ID_') === 0);
+
+            if ($isPublicKeySerial) {
+                // 使用微信支付公钥验签
                 $publicKeyPath = $this->config['platform_public_key_path'] ?? '';
                 $publicKeySerial = $this->config['platform_public_key_serial'] ?? '';
+
+                if (empty($publicKeyPath) || empty($publicKeySerial)) {
+                    Log::write('v3验签失败: 回调使用公钥签名但未配置公钥 serial=' . $serial);
+                    return false;
+                }
+
+                if ($publicKeySerial !== $serial) {
+                    Log::write('v3验签失败: 回调公钥ID(' . $serial . ')与配置的公钥ID(' . $publicKeySerial . ')不匹配');
+                    return false;
+                }
 
                 if (file_exists($publicKeyPath)) {
                     $platformPublicKeyInstance = Rsa::from('file://' . $publicKeyPath, Rsa::KEY_TYPE_PUBLIC);
@@ -728,6 +759,7 @@ class WechatPayment extends PayService
                     $platformPublicKeyInstance = $this->loadPublicKeyFromRemote($publicKeyPath);
                 }
             } else {
+                // 使用平台证书验签
                 $certDir = app()->getRootPath() . 'public/attachment/cert/';
                 $certPath = $certDir . 'wechatpay_' . $serial . '.pem';
 
@@ -746,7 +778,7 @@ class WechatPayment extends PayService
             }
 
             $result = Rsa::verify($message, $signature, $platformPublicKeyInstance);
-            Log::write('v3验签结果: ' . ($result ? '成功' : '失败') . ' serial=' . $serial);
+            Log::write('v3验签结果: ' . ($result ? '成功' : '失败') . ' serial=' . $serial . ' mode=' . ($isPublicKeySerial ? 'public_key' : 'cert'));
             return $result;
         } catch (\Exception $e) {
             Log::write('v3 验签异常: ' . $e->getMessage() . ' HTTP-Serial:' . $serial);

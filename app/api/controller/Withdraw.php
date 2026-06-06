@@ -239,18 +239,36 @@ class Withdraw extends Api
                 throw new \Exception('通知头参数为空', 2002);
             }
 
-            $platform_serial  =  config('extend.WX_PAY_WITHDRAW_PLATFORM_SERIAL');
-            if ($platform_serial != $inWechatpaySerial) {
-                throw new \Exception('验签失败', 2005);
+            // 兼容验签：根据 Wechatpay-Serial 判断使用平台证书还是公钥
+            // 公钥ID以 "PUB_KEY_ID_" 开头，平台证书序列号为纯十六进制
+            $isPublicKeySerial = (strpos($inWechatpaySerial, 'PUB_KEY_ID_') === 0);
+
+            if ($isPublicKeySerial) {
+                // 使用微信支付公钥验签
+                $publicKeySerial = config('extend.WX_PAY_PLATFORM_PUBLIC_KEY_SERIAL', '');
+                $publicKeyPath = app()->getRootPath() . 'public/attachment/' . config('extend.WX_PAY_PLATFORM_PUBLIC_KEY');
+
+                if (empty($publicKeySerial) || empty($publicKeyPath)) {
+                    throw new \Exception('回调使用公钥签名但未配置微信支付公钥', 2006);
+                }
+                if ($publicKeySerial !== $inWechatpaySerial) {
+                    throw new \Exception('回调公钥ID与配置不匹配', 2007);
+                }
+
+                $platformPublicKeyInstance = Rsa::from('file://' . $publicKeyPath, Rsa::KEY_TYPE_PUBLIC);
+            } else {
+                // 使用平台证书验签
+                $platform_serial  =  config('extend.WX_PAY_WITHDRAW_PLATFORM_SERIAL');
+                if ($platform_serial != $inWechatpaySerial) {
+                    throw new \Exception('验签失败', 2005);
+                }
+
+                // 平台证书路径
+                $pingtai_public_key_path = app()->getRootPath() . 'public/attachment/cert/wechatpay_' . $platform_serial . '.pem';
+                $platformPublicKeyInstance = Rsa::from('file://' . $pingtai_public_key_path, Rsa::KEY_TYPE_PUBLIC);
             }
 
-            // 平台证书路径
-            $pingtai_public_key_path = app()->getRootPath() . 'public/attachment/cert/wechatpay_' . $platform_serial . '.pem';
-
-            $apiv3Key = config('extend.WX_PAY_KEY_SECRET');; // 在商户平台上设置的APIv3密钥
-
-            // 根据通知的平台证书序列号，查询本地平台证书文件，
-            $platformPublicKeyInstance = Rsa::from('file://' . $pingtai_public_key_path, Rsa::KEY_TYPE_PUBLIC);
+            $apiv3Key = config('extend.WX_PAY_KEY_SECRET'); // 在商户平台上设置的APIv3密钥
 
             // 检查通知时间偏移量，允许5分钟之内的偏移
             $timeOffsetStatus = 300 >= abs(Formatter::timestamp() - (int)$inWechatpayTimestamp);
