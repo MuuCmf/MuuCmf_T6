@@ -622,7 +622,7 @@ CREATE TABLE IF NOT EXISTS `muucmf_extend_config` (
 -- 转存表中的数据 `muucmf_extend_config`
 --
 INSERT INTO `muucmf_extend_config` (`id`, `name`, `type`, `title`, `group`, `extra`, `remark`, `create_time`, `update_time`, `status`, `value`, `sort`) VALUES
-(1, 'GROUP_LIST', 'entity', '扩展分组', 'public', '', '分组后便于管理参数', 0, 1769571772, 1, 'public:公共配置项\r\naliyun_oss:阿里云OSS\r\ntencent_cos:腾讯云COS\r\naliyun_sms:阿里云短信\r\ntencent_sms:腾讯云短信\r\nweixinpay:微信支付\r\nalipay:支付宝支付\r\ntencent_vod:腾讯云点播\r\nstore:存储配置\r\nsms:短信配置\r\nvod:点播配置\r\npay:支付配置\r\nwithdraw:提现配置', 0),
+(1, 'GROUP_LIST', 'entity', '扩展分组', 'public', '', '分组后便于管理参数', 0, 1769571772, 1, 'public:公共配置项\r\naliyun_oss:阿里云OSS\r\ntencent_cos:腾讯云COS\r\naliyun_sms:阿里云短信\r\ntencent_sms:腾讯云短信\r\nweixinpay:微信支付\r\nalipay:支付宝支付\r\ntencent_vod:腾讯云点播\r\nstore:存储配置\r\nsms:短信配置\r\nvod:点播配置\r\npay:支付配置\r\nwithdraw:提现配置\r\nmuuagent:MuuAgent', 0),
 (3, 'PICTURE_UPLOAD_DRIVER', 'select', '图片上传驱动', 'store', 'local:本地\r\ntencent:腾讯云COS\r\naliyun:阿里云OSS', '', 0, 1649315854, 1, 'local', 0),
 (4, 'FILE_UPLOAD_DRIVER', 'select', '文件上传驱动', 'store', 'local:本地\r\ntencent:腾讯云COS\r\naliyun:阿里云OSS', '', 0, 1649315862, 1, 'local', 0),
 (6, 'OSS_ALIYUN_ACCESSKEYID', 'string', 'AccessKeyID', 'aliyun_oss', '', 'Access Key ID是您访问阿里云API的密钥，具有该账户完全的权限，请您妥善保管.', 1630910114, 1630918767, 1, '', 0),
@@ -674,7 +674,12 @@ INSERT INTO `muucmf_extend_config` (`id`, `name`, `type`, `title`, `group`, `ext
 (58, 'VOD_TENCENT_LICENSE_TYPE', 'radio', '播放器license版本', 'tencent_vod', '0:基础版\r\n1:高级版', '请勾选创建的播放器license版本', 0, 0, 1, '0', 0),
 (59, 'WX_PAY_PLATFORM_MODE', 'radio', '支付验证模式', 'weixinpay', 'cert:平台证书\npublic_key:微信支付公钥', '商户接收APIv3的请求应答、回调时验签使用，以下两种方式只能使用一种', 1779748605, 1779749269, 1, 'cert', 0),
 (60, 'WX_PAY_PLATFORM_PUBLIC_KEY', 'file', '微信支付公钥', 'weixinpay', '', '微信支付公钥用于验证微信支付身份', 1779748780, 1779749421, 1, '', 8),
-(61, 'WX_PAY_PLATFORM_PUBLIC_KEY_SERIAL', 'string', '微信支付公钥ID', 'weixinpay', '', '微信支付公钥模式下需填写', 1779749202, 1779749911, 1, '', 10);
+(61, 'WX_PAY_PLATFORM_PUBLIC_KEY_SERIAL', 'string', '微信支付公钥ID', 'weixinpay', '', '微信支付公钥模式下需填写', 1779749202, 1779749911, 1, '', 10),
+(62, 'MUUAGENT_BASE_URL', 'string', '接口路径', 'muuagent', '', '接口路径', 1780744852, 1780744852, 1, '', 0),
+(63, 'MUUAGENT_API_KEY', 'string', 'ApiKey', 'muuagent', '', '请输入应用ApiKey', 1780744943, 1780744943, 1, '', 0),
+(64, 'MUUAGENT_APP_CODE', 'string', '应用标识', 'muuagent', '', '请输入应用唯一标识', 1780744974, 1780744974, 1, '', 0),
+(65, 'MUUAGENT_CLIENT_ID', 'string', '客户端ID', 'muuagent', '', '请输入客户端ID', 1780745009, 1780745009, 1, '', 0),
+(66, 'MUUAGENT_CLIENT_SECRET', 'string', '客户端secret', 'muuagent', '', '请输入客户端secret', 1780745053, 1780745053, 1, '', 0);
 
 -- --------------------------------------------------------
 

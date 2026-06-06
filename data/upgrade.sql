@@ -384,3 +384,12 @@ INSERT INTO `muucmf_extend_config` (`id`, `name`, `type`, `title`, `group`, `ext
 (60, 'WX_PAY_PLATFORM_PUBLIC_KEY', 'file', '微信支付公钥', 'weixinpay', '', '微信支付公钥用于验证微信支付身份', 1779748780, 1779749421, 1, '', 8),
 (61, 'WX_PAY_PLATFORM_PUBLIC_KEY_SERIAL', 'string', '微信支付公钥ID', 'weixinpay', '', '微信支付公钥模式下需填写', 1779749202, 1779749911, 1, '', 10);
 
+UPDATE `muucmf_extend_config` SET `value` = 'public:公共配置项\r\naliyun_oss:阿里云OSS\r\ntencent_cos:腾讯云COS\r\naliyun_sms:阿里云短信\r\ntencent_sms:腾讯云短信\r\nweixinpay:微信支付\r\nalipay:支付宝支付\r\ntencent_vod:腾讯云点播\r\nstore:存储配置\r\nsms:短信配置\r\nvod:点播配置\r\npay:支付配置\r\nwithdraw:提现配置\r\nmuuagent:MuuAgent' WHERE `muucmf_extend_config`.`id` = 1;
+
+INSERT INTO `muucmf_extend_config` (`id`, `name`, `type`, `title`, `group`, `extra`, `remark`, `create_time`, `update_time`, `status`, `value`, `sort`) VALUES
+(62, 'MUUAGENT_BASE_URL', 'string', '接口路径', 'muuagent', '', '接口路径', 1780744852, 1780744852, 1, '', 0),
+(63, 'MUUAGENT_API_KEY', 'string', 'ApiKey', 'muuagent', '', '请输入应用ApiKey', 1780744943, 1780744943, 1, '', 0),
+(64, 'MUUAGENT_APP_CODE', 'string', '应用标识', 'muuagent', '', '请输入应用唯一标识', 1780744974, 1780744974, 1, '', 0),
+(65, 'MUUAGENT_CLIENT_ID', 'string', '客户端ID', 'muuagent', '', '请输入客户端ID', 1780745009, 1780745009, 1, '', 0),
+(66, 'MUUAGENT_CLIENT_SECRET', 'string', '客户端secret', 'muuagent', '', '请输入客户端secret', 1780745053, 1780745053, 1, '', 0);
+

@@ -38,6 +38,9 @@ class Extend extends Admin
         return request()->host() . '_MUUCMF_EXT_CONFIG_DATA';
     }
 
+    /**
+     * 短信发送参数配置
+     */
     public function sms() {
 
         if (request()->isPost()) {
@@ -103,6 +106,27 @@ class Extend extends Admin
      * 云点播配置管理
      */
     public function vod()
+    {
+        if (request()->isPost()) {
+            $config = input('post.');
+            
+            if ($config && is_array($config)) {
+                foreach ($config as $name => $value) {
+                    $map = ['name' => $name];
+                    Db::name('ExtendConfig')->where($map)->save(['value' => $value]);
+                }
+            }
+            // 清理缓存
+            Cache::delete($this->getExtConfigCacheKey());
+    
+            return $this->success('保存成功',$config, 'refresh');
+        }
+    }
+
+    /**
+     * muuAgent代理配置管理
+     */
+    public function muuAgent()
     {
         if (request()->isPost()) {
             $config = input('post.');
