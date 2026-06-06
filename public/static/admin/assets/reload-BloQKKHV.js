@@ -1,0 +1,1 @@
+import{i as r,q as a,w as s}from"./axios-CmiPLYrR.js";import{n as i}from"./index-BRixAQLS.js";r();var o=i({},[["render",function(r,i){return a(),s("div")}]]);export{o as default};
