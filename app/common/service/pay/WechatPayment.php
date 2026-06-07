@@ -14,6 +14,7 @@ class WechatPayment extends PayService
 {
     protected $v3Instance;
     protected $useV3;
+    protected $merchantPrivateKey;
 
     function __construct($appid)
     {
@@ -137,29 +138,12 @@ class WechatPayment extends PayService
             }
         }
 
-        $sniHost = $this->config['sni_host'] ?? 'api.mch.weixin.qq.com';
-
-        // 构建SNI+Host curl选项，强制TLS握手携带域名，绕过服务器Nginx默认站点证书问题
-        $curlOptions = [];
-        if (defined('CURLOPT_SSL_HOST_NAME')) {
-            // PHP 7.1+ 原生支持设置SNI域名
-            $curlOptions[CURLOPT_SSL_HOST_NAME] = $sniHost;
-        }
-        // 兜底：使用CURLOPT_RESOLVE同时固定DNS解析+SNI（需配合实际IP）
-        // $curlOptions[CURLOPT_RESOLVE] = ["{$sniHost}:443:实际IP地址"];
-
         $builderConfig = [
             'mchid' => $merchantId,
             'serial' => $merchantCertificateSerial,
             'privateKey' => $merchantPrivateKeyInstance,
             'certs' => $certs,
         ];
-
-        if (!empty($curlOptions)) {
-            $builderConfig['curl'] = $curlOptions;
-            // Guzzle Headers方式指定Host头（与SNI配合使用）
-            $builderConfig['headers'] = ['Host' => $sniHost];
-        }
 
         $this->v3Instance = Builder::factory($builderConfig);
 
@@ -522,8 +506,10 @@ class WechatPayment extends PayService
     {
         $message = $appid . "\n" . $timestamp . "\n" . $nonceStr . "\n" . $package . "\n";
 
-        $privateKey = Rsa::from('file://' . $this->config['key_path'], Rsa::KEY_TYPE_PRIVATE);
-        return Rsa::sign($message, $privateKey, OPENSSL_ALGO_SHA256);
+        if (!$this->merchantPrivateKey) {
+            $this->merchantPrivateKey = Rsa::from('file://' . $this->config['key_path'], Rsa::KEY_TYPE_PRIVATE);
+        }
+        return Rsa::sign($message, $this->merchantPrivateKey, OPENSSL_ALGO_SHA256);
     }
 
     /**
@@ -717,8 +703,14 @@ class WechatPayment extends PayService
         $serial = $headers['wechatpay-serial'] ?? '';
         $message = $timestamp . "\n" . $nonce . "\n" . $body . "\n";
 
+        // 校验回调头参数完整性
+        if (empty($timestamp) || empty($nonce) || empty($signature) || empty($serial)) {
+            Log::write('v3验签失败: 回调头参数不完整 timestamp=' . ($timestamp ?: '空') . ' nonce=' . ($nonce ?: '空') . ' signature=' . ($signature ? '有' : '空') . ' serial=' . ($serial ?: '空'));
+            return false;
+        }
+
         // 校验 timestamp 是否在合理时间窗口内（5分钟），防止重放攻击
-        if (empty($timestamp) || abs(time() - intval($timestamp)) > 300) {
+        if (abs(time() - intval($timestamp)) > 300) {
             Log::write('v3验签失败: 时间戳不在允许窗口内 timestamp=' . $timestamp . ' server_time=' . time());
             return false;
         }
@@ -736,6 +728,7 @@ class WechatPayment extends PayService
 
             // 兼容验签：根据回调头 Wechatpay-Serial 判断用平台证书还是公钥验签
             // 公钥ID以 "PUB_KEY_ID_" 开头，平台证书序列号为纯十六进制
+            // PUB_KEY_ID_0116024032822026052900381731001201
             $isPublicKeySerial = (strpos($serial, 'PUB_KEY_ID_') === 0);
 
             if ($isPublicKeySerial) {
@@ -888,6 +881,11 @@ class WechatPayment extends PayService
         }
     }
 
+    /**
+     * @title 商家转账取消
+     * @param $out_bill_no
+     * @return mixed
+     */
     public function cancelTransfer($out_bill_no)
     {
         try {
@@ -935,7 +933,10 @@ class WechatPayment extends PayService
                 @file_put_contents($path, $cert_content);
                 chmod($path, 0644);
             }
+            return '证书更新成功，共' . count($res['data']) . '个';
         }
+
+        return '未获取到平台证书数据';
     }
 
     const KEY_LENGTH_BYTE = 32;

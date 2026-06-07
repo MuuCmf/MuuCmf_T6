@@ -667,7 +667,7 @@ INSERT INTO `muucmf_extend_config` (`id`, `name`, `type`, `title`, `group`, `ext
 (48, 'VOD_TENCENT_PROCEDURE', 'radio', '自适应转码加密任务流', 'tencent_vod', '0:不启用\r\n1:启用', '启用后会触发系统预置自适应码流加密任务SimpleAesEncryptPreset.', 0, 1679403460, 1, '1', 0),
 (49, 'VOD_TENCENT_PLAYER_KEY', 'string', '播放秘钥', 'tencent_vod', '', '分发播放设置-默认分发配置信息内播放秘钥，仅启用KEY防盗链后有效.', 0, 0, 1, '', 0),
 (50, 'WX_PAY_WITHDRAW_API', 'select', '提现接口选择', 'withdraw', 'v2:企业付款到零钱v2\r\nv3:商家转账到零钱v3', '', 0, 0, 1, 'v3', 0),
-(51, 'WX_PAY_WITHDRAW_PLATFORM_SERIAL', 'string', '平台证书序列号', 'weixinpay', '', '', 0, 0, 1, '', 5),
+(51, 'WX_PAY_WITHDRAW_PLATFORM_SERIAL', 'string', '平台证书序列号', 'weixinpay', '', '平台证书模式下需填写', 0, 0, 1, '', 5),
 (55, 'VOD_TENCENT_PROCEDURE_NAME', 'string', '自适应转码任务流名称', 'tencent_vod', '', '', 0, 1733203026, 1, 'SimpleAesEncryptPreset', 0),
 (56, 'WITHDRAW_TRANSFER_SCENE_ID', 'string', '商家转账场景ID', 'withdraw', '', '', 0, 0, 1, '1005', 0),
 (57, 'VOD_TENCENT_LICENSE_URL', 'string', '播放器licenseUrl', 'tencent_vod', '', '播放器 License 地址', 0, 0, 1, '', 0),

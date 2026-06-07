@@ -7,7 +7,7 @@ use app\common\logic\Config as ConfigLogic;
 
 class Config extends Api
 {
-    protected $ConfigLogic;
+    protected ConfigLogic $ConfigLogic;
 
     function __construct()
     {

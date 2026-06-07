@@ -14,13 +14,13 @@ use think\Request;
  */
 class Favorites extends Api
 {
-    protected $FavoritesModel;
-    protected $FavoritesLogic;
+    protected FavoritesModel $FavoritesModel;
+    protected FavoritesLogic $FavoritesLogic;
     //添加token验证中间件
     protected $middleware = [
         'app\\common\\middleware\\CheckAuth',
     ];
-    function __construct(Request $request)
+    function __construct()
     {
         parent::__construct();
         $this->FavoritesModel = new FavoritesModel();

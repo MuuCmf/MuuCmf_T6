@@ -15,15 +15,16 @@ use app\common\facade\channel\Pay as PayServer;
 use app\common\model\CapitalFlow;
 use app\common\model\CapitalFlow as CapitalFlowModel;
 use app\common\model\MemberWallet;
+use app\common\model\Attachment;
 use app\common\model\Withdraw as WithdrawModel;
 use app\common\logic\Withdraw as WithdrawLogic;
 
 class Withdraw extends Api
 {
-    protected $request;
-    protected $WithdrawModel;
-    protected $WithdrawLogic;
-    protected $CapitalFlowModel;
+    protected Request $request;
+    protected WithdrawModel $WithdrawModel;
+    protected WithdrawLogic $WithdrawLogic;
+    protected CapitalFlowModel $CapitalFlowModel;
     protected $middleware = [
         'app\\common\\middleware\\CheckAuth' => ['except' => 'notify']
     ];
@@ -108,7 +109,11 @@ class Withdraw extends Api
 
             // 发起提现
             $pay_config = ChannelServer::config($channel, $this->shopid);
-            $PayService = PayServer::init($pay_config['appid'], $pay_channel, $this->shopid);
+            $PayService = PayServer::init($pay_config['appid'], $pay_channel);
+
+            if (!$PayService || !$PayService->server) {
+                throw new Exception('支付服务初始化失败');
+            }
 
             // 提现接口
             $withdraw_api = config('extend.WX_PAY_WITHDRAW_API');
@@ -224,6 +229,7 @@ class Withdraw extends Api
         $inBody   = file_get_contents('php://input'); //读取微信传过来的信息，是一个json字符串
         Log::write($header, 'notice_v3_header');
         Log::write($inBody, 'notice_v3_body');
+        
         // 平台证书验签
         Db::startTrans();
         try {
@@ -255,7 +261,11 @@ class Withdraw extends Api
                     throw new \Exception('回调公钥ID与配置不匹配', 2007);
                 }
 
-                $platformPublicKeyInstance = Rsa::from('file://' . $publicKeyPath, Rsa::KEY_TYPE_PUBLIC);
+                if (file_exists($publicKeyPath)) {
+                    $platformPublicKeyInstance = Rsa::from('file://' . $publicKeyPath, Rsa::KEY_TYPE_PUBLIC);
+                } else {
+                    $platformPublicKeyInstance = $this->loadPublicKeyFromRemote($publicKeyPath);
+                }
             } else {
                 // 使用平台证书验签
                 $platform_serial  =  config('extend.WX_PAY_WITHDRAW_PLATFORM_SERIAL');
@@ -278,32 +288,23 @@ class Withdraw extends Api
                 $inWechatpaySignature,
                 $platformPublicKeyInstance
             );
-            if ($timeOffsetStatus && $verifiedStatus) {
-                // 转换通知的JSON文本消息为PHP Array数组
-                $inBodyArray = (array)json_decode($inBody, true);
-                // 使用PHP7的数据解构语法，从Array中解构并赋值变量
-                ['resource' => [
-                    'ciphertext'      => $ciphertext,
-                    'nonce'           => $nonce,
-                    'associated_data' => $aad
-                ]] = $inBodyArray;
-                // 加密文本消息解密
-                $inBodyResource = AesGcm::decrypt($ciphertext, $apiv3Key, $nonce, $aad);
-                // 把解密后的文本转换为PHP Array数组
-                $inBodyResourceArray = (array)json_decode($inBodyResource, true);
-                // print_r($inBodyResourceArray);// 打印解密后的结果
-                Log::write($inBodyResourceArray, 'notice');
-                // 示例
-                // 'mch_id' => '1602403282',
-                // 'out_bill_no' => '202505305841651155',
-                // 'transfer_bill_no' => '1330001234218022505300063062490070',
-                // 'transfer_amount' => 100,
-                // 'state' => 'SUCCESS',
-                // 'openid' => 'odDW80Xr2djHkcNTrfHO4VOAppkY',
-                // 'create_time' => '2025-05-30T08:20:58+08:00',
-                // 'update_time' => '2025-05-30T08:21:11+08:00',
-                // 'mchid' => '1602403282',
+            if (!$timeOffsetStatus || !$verifiedStatus) {
+                throw new \Exception('验签失败：时间偏移=' . ($timeOffsetStatus ? 'ok' : 'invalid') . ' 签名=' . ($verifiedStatus ? 'ok' : 'invalid'), 2003);
             }
+
+            // 转换通知的JSON文本消息为PHP Array数组
+            $inBodyArray = (array)json_decode($inBody, true);
+            // 使用PHP7的数据解构语法，从Array中解构并赋值变量
+            ['resource' => [
+                'ciphertext'      => $ciphertext,
+                'nonce'           => $nonce,
+                'associated_data' => $aad
+            ]] = $inBodyArray;
+            // 加密文本消息解密
+            $inBodyResource = AesGcm::decrypt($ciphertext, $apiv3Key, $nonce, $aad);
+            // 把解密后的文本转换为PHP Array数组
+            $inBodyResourceArray = (array)json_decode($inBodyResource, true);
+            Log::write($inBodyResourceArray, 'notice');
             //执行自己的代码start
             $data = $this->WithdrawModel->where('order_no', $inBodyResourceArray['out_bill_no'])->find();
             $cash_with = true;
@@ -361,6 +362,93 @@ class Withdraw extends Api
                 "code" => "FAIL", 
                 "message" => '失败'
             ], 500);
+        }
+    }
+
+    /**
+     * 从远程存储加载公钥（文件不在本地时兜底）
+     */
+    protected function loadPublicKeyFromRemote($localPath)
+    {
+        $attachmentPath = str_replace(app()->getRootPath() . 'public/attachment/', '', $localPath);
+
+        $attachModel = new Attachment();
+        $attachData = $attachModel->where('attachment', $attachmentPath)->find();
+
+        if (!$attachData) {
+            throw new \Exception('公钥文件不存在，且未找到对应的附件记录：' . $localPath);
+        }
+
+        $driver = $attachData['driver'];
+
+        if ($driver === 'cos') {
+            return $this->loadPublicKeyFromCos($attachmentPath);
+        }
+
+        if ($driver === 'oss') {
+            return $this->loadPublicKeyFromOss($attachmentPath);
+        }
+
+        throw new \Exception('不支持的附件存储驱动：' . $driver);
+    }
+
+    /**
+     * 从腾讯云COS加载公钥
+     */
+    protected function loadPublicKeyFromCos($attachmentPath)
+    {
+        $secretId = config('extend.COS_TENCENT_SECRETID');
+        $secretKey = config('extend.COS_TENCENT_SECRETKEY');
+        $region = config('extend.COS_TENCENT_REGION');
+        $bucket = config('extend.COS_TENCENT_BUCKET');
+
+        if (empty($secretId) || empty($secretKey) || empty($region) || empty($bucket)) {
+            throw new \Exception('腾讯云COS配置不完整，无法加载远程公钥文件');
+        }
+
+        $cosClient = new \Qcloud\Cos\Client([
+            'region' => $region,
+            'schema' => 'http',
+            'credentials' => [
+                'secretId'  => $secretId,
+                'secretKey' => $secretKey,
+            ],
+        ]);
+
+        try {
+            $key = 'attachment/' . $attachmentPath;
+            $result = $cosClient->getObject([
+                'Bucket' => $bucket,
+                'Key' => $key,
+            ]);
+            $content = (string)$result['Body'];
+            return Rsa::from($content, Rsa::KEY_TYPE_PUBLIC);
+        } catch (\Exception $e) {
+            throw new \Exception('从腾讯云COS下载公钥文件失败：' . $e->getMessage());
+        }
+    }
+
+    /**
+     * 从阿里云OSS加载公钥
+     */
+    protected function loadPublicKeyFromOss($attachmentPath)
+    {
+        $accessKeyId = config('extend.OSS_ALIYUN_ACCESSKEYID');
+        $accessKeySecret = config('extend.OSS_ALIYUN_ACCESSKEYSECRET');
+        $endpoint = config('extend.OSS_ALIYUN_ENDPOINT');
+        $bucket = config('extend.OSS_ALIYUN_BUCKET');
+
+        if (empty($accessKeyId) || empty($accessKeySecret) || empty($endpoint) || empty($bucket)) {
+            throw new \Exception('阿里云OSS配置不完整，无法加载远程公钥文件');
+        }
+
+        try {
+            $ossClient = new \OSS\OssClient($accessKeyId, $accessKeySecret, $endpoint);
+            $key = 'attachment/' . $attachmentPath;
+            $content = $ossClient->getObject($bucket, $key);
+            return Rsa::from($content, Rsa::KEY_TYPE_PUBLIC);
+        } catch (\Exception $e) {
+            throw new \Exception('从阿里云OSS下载公钥文件失败：' . $e->getMessage());
         }
     }
 }

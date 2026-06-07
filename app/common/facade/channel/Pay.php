@@ -6,7 +6,7 @@ use think\Facade;
 
 /**
  * Class Channel
- * @method init(string $appid ,string $channel,int $shopid) static
+ * @method \app\common\service\channel\Pay init(string $appid, string $pay_channel) static
  */
 class Pay extends Facade
 {

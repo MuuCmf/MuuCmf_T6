@@ -21,14 +21,14 @@ use app\common\facade\baidu\MiniProgram as BaiduMiniProgramServer;
 
 class Pay extends Api
 {
-    private $OrderModel; //订单模型
-    private $OrderLogic; //订单模型
-    private $CapitalFlowModel;
+    private OrdersModel $OrderModel; //订单模型
+    private $OrderLogic; //订单逻辑
+    private CapitalFlow $CapitalFlowModel; //资金流模型
     protected $middleware = [
         'app\\common\\middleware\\CheckAuth' => ['only' => 'pay,refund'],
     ];
 
-    function __construct(Request $request)
+    function __construct()
     {
         parent::__construct();
         $this->OrderModel = new OrdersModel();
@@ -56,16 +56,16 @@ class Pay extends Api
                     $order_data['channel'] = $channel;
                 }
                 //数据处理
-                if($order_data['app'] == 'vip' || $order_data['order_info_type'] == 'vipcard'){
+                if ($order_data['app'] == 'vip' || $order_data['order_info_type'] == 'vipcard') {
                     $order_namespace = "app\\common\\logic\\Orders";
                     $this->OrderLogic = new $order_namespace;
                     $order_data = $this->OrderLogic->vipFormatData($order_data);
-                }else{
+                } else {
                     $order_namespace = "app\\{$order_data['app']}\\logic\\Orders";
                     $this->OrderLogic = new $order_namespace;
                     $order_data = $this->OrderLogic->formatData($order_data);
                 }
-                
+
                 //初始化支付数据
                 $title = $order_data['products']['title'];
                 if (mb_strlen($title, 'utf8') > 20) {
@@ -89,9 +89,9 @@ class Pay extends Api
                     $order_data['channel'] == 'weixin_work' ||
                     $order_data['channel'] == 'weixin_mp' ||
                     $order_data['channel'] == 'h5' ||
-                    $order_data['channel'] == 'pc' || 
+                    $order_data['channel'] == 'pc' ||
                     $order_data['channel'] == 'app_android' ||
-                    $order_data['channel'] == 'app_ios' || 
+                    $order_data['channel'] == 'app_ios' ||
                     $order_data['channel'] == 'app_harmony'
                 ) {
                     // 获取支付参数
@@ -115,6 +115,9 @@ class Pay extends Api
                     $pay_data['notify_url'] = $notify_url;
                     // 发起支付
                     $PayService = PayServer::init($config['appid'], $this->params['pay_channel']);
+                    if (!$PayService || !$PayService->server) {
+                        throw new Exception('支付服务初始化失败');
+                    }
                     $trade_type = 'JSAPI';
                     if ($order_data['channel'] == 'h5') {
                         $trade_type = 'MWEB';
@@ -126,7 +129,7 @@ class Pay extends Api
                         $trade_type = 'APP';
                     }
                     $result_pay = $PayService->server->pay($pay_data, $trade_type);
-                    
+
                     // 初始返回url
                     $return_url = '';
                     if (isset($result_pay['code_url'])) {
@@ -186,6 +189,9 @@ class Pay extends Api
             // 微信支付
             if ($order_data['channel'] == 'weixin_h5' || $order_data['channel'] == 'weixin_mp' || $order_data['channel'] == 'weixin_work') {
                 $PayService = PayServer::init($config['appid'], $this->params['pay_channel']);
+                if (!$PayService || !$PayService->server) {
+                    throw new Exception('支付服务初始化失败');
+                }
                 $result = $PayService->server->queryByOutTradeNumber($order_no);
 
                 return $this->success('success', $result);
@@ -210,6 +216,9 @@ class Pay extends Api
 
                 $config = ChannelServer::config($order_data['channel'], $this->shopid);
                 $PayService = PayServer::init($config['appid'], $this->params['pay_channel']);
+                if (!$PayService || !$PayService->server) {
+                    throw new Exception('支付服务初始化失败');
+                }
                 $result = $PayService->server->close($order_no);
 
                 return $this->success('success', $result);
@@ -278,6 +287,9 @@ class Pay extends Api
                             //退款至付款账户
                             $config = ChannelServer::config($this->params['channel'], $this->shopid);
                             $PayService = PayServer::init($config['appid'], $this->params['pay_channel']);
+                            if (!$PayService || !$PayService->server) {
+                                throw new Exception('支付服务初始化失败');
+                            }
                             $result = $PayService->server->refund($refund_info);
                         }
                         if (!$result) {
@@ -325,15 +337,19 @@ class Pay extends Api
             //实例化支付服务
             $config = ChannelServer::config($this->params['channel'], $this->shopid);
             $PayService = PayServer::init($config['appid'], $this->params['pay_channel']);
+            if (!$PayService || !$PayService->server) {
+                throw new Exception('支付服务初始化失败');
+            }
 
             // v3 回调处理 默认开启
             if (config('extend.WX_PAY_USE_V3', true)) {
-                // 验证签名
+                // 验证签名（使用框架 request->header() 获取，兼容不同 Web 服务器的键名大小写差异）
+                $rawHeaders = request()->header();
                 $headers = [
-                    'wechatpay-timestamp' => $_SERVER['HTTP_WECHATPAY_TIMESTAMP'] ?? '',
-                    'wechatpay-nonce' => $_SERVER['HTTP_WECHATPAY_NONCE'] ?? '',
-                    'wechatpay-signature' => $_SERVER['HTTP_WECHATPAY_SIGNATURE'] ?? '',
-                    'wechatpay-serial' => $_SERVER['HTTP_WECHATPAY_SERIAL'] ?? '',
+                    'wechatpay-timestamp' => $rawHeaders['wechatpay-timestamp'] ?? '',
+                    'wechatpay-nonce' => $rawHeaders['wechatpay-nonce'] ?? '',
+                    'wechatpay-signature' => $rawHeaders['wechatpay-signature'] ?? '',
+                    'wechatpay-serial' => $rawHeaders['wechatpay-serial'] ?? '',
                 ];
 
                 if (!$PayService->server->verifySign($notify_data, $headers)) {
@@ -413,29 +429,6 @@ class Pay extends Api
             // 返回验签失败
             return BaiduMiniProgramServer::returnMsg(-1, 'checkSign fail');
         }
-    }
-
-
-    public function test()
-    {
-        $notify_data = "<xml><appid><![CDATA[wx90fcefad8616a371]]></appid>
-                <bank_type><![CDATA[OTHERS]]></bank_type>
-                <cash_fee><![CDATA[1]]></cash_fee>
-                <fee_type><![CDATA[CNY]]></fee_type>
-                <is_subscribe><![CDATA[N]]></is_subscribe>
-                <mch_id><![CDATA[1602403282]]></mch_id>
-                <nonce_str><![CDATA[69bbfed090e7f]]></nonce_str>
-                <openid><![CDATA[odDW80Xr2djHkcNTrfHO4VOAppkY]]></openid>
-                <out_trade_no><![CDATA[202603193527670141]]></out_trade_no>
-                <result_code><![CDATA[SUCCESS]]></result_code>
-                <return_code><![CDATA[SUCCESS]]></return_code>
-                <sign><![CDATA[ECD4E6CD56A12841E367CDE8D383F385]]></sign>
-                <time_end><![CDATA[20260319215246]]></time_end>
-                <total_fee>1</total_fee>
-                <trade_type><![CDATA[NATIVE]]></trade_type>
-                <transaction_id><![CDATA[4200003009202603190805100997]]></transaction_id>
-                </xml>";
-        
     }
 
     /**
@@ -631,6 +624,9 @@ class Pay extends Api
         $config = ChannelServer::config('weixin_h5', $this->shopid);
         // 发起支付
         $PayService = PayServer::init($config['appid'], 'weixin');
+        if (!$PayService || !$PayService->server) {
+            throw new Exception('支付服务初始化失败');
+        }
 
         $result = $PayService->server->getFormCert();
 

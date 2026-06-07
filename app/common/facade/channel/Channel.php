@@ -6,7 +6,7 @@ use think\Facade;
 
 /**
  * Class Channel
- * @method config(string $channel,int $shopid) static
+ * @method array config(string $channel, int $shopid = 0) static
  * @method test() static
  */
 class Channel extends Facade

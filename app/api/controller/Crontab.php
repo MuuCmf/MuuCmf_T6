@@ -19,9 +19,9 @@ use think\Request;
  */
 class Crontab extends Api
 {
-    private $OrdersModel; //订单模型
+    private OrdersModel $OrdersModel; //订单模型
 
-    function __construct(Request $request)
+    function __construct()
     {
         parent::__construct();
         $this->OrdersModel = new OrdersModel();

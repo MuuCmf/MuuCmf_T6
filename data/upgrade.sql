@@ -393,3 +393,4 @@ INSERT INTO `muucmf_extend_config` (`id`, `name`, `type`, `title`, `group`, `ext
 (65, 'MUUAGENT_CLIENT_ID', 'string', '客户端ID', 'muuagent', '', '请输入客户端ID', 1780745009, 1780745009, 1, '', 0),
 (66, 'MUUAGENT_CLIENT_SECRET', 'string', '客户端secret', 'muuagent', '', '请输入客户端secret', 1780745053, 1780745053, 1, '', 0);
 
+UPDATE `muucmf_extend_config` SET `remark` = '平台证书模式下需填写' WHERE `muucmf_extend_config`.`id` = 51;

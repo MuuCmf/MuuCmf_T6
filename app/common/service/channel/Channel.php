@@ -14,9 +14,8 @@ class Channel
      * 获取渠道配置信息
      * @return WechatMpConfig|WechatConfig|array
      */
-    public function config($channel, $shopid = 0)
+    public function config(string $channel, $shopid = 0)
     {
-
         switch ($channel) {
             //微信公众号
             case 'h5':
