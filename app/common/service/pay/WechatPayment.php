@@ -463,7 +463,7 @@ class WechatPayment extends PayService
         $timestamp = time();
         $package = 'prepay_id=' . $prepay_id;
 
-        $sign = $this->buildSignForJsapi($appid, $mchid, $nonceStr, $timestamp, $package);
+        $sign = $this->buildSignForJsapi($appid, $nonceStr, $timestamp, $package);
 
         return [
             'appId' => $appid,
@@ -482,12 +482,11 @@ class WechatPayment extends PayService
     protected function buildJsapiConfig($prepay_id)
     {
         $appid = $this->config['app_id'];
-        $mchid = $this->config['mch_id'];
         $nonceStr = $this->generateNonceStr();
         $timestamp = time();
         $package = 'prepay_id=' . $prepay_id;
 
-        $sign = $this->buildSignForJsapi($appid, $mchid, $nonceStr, $timestamp, $package);
+        $sign = $this->buildSignForJsapi($appid, $nonceStr, $timestamp, $package);
 
         return [
             'appId' => $appid,
@@ -502,7 +501,7 @@ class WechatPayment extends PayService
     /**
      * JSAPI 签名 (v3)
      */
-    protected function buildSignForJsapi($appid, $mchid, $nonceStr, $timestamp, $package)
+    protected function buildSignForJsapi($appid, $nonceStr, $timestamp, $package)
     {
         $message = $appid . "\n" . $timestamp . "\n" . $nonceStr . "\n" . $package . "\n";
 
