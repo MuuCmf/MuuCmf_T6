@@ -6,16 +6,14 @@ use think\Exception;
 use app\admin\lib\Upgrade as UpgradeServer;
 use app\admin\lib\Cloud as CloudServer;
 use think\facade\Db;
-use think\facade\View;
-use app\common\service\Tree;
 use app\common\model\Menu as MenuModel;
 use app\common\model\Module as ModuleModel;
 use app\common\model\AuthRule;
 
 class Module extends Admin
 {
-    protected $MenuModel;
-    protected $ModuleModel;
+    protected MenuModel $MenuModel;
+    protected ModuleModel $ModuleModel;
 
     /**
      * 构造方法
@@ -36,13 +34,13 @@ class Module extends Admin
     {
         $this->setTitle('应用管理');
 
+        // 应用类型
         $aType = (string)input('type', 'installed', 'text');
-        View::assign('type', $aType);
 
+        $map = [];
         switch ($aType) {
             case 'all':
                 $map = [];
-                $this->ModuleModel->reload();
                 break;
             // 已安装
             case 'installed':
@@ -51,7 +49,6 @@ class Module extends Admin
             // 未安装
             case 'uninstalled':
                 $map[] = ['is_setup', '=', 0];
-                $this->ModuleModel->reload();
                 break;
         };
 
@@ -136,18 +133,11 @@ class Module extends Admin
                 return $this->error($title . '失败');
             }
         }
-
-        if (!empty($id)) {
-            $data = $this->ModuleModel->getDataById($id);
-        }
-        View::assign('data', $data);
-
-        return View::fetch();
     }
 
     /**
      * 获取应用模块详情
-     * @return [type] [description]
+     * @return array
      */
     public function info()
     {
@@ -220,15 +210,13 @@ class Module extends Admin
 
     /**
      * 安装模块
-     * @return [type] [description]
+     * @return array
      */
     public function install()
     {
         $aName = input('name', '', 'text');
-        $module = $this->ModuleModel->getModule($aName);
 
         if (request()->isPost()) {
-            //执行guide中的内容
             try {
                 $res = $this->ModuleModel->install($aName);
 
@@ -238,14 +226,12 @@ class Module extends Admin
             } catch (Exception $e) {
                 return $this->error($e->getMessage());
             }
-        } else {
-            View::assign('module', $module);
-            return View::fetch();
         }
     }
 
     /**
      * 卸载模块
+     * @return array
      */
     public function uninstall()
     {
@@ -265,24 +251,27 @@ class Module extends Admin
             } else {
                 return $this->error('卸载模块失败。');
             }
-        } else {
-            View::assign('module', $module);
-            return View::fetch();
         }
     }
 
+    /**
+     * 重置应用
+     */
+    public function reload()
+    {
+        $this->ModuleModel->reload();
+        return $this->success('重置成功');
+    }
 
     /**
      * 应用权限菜单首页
-     * @return none
+     * @return array
      */
     public function menu()
     {
         $app = input('app', '', 'text');
-        View::assign('app', $app);
         $title = input('title', '', 'text');
         $pid  = input('pid', '0', 'text');
-        View::assign('pid', $pid);
         $map = [];
 
         $list_map = [];
@@ -290,7 +279,6 @@ class Module extends Admin
             //获取上级数据
             $map['name'] = $app;
             $data = $this->ModuleModel->where($map)->find();
-            View::assign('data', $data);
             $list_map[] = ['module', '=', $app];
         }
 
@@ -305,18 +293,10 @@ class Module extends Admin
         unset($val);
         // 转树结构
         $list = list_to_tree($list, 'id', 'pid', '_child', $pid);
-        View::assign('list', $list);
 
-        // ajax请求返回数据
-        if (request()->isAjax()) {
-            return $this->success('success', $list);
-        }
-
-        // 记录当前列表页的cookie
-        cookie('__forward__', $_SERVER['REQUEST_URI']);
-        $this->setTitle('后台菜单管理');
-
-        return View::fetch();
+        // 返回数据
+        return $this->success('success', $list);
+        
     }
 
     /**
@@ -341,46 +321,12 @@ class Module extends Admin
             } else {
                 return $this->error('保存失败');
             }
-        } else {
-            $id = input('id', '0', 'text');
-            // 上级ID
-            $pid = input('pid', '0', 'text');
-            View::assign('pid', $pid);
-            // 应用唯一标识
-            $app = input('app', '', 'text');
-            View::assign('app', $app);
-            // 初始化info数据
-            $info = [
-                'pid' => 0,
-                'type' => 1,
-            ];
-            /* 获取数据 */
-            if (!empty($id) || $id != '0') {
-                $info = $this->MenuModel->where(['id' => $id])->find();
-            }
-
-            if (empty($info)) {
-                $map['id'] = input('pid');
-                $info = $this->MenuModel->where($map)->field('module,pid,hide,type')->find();
-                $info['pid'] = input('pid', '0', 'text');
-            }
-            View::assign('info', $info);
-            $menus = $this->MenuModel->where('module', '=', $app)->order('sort asc,id asc')->select()->toArray();
-            $tree = new Tree();
-            $menus = $tree->toFormatTree($menus, 'title', 'id', 'pid', 0);
-            View::assign('Menus', $menus);
-
-            $moduleModel = new ModuleModel();
-            View::assign('Modules', $moduleModel->getAll());
-
-            $this->setTitle('菜单编辑');
-
-            return View::fetch();
         }
     }
 
     /**
      * 菜单删除
+     * @return array
      */
     public function menudel()
     {
