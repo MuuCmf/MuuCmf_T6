@@ -771,74 +771,77 @@ class Member extends Base
             ['shopid', '=', $shopid],
             ['openid', '=', $data['openid']]
         ])->find();
+        // 初始化授权记录id
+        $sync_id = 0;
         if ($sync) {
+            $sync_id = $sync['id'];
             $uid = $sync['uid'];
-            $member = $this->where([
+            $has_member = $this->where([
                 ['uid', '=', $uid],
                 ['status', 'in', [0, 1]]
             ])->find();
 
-            if ($member) {
-                return $member;
-            } else {
-
-                //是否已有开放平台相同的账户
-                if (!empty($data['unionid'])) {
-                    $has_union = $syncModel->where([
-                        ['shopid', '=', $shopid],
-                        ['unionid', '=', $data['unionid']],
-                    ])->find();
-                    if ($has_union) $has_union = $has_union->toArray();
-                }
-                //初始UID
-                $uid = 0;
-
-                // 过滤掉emoji表情符号
-                $nickname = filter_emoji($data['nickname']);
-                // 验证昵称
-                $match = preg_match('/^(?!_|\s\')[A-Za-z0-9_|\x80-\xff\s\']+$/', $nickname);
-                if (!$match) {
-                    $nickname = rand_nickname(Config::get('system.USER_NICKNAME_PREFIX'));
-                }
-                $member_data = [
-                    'uid' => $uid,
-                    'shopid'    => $data['shopid'],
-                    'nickname'  => $nickname,
-                    'username'  => rand_username(''),
-                    'password'  => user_md5('123456', Config::get('auth.auth_key')),
-                    'avatar'    => $data['avatar'],
-                    'sex'       => $data['sex'],
-                    'status'    => 1,
-                    'reg_ip' => request()->ip(),
-                    'reg_channel' => $data['oauth_type']
-                ];
-                //写入会员表
-                $result = $this->save($member_data);
-                if (!$result) {
-                    throw new Exception('存入用户信息失败');
-                }
-                //将用户添加到用户组
-                (new AuthGroup())->addToGroup($this->id, 1);
-                $uid = $this->id;
-                
-                $sync_data = [
-                    'uid'       => $uid,
-                    'openid'    => $data['openid'],
-                    'type'      => $data['oauth_type']
-                ];
-                if (!empty($data['unionid'])) {
-                    $sync_data['unionid'] = $data['unionid'];
-                }
-
-                //存入授权记录
-                $sync = $syncModel->edit($sync_data);
-                if (!$sync) {
-                    throw new Exception('存入用户授权记录失败');
-                }
-                $actionLog = new ActionLog();
-                $actionLog->add('reg', 'member', 1, $uid);
+            if ($has_member) {
+                return $has_member;
             }
         }
+
+        //是否已有开放平台相同的账户
+        if (!empty($data['unionid'])) {
+            $has_union = $syncModel->where([
+                ['shopid', '=', $shopid],
+                ['unionid', '=', $data['unionid']],
+            ])->find();
+            if ($has_union) $has_union = $has_union->toArray();
+        }
+        //初始UID
+        $uid = 0;
+
+        // 过滤掉emoji表情符号
+        $nickname = filter_emoji($data['nickname']);
+        // 验证昵称
+        $match = preg_match('/^(?!_|\s\')[A-Za-z0-9_|\x80-\xff\s\']+$/', $nickname);
+        if (!$match) {
+            $nickname = rand_nickname(Config::get('system.USER_NICKNAME_PREFIX'));
+        }
+        $member_data = [
+            'uid' => $uid,
+            'shopid'    => $data['shopid'],
+            'nickname'  => $nickname,
+            'username'  => rand_username(''),
+            'password'  => user_md5('123456', Config::get('auth.auth_key')),
+            'avatar'    => $data['avatar'],
+            'sex'       => $data['sex'],
+            'status'    => 1,
+            'reg_ip' => request()->ip(),
+            'reg_channel' => $data['oauth_type']
+        ];
+        //写入会员表
+        $result = $this->save($member_data);
+        if (!$result) {
+            throw new Exception('存入用户信息失败');
+        }
+        //将用户添加到用户组
+        (new AuthGroup())->addToGroup($this->id, 1);
+        $uid = $this->id;
+
+        $sync_data = [
+            'id'        => $sync_id,
+            'uid'       => $uid,
+            'openid'    => $data['openid'],
+            'type'      => $data['oauth_type']
+        ];
+        if (!empty($data['unionid'])) {
+            $sync_data['unionid'] = $data['unionid'];
+        }
+
+        //存入授权记录
+        $sync_result = $syncModel->edit($sync_data);
+        if (!$sync_result) {
+            throw new Exception('存入用户授权记录失败');
+        }
+        $actionLog = new ActionLog();
+        $actionLog->add('reg', 'member', 1, $uid);
 
         return $this->where('uid', $uid)->find();
     }
