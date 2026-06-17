@@ -126,7 +126,7 @@ class Member extends Base
         // 获取用户数据
         $user = $this->where($map)->find();
         if ($user) {
-            if($user['status'] == 1){
+            if ($user['status'] == 1) {
                 // 行为限制
                 $actionLimit = new ActionLimit();
                 $return = $actionLimit->checkActionLimit('input_password', 'member', $user['uid'], $user['uid']);
@@ -146,11 +146,11 @@ class Member extends Base
                 }
             }
             // 用户被禁用
-            if($user['status'] == 0){
+            if ($user['status'] == 0) {
                 return 0;
             }
             // 用户被删除
-            if($user['status'] == -1){
+            if ($user['status'] == -1) {
                 return -1;
             }
         }
@@ -251,7 +251,7 @@ class Member extends Base
         //记住登录
         if ($remember == 1) {
             $token = Db::name('user_token')->where('uid', $uid)->find();
-                    
+
             if (empty($token)) {
                 $data_token['uid'] = $uid;
                 $token_unique = create_unique();
@@ -460,7 +460,7 @@ class Member extends Base
                 $member['authentication'] = 0;
                 $authModel = new MemberAuthentication();
                 $authInfo = $authModel->where('uid', $member['uid'])->find();
-                
+
                 if ($authInfo) {
                     $member['authentication'] = $authInfo['status'];
                     $member['authentication_text'] = $authModel->_status[$authInfo['status']] ?? '未认证';
@@ -763,7 +763,7 @@ class Member extends Base
     /**
      * 第三方平台授权登录
      */
-    public function oauth(int $shopid, $data)
+    public function oauth(int $shopid, array $data)
     {
         $syncModel = new MemberSync();
         //是否已有授权信息
@@ -773,22 +773,26 @@ class Member extends Base
         ])->find();
         if ($sync) {
             $uid = $sync['uid'];
-            return $this->where('uid', $uid)->find();
-        } else {
-            //是否已有开放平台相同的账户
-            if (!empty($data['unionid'])) {
-                $has_union = $syncModel->where([
-                    ['shopid', '=', $shopid],
-                    ['unionid', '=', $data['unionid']],
-                ])->find();
-                if ($has_union) $has_union = $has_union->toArray();
-            }
-            //初始UID
-            $uid = 0;
+            $member = $this->where([
+                ['uid', '=', $uid],
+                ['status', 'in', [0, 1]]
+            ])->find();
 
-            if (!empty($has_union)) {
-                $uid = $has_union['uid'];
+            if ($member) {
+                return $member;
             } else {
+
+                //是否已有开放平台相同的账户
+                if (!empty($data['unionid'])) {
+                    $has_union = $syncModel->where([
+                        ['shopid', '=', $shopid],
+                        ['unionid', '=', $data['unionid']],
+                    ])->find();
+                    if ($has_union) $has_union = $has_union->toArray();
+                }
+                //初始UID
+                $uid = 0;
+
                 // 过滤掉emoji表情符号
                 $nickname = filter_emoji($data['nickname']);
                 // 验证昵称
@@ -816,24 +820,24 @@ class Member extends Base
                 //将用户添加到用户组
                 (new AuthGroup())->addToGroup($this->id, 1);
                 $uid = $this->id;
-            }
+                
+                $sync_data = [
+                    'uid'       => $uid,
+                    'openid'    => $data['openid'],
+                    'type'      => $data['oauth_type']
+                ];
+                if (!empty($data['unionid'])) {
+                    $sync_data['unionid'] = $data['unionid'];
+                }
 
-            $sync_data = [
-                'uid'       => $uid,
-                'openid'    => $data['openid'],
-                'type'      => $data['oauth_type']
-            ];
-            if (!empty($data['unionid'])) {
-                $sync_data['unionid'] = $data['unionid'];
+                //存入授权记录
+                $sync = $syncModel->edit($sync_data);
+                if (!$sync) {
+                    throw new Exception('存入用户授权记录失败');
+                }
+                $actionLog = new ActionLog();
+                $actionLog->add('reg', 'member', 1, $uid);
             }
-
-            //存入授权记录
-            $sync = $syncModel->edit($sync_data);
-            if (!$sync) {
-                throw new Exception('存入用户授权记录失败');
-            }
-            $actionLog = new ActionLog();
-            $actionLog->add('reg', 'member', 1, $uid);
         }
 
         return $this->where('uid', $uid)->find();
