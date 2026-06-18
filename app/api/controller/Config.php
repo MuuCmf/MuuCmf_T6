@@ -9,7 +9,7 @@ class Config extends Api
 {
     protected ConfigLogic $ConfigLogic;
 
-    function __construct()
+    public function __construct()
     {
         parent::__construct();
         $this->ConfigLogic = new ConfigLogic();

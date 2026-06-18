@@ -12,8 +12,8 @@ use app\common\model\Member as MemberModel;
 
 class Authentication extends Api
 {
-    protected $MemberModel;
-    protected $AuthenticationModel;
+    protected MemberModel $MemberModel;
+    protected AuthenticationModel $AuthenticationModel;
 
     public function __construct()
     {
@@ -84,7 +84,7 @@ class Authentication extends Api
     }
 
     /**
-     * 获取已填写的认证数据
+     * 获取已填写的认证数据详情
      */
     public function detail()
     {

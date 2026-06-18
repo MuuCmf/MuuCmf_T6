@@ -10,16 +10,16 @@ use app\common\logic\Address as AddressLogic;
 
 class Address extends Api
 {
-    protected $model;
-    protected $logic;
+    protected AddressModel $AddressModel;
+    protected AddressLogic $AddressLogic;
     protected $middleware = [
         'app\\common\\middleware\\CheckAuth',
     ];
     function __construct()
     {
         parent::__construct();
-        $this->model = new AddressModel();
-        $this->logic = new AddressLogic();
+        $this->AddressModel = new AddressModel();
+        $this->AddressLogic = new AddressLogic();
     }
 
     /**
@@ -27,38 +27,44 @@ class Address extends Api
      */
     public function default()
     {
-        $uid = request()->uid;
+        $uid = get_uid();
         $map = [
             ['uid', '=', $uid],
             ['shopid', '=', $this->shopid],
             ['first', '=', 1],
             ['status', '=', 1],
         ];
-        $data = $this->model->getDataByMap($map);
+        $data = $this->AddressModel->getDataByMap($map);
         if (!$data) {
             $map = [
                 ['uid', '=', $uid],
                 ['status', '=', 1],
                 ['shopid', '=', $this->shopid],
             ];
-            $data = $this->model->getDataByMap($map);
+            $data = $this->AddressModel->getDataByMap($map);
         }
 
         if(!empty($data)){
-            $data = $this->logic->formatData($data);
+            $data = $this->AddressLogic->formatData($data);
         }
 
         return $this->success('获取成功！', $data);
     }
 
+    /**
+     * 获取地址详情
+     */
     public function detail()
     {
         $id = input('get.id', 0);
-        $data = $this->model->getDataById($id);
-        $data = $this->logic->formatData($data);
+        $data = $this->AddressModel->getDataById($id);
+        $data = $this->AddressLogic->formatData($data);
         return $this->success('获取成功！', $data);
     }
 
+    /**
+     * 获取地址列表
+     */
     public function lists()
     {
         $uid = get_uid();
@@ -69,9 +75,9 @@ class Address extends Api
             ['status', '=', 1]
         ];
         $order = 'first desc,update_time desc';
-        $lists = $this->model->getList($map, 99, $order);
+        $lists = $this->AddressModel->getList($map, 99, $order);
         foreach ($lists as &$item) {
-            $item = $this->logic->formatData($item);
+            $item = $this->AddressLogic->formatData($item);
         }
         unset($item);
         return $this->success('获取成功！', $lists);
@@ -109,12 +115,12 @@ class Address extends Api
             }
 
             //写入数据
-            $res = $this->model->edit($data);
+            $res = $this->AddressModel->edit($data);
             if ($res) {
                 //关闭其他默认地址
                 if ($data['first'] == 1) {
                     $id = is_object($res) ? $res->id : $res;
-                    $this->model->where([
+                    $this->AddressModel->where([
                         ['id', '<>', $id],
                         ['shopid', '=', $this->shopid],
                         ['uid', '=', $uid]
@@ -138,14 +144,14 @@ class Address extends Api
     {
         $uid = get_uid();
         $id  = input('get.id');
-        $this->model->where([
+        $this->AddressModel->where([
             ['uid', '=', $uid],
             ['shopid', '=', $this->shopid]
         ])->update([
             'update_time' => time(),
             'first' => 0
         ]);
-        $res = $this->model->where([
+        $res = $this->AddressModel->where([
             ['id', '=', $id],
             ['shopid', '=', $this->shopid]
         ])->update([
@@ -160,12 +166,13 @@ class Address extends Api
     }
 
     /**
-     * 删除
+     * 删除地址
      */
-    public function del($id)
+    public function del()
     {
+        $id = input('id', 0, 'intval');
         $uid = get_uid();
-        $res = $this->model->edit([
+        $res = $this->AddressModel->edit([
             'id' => $id,
             'uid' => $uid,
             'status' => -1

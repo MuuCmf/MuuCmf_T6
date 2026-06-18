@@ -7,16 +7,21 @@ use app\common\model\CapitalFlow as CapitalFlowModel;
 
 class Capital extends Api
 {
-    protected $CapitalFlowModel;
+    protected CapitalFlowModel $CapitalFlowModel;
+
     protected $middleware = [
         'app\\common\\middleware\\CheckAuth' => ['except' => 'lists']
     ];
-    function __construct()
+
+    public function __construct()
     {
         parent::__construct();
         $this->CapitalFlowModel = new CapitalFlowModel();
     }
 
+    /**
+     * 获取资金流水
+     */
     public function flow()
     {
         $uid = get_uid();

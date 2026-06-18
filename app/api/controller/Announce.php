@@ -24,7 +24,6 @@ class Announce extends Api
      * @return \think\response\Json 返回JSON格式的响应数据
      * @throws \think\db\exception\DataNotFoundException
      * @throws \think\db\exception\ModelNotFoundException
-     * @throws \think\exception\DbException
      * 
      * @api
      * @param int $id 公告ID

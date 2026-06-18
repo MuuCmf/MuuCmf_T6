@@ -20,7 +20,7 @@ class Favorites extends Api
     protected $middleware = [
         'app\\common\\middleware\\CheckAuth',
     ];
-    function __construct()
+    public function __construct()
     {
         parent::__construct();
         $this->FavoritesModel = new FavoritesModel();

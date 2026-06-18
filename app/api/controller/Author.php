@@ -10,9 +10,9 @@ use app\common\logic\AuthorFollow as AuthorFollowLogic;
 
 class Author extends Api
 {
-    protected $AuthorModel;
-    protected $AuthorLogic;
-
+    protected AuthorModel $AuthorModel;
+    protected AuthorLogic $AuthorLogic;
+    
     protected $middleware = [
         'app\\common\\middleware\\CheckAuth' => ['only' => ['follow', 'isfollow']],
     ];
@@ -31,7 +31,6 @@ class Author extends Api
 
     /**
      * 作者列表
-     * @return     <type>  ( description_of_the_return_value )
      */
     public function lists()
     {

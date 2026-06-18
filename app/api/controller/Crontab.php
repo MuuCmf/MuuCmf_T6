@@ -7,7 +7,6 @@ use app\common\model\Orders as OrdersModel;
 use app\common\model\Evaluate as EvaluateModel;
 use think\Exception;
 use think\facade\Db;
-use think\Request;
 
 /**
  * 订单自动取消和自动评价
@@ -15,13 +14,12 @@ use think\Request;
  * 1.自动取消超时未支付订单
  * 2.自动评价超过7天未评价的已完成订单
  * 通过URL方式调用
- * @author <NAME> <<EMAIL>>
  */
 class Crontab extends Api
 {
     private OrdersModel $OrdersModel; //订单模型
 
-    function __construct()
+    public function __construct()
     {
         parent::__construct();
         $this->OrdersModel = new OrdersModel();

@@ -7,16 +7,16 @@ use app\common\logic\Keywords as KeywordsLogic;
 
 class Keywords extends Api
 {
-    protected $model;
-    protected $logic;
+    protected KeywordsModel $KeywordsModel;
+    protected KeywordsLogic $KeywordsLogic;
     protected $middleware = [
         'app\\common\\middleware\\CheckAuth' => ['only' => 'history']
     ];
-    function __construct()
+    public function __construct()
     {
         parent::__construct();
-        $this->logic = new KeywordsLogic();
-        $this->model = new KeywordsModel();
+        $this->KeywordsLogic = new KeywordsLogic();
+        $this->KeywordsModel = new KeywordsModel();
     }
 
     /**
@@ -36,9 +36,9 @@ class Keywords extends Api
             ];
 
             $rows = $params['rows'] ?? 15;
-            $lists = $this->model->getList($map, $rows, 'create_time desc' ,'*');
+            $lists = $this->KeywordsModel->getList($map, $rows, 'create_time desc' ,'*');
             foreach ($lists as &$item){
-                $item = $this->logic->formatData($item);
+                $item = $this->KeywordsLogic->formatData($item);
             }
             unset($item);
 
@@ -63,9 +63,9 @@ class Keywords extends Api
         ];
 
         $rows = $params['rows'] ?? 15;
-        $lists = $this->model->getList($map, $rows, 'sort desc,create_time desc' ,'*');
+        $lists = $this->KeywordsModel->getList($map, $rows, 'sort desc,create_time desc' ,'*');
         foreach ($lists as &$item){
-            $item = $this->logic->formatData($item);
+            $item = $this->KeywordsLogic->formatData($item);
         }
         unset($item);
 
@@ -89,13 +89,13 @@ class Keywords extends Api
                 'status' => 1
             ];
             // 查询该用户是否查询过
-            $has_keyword = $this->model->getDataByMap($data);
+            $has_keyword = $this->KeywordsModel->getDataByMap($data);
             if($has_keyword){
                 $data['id'] = $has_keyword['id'];
             }
             if(!empty($data['keyword'])){
                 // 写入数据
-                $result = $this->model->edit($data);
+                $result = $this->KeywordsModel->edit($data);
             }else{
                 $result = false;
             }

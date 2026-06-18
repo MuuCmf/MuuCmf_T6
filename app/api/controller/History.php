@@ -8,13 +8,13 @@ use app\common\logic\History as HistoryLogic;
 
 class History extends Api
 {
-    protected $HistoryLogic;
-    protected $HistoryModel;
+    protected HistoryLogic $HistoryLogic;
+    protected HistoryModel $HistoryModel;
     protected $middleware = [
         'app\\common\\middleware\\CheckAuth',
     ];
 
-    function __construct()
+    public function __construct()
     {
         parent::__construct();
         $this->HistoryLogic = new HistoryLogic();
