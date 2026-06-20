@@ -1097,7 +1097,8 @@ INSERT INTO `muucmf_menu` (`id`, `title`, `pid`, `sort`, `url`, `hide`, `type`, 
 ('072BD3D3-A601-D26D-D54A-0BA4CB2D0DE4', '实名认证审核', '034108E8-15E1-4538-AADD-9B6516C6F5C0', 0, 'admin/Authentication/verify', 0, 0, '', '', 0, '', 'admin'),
 ('B2920D70-1301-4758-89C0-5CA6B9E73C44', '删除附件', 'F06C84A8-2A34-902F-2A88-A25925465036', 0, 'admin/Attachment/del', 0, 0, '', '', 0, '', 'admin'),
 ('F06C84A8-2A34-902F-2A88-A25925465036', '附件列表', '167253B8-B360-E5C8-3F94-F0502E971DAF', 50, 'admin/Attachment/list', 0, 0, '', '附件管理', 0, 'th-large', 'admin'),
-('BDE6A6B2-3EA1-BD31-A9D4-44B442156839', '上传用户头像', 'DA4333DF-D814-819B-D657-401FE5153AB4', 0, 'admin/Member/avatar', 0, 0, '', '', 0, '', 'admin');
+('BDE6A6B2-3EA1-BD31-A9D4-44B442156839', '上传用户头像', 'DA4333DF-D814-819B-D657-401FE5153AB4', 0, 'admin/Member/avatar', 0, 0, '', '', 0, '', 'admin'),
+('30DC271B-AFF8-467F-5A1D-B54B7D0C52A3', 'MuuAgent', '167253B8-B360-E5C8-3F94-F0502E971DAF', 10, 'admin/extend/muuagent', 0, 0, 'MuuAgent配置项', '第三方扩展', 0, 'microchip', 'admin');
 
 -- --------------------------------------------------------
 

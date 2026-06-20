@@ -394,3 +394,6 @@ INSERT INTO `muucmf_extend_config` (`id`, `name`, `type`, `title`, `group`, `ext
 (66, 'MUUAGENT_CLIENT_SECRET', 'string', '客户端secret', 'muuagent', '', '请输入客户端secret', 1780745053, 1780745053, 1, '', 0);
 
 UPDATE `muucmf_extend_config` SET `remark` = '平台证书模式下需填写' WHERE `muucmf_extend_config`.`id` = 51;
+
+INSERT INTO `muucmf_menu` (`id`, `title`, `pid`, `sort`, `url`, `hide`, `type`, `tip`, `group`, `is_dev`, `icon`, `module`) VALUES
+('30DC271B-AFF8-467F-5A1D-B54B7D0C52A3', 'MuuAgent', '167253B8-B360-E5C8-3F94-F0502E971DAF', 10, 'admin/extend/muuagent', 0, 0, 'MuuAgent配置项', '第三方扩展', 0, 'microchip', 'admin');
