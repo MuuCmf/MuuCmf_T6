@@ -173,7 +173,13 @@ class MuuAgent
      */
     private function send(string $method, string $path, array $data = [], array $headers = []): array
     {
+        if (empty($this->baseUrl)) {
+            throw new \RuntimeException('MuuAgent API 调用失败: baseUrl 未配置（MUUAGENT_BASE_URL）');
+        }
+
         $method = strtoupper($method);
+        // 确保 path 以 / 开头，避免 URL 拼接错误
+        $path = '/' . ltrim($path, '/');
         $url = $this->baseUrl . $path;
 
         $body = $data;
@@ -181,48 +187,100 @@ class MuuAgent
         if ($method === 'GET' && !empty($data)) {
             $url .= '?' . http_build_query($data);
             $body = [];
+        } elseif ($method !== 'GET' && !empty($data)) {
+            // Content-Type 为 application/json，需将数组编码为 JSON 字符串
+            $body = json_encode($data);
         }
 
         $response = $this->curlRequest($url, $method, $body, $headers);
 
-        $errorMsg = '';
-        if (!empty($response['error'])) {
-            $errorMsg = $response['error'];
-        } elseif (!empty($response['message'])) {
-            $errorMsg = $response['message'];
+        $httpCode = $response['http_code'] ?? 0;
+
+        // HTTP 状态码非 2xx 视为错误
+        if ($httpCode < 200 || $httpCode >= 300) {
+            $errorMsg = $response['error'] ?? ($response['message'] ?? '');
+            if (empty($errorMsg)) {
+                $errorMsg = $httpCode > 0 ? 'HTTP ' . $httpCode : '未知错误';
+            }
+            Log::error('MuuAgent API 调用失败', [
+                'method' => $method,
+                'url'    => $url,
+                'code'   => $httpCode,
+                'msg'    => $errorMsg,
+            ]);
+            throw new \RuntimeException('MuuAgent API 调用失败: ' . $errorMsg . ' [' . $method . ' ' . $path . ']');
         }
 
-        if ($errorMsg) {
-            throw new \RuntimeException('MuuAgent API 调用失败: ' . $errorMsg);
-        }
+        unset($response['http_code']);
 
         return $response;
     }
 
     /**
      * OAuth Token 端点专用 POST 请求
+     * 
+     * 注意：根据 OAuth 2.0 标准，token 端点应使用 application/x-www-form-urlencoded 格式。
+     * 但某些实现可能期望 JSON 格式，此方法支持两种格式。
+     * 
      * @param string $path 接口路径
-     * @param array $params 表单参数
+     * @param array $params 请求参数
      * @param bool $withAuth 是否附加 Authorization
+     * @param bool $useJson 是否使用 JSON 格式（默认 false，使用 form-urlencoded）
      * @return array 响应数据
      */
-    private function httpPost(string $path, array $params, bool $withAuth = true): array
+    private function httpPost(string $path, array $params, bool $withAuth = true, bool $useJson = false): array
     {
-        $headers = [
-            'Content-Type: application/x-www-form-urlencoded',
-            'Accept: application/json',
-        ];
+        if ($useJson) {
+            // JSON 格式（用于某些特殊端点，如 /oauth/revoke）
+            $headers = [
+                'Content-Type: application/json',
+                'Accept: application/json',
+            ];
+            $body = json_encode($params);
+        } else {
+            // OAuth 2.0 标准格式：application/x-www-form-urlencoded
+            $headers = [
+                'Content-Type: application/x-www-form-urlencoded',
+                'Accept: application/json',
+            ];
+            $body = http_build_query($params);
+        }
 
         if ($withAuth) {
             $headers[] = 'Authorization: Bearer ' . $this->getAccessToken();
         }
 
-        return $this->curlRequest(
-            $this->baseUrl . $path,
-            'POST',
-            http_build_query($params),
-            $headers
-        );
+        // 确保 path 以 / 开头，避免 URL 拼接错误
+        $path = '/' . ltrim($path, '/');
+        $url = $this->baseUrl . $path;
+        
+        // 调试日志：记录实际发送的请求体和请求头
+        Log::info('MuuAgent httpPost 请求', [
+            'url'     => $url,
+            'body'    => $body,
+            'headers' => $headers,
+            'format'  => $useJson ? 'json' : 'form-urlencoded',
+        ]);
+        
+        $response = $this->curlRequest($url, 'POST', $body, $headers);
+
+        $httpCode = $response['http_code'] ?? 0;
+        if ($httpCode < 200 || $httpCode >= 300) {
+            $errorMsg = $response['error'] ?? ($response['message'] ?? '');
+            if (empty($errorMsg)) {
+                $errorMsg = $httpCode > 0 ? 'HTTP ' . $httpCode : '未知错误';
+            }
+            Log::error('MuuAgent OAuth 请求失败', [
+                'url'  => $url,
+                'code' => $httpCode,
+                'msg'  => $errorMsg,
+                'response' => $response,
+            ]);
+
+            throw new \RuntimeException('MuuAgent OAuth 请求失败: ' . $errorMsg . ' [POST ' . $path . '] (URL: ' . $url . ')');
+        }
+
+        return $response;
     }
 
     /**
@@ -244,15 +302,16 @@ class MuuAgent
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
 
+        // 先设置 HTTPHEADER，避免 CURLOPT_POSTFIELDS 触发默认的 application/x-www-form-urlencoded
+        if (!empty($headers)) {
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        }
+
         if ($method !== 'GET') {
             curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
             if (!empty($data)) {
                 curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
             }
-        }
-
-        if (!empty($headers)) {
-            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         }
 
         $result = curl_exec($ch);
@@ -262,14 +321,16 @@ class MuuAgent
 
         if ($error) {
             Log::error('MuuAgent HTTP 请求失败: ' . $error, ['url' => $url]);
-            return ['error' => $error, 'code' => $httpCode];
+            return ['error' => $error, 'http_code' => $httpCode];
         }
 
         $decoded = json_decode($result, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
             Log::error('MuuAgent 响应 JSON 解析失败: ' . json_last_error_msg(), ['response' => $result]);
-            return ['error' => '响应格式错误', 'code' => $httpCode];
+            return ['error' => '响应格式错误', 'http_code' => $httpCode];
         }
+
+        $decoded['http_code'] = $httpCode;
 
         return $decoded;
     }
@@ -285,18 +346,29 @@ class MuuAgent
      */
     private function fetchNewToken(): string
     {
-        $response = $this->httpPost('/oauth/token', [
-            'grant_type'    => 'client_credentials',
-            'client_id'     => $this->clientId,
-            'client_secret' => $this->clientSecret,
-        ], false);
+        // 尝试使用 JSON 格式（某些服务器实现期望 JSON）
+        try {
+            $response = $this->httpPost('/api/oauth/token', [
+                'grant_type'    => 'client_credentials',
+                'client_id'     => $this->clientId,
+                'client_secret' => $this->clientSecret,
+            ], false, true);
+        } catch (\RuntimeException $e) {
+            // 如果 JSON 格式失败，尝试使用 OAuth 2.0 标准格式（form-urlencoded）
+            Log::info('JSON 格式失败，尝试使用 form-urlencoded 格式');
+            $response = $this->httpPost('/api/oauth/token', [
+                'grant_type'    => 'client_credentials',
+                'client_id'     => $this->clientId,
+                'client_secret' => $this->clientSecret,
+            ], false, false);
+        }
 
         if (empty($response['access_token'])) {
-            throw new \RuntimeException('获取 MuuAgent Token 失败: ' . ($response['error'] ?? '未知错误'));
+            throw new \RuntimeException('获取 MuuAgent Token 失败: 响应中缺少 access_token');
         }
 
         $this->cacheToken($response);
-
+        
         return $response['access_token'];
     }
 
@@ -308,15 +380,27 @@ class MuuAgent
      */
     private function refreshToken(string $refreshToken): string
     {
-        $response = $this->httpPost('/oauth/token', [
-            'grant_type'    => 'refresh_token',
-            'refresh_token' => $refreshToken,
-            'client_id'     => $this->clientId,
-            'client_secret' => $this->clientSecret,
-        ], false);
+        // 尝试使用 JSON 格式（某些服务器实现期望 JSON）
+        try {
+            $response = $this->httpPost('/api/oauth/token', [
+                'grant_type'    => 'refresh_token',
+                'refresh_token' => $refreshToken,
+                'client_id'     => $this->clientId,
+                'client_secret' => $this->clientSecret,
+            ], false, true);
+        } catch (\RuntimeException $e) {
+            // 如果 JSON 格式失败，尝试使用 OAuth 2.0 标准格式（form-urlencoded）
+            Log::info('JSON 格式失败，尝试使用 form-urlencoded 格式');
+            $response = $this->httpPost('/api/oauth/token', [
+                'grant_type'    => 'refresh_token',
+                'refresh_token' => $refreshToken,
+                'client_id'     => $this->clientId,
+                'client_secret' => $this->clientSecret,
+            ], false, false);
+        }
 
         if (empty($response['access_token'])) {
-            throw new \RuntimeException('刷新 MuuAgent Token 失败: ' . ($response['error'] ?? '未知错误'));
+            throw new \RuntimeException('刷新 MuuAgent Token 失败: 响应中缺少 access_token');
         }
 
         $this->cacheToken($response);
@@ -346,11 +430,12 @@ class MuuAgent
         $token = Cache::get($this->accessTokenKey);
         if ($token) {
             try {
-                $this->httpPost('/oauth/revoke', [
+                // revoke 端点使用 JSON 格式
+                $this->httpPost('/api/oauth/revoke', [
                     'token' => $token,
                     'client_id' => $this->clientId,
                     'client_secret' => $this->clientSecret,
-                ]);
+                ], false, true);
             } catch (\Exception $e) {
                 Log::warning('MuuAgent Token 撤销失败: ' . $e->getMessage());
             }

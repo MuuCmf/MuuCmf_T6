@@ -9,7 +9,7 @@ use app\common\service\MuuAgent;
  * @title 智能体管理接口
  * @package app\admin\controller\muuAgent
  *
- * 通过 MuuAgent 中台业务端接口（API Key + 透传 UID）管理智能体
+ * 通过 MuuAgent 中台管理员端接口管理智能体
  */
 class Agent extends Admin
 {
@@ -32,7 +32,6 @@ class Agent extends Admin
         $page     = (int)input('get.page', 1, 'intval');       // 页码
         $limit    = (int)input('get.limit', 10, 'intval');     // 每页条数
         $keyword  = (string)input('get.keyword', '', 'text');  // 搜索关键词
-        $uid      = (string)input('get.uid', '', 'text');      // 终端用户 ID
 
         $data = [
             'page'    => $page,
@@ -41,7 +40,7 @@ class Agent extends Admin
         ];
 
         try {
-            $result = $this->muuAgent->callApi('GET', '/agent/list', $data, $uid);
+            $result = $this->muuAgent->callAdmin('GET', '/admin/api/agent/list', $data);
             return $this->success('请求成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
