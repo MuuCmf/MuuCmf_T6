@@ -444,4 +444,13 @@ class MuuAgent
         Cache::delete($this->accessTokenKey);
         Cache::delete($this->refreshTokenKey);
     }
+
+    /**
+     * 获取应用标识
+     * @return string 应用标识
+     */
+    public function getAppCode(): string
+    {
+        return $this->appCode;
+    }
 }

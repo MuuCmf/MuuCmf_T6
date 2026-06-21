@@ -9,7 +9,7 @@ use app\common\service\MuuAgent;
  * @title 提示词模板管理接口
  * @package app\admin\controller\muuAgent
  *
- * 通过 MuuAgent 中台业务端接口（API Key + 透传 UID）管理提示词模板
+ * 通过 MuuAgent 中台管理端接口管理提示词模板
  */
 class Prompt extends Admin
 {
@@ -29,19 +29,29 @@ class Prompt extends Admin
      */
     public function lists()
     {
-        $page    = (int)input('get.page', 1, 'intval');        // 页码
-        $limit   = (int)input('get.limit', 10, 'intval');      // 每页条数
-        $keyword = (string)input('get.keyword', '', 'text');   // 搜索关键词
-        $uid     = (string)input('get.uid', '', 'text');       // 终端用户 ID
+        $page     = (int)input('get.page', 1, 'intval');        // 页码
+        $pageSize = (int)input('get.page_size', 10, 'intval');  // 每页条数
+        $category = (string)input('get.category', '', 'text');  // 分类筛选
+        $status   = (string)input('get.status', '', 'text');    // 状态筛选
+        $keyword  = (string)input('get.keyword', '', 'text');   // 搜索关键词
 
         $data = [
-            'page'    => $page,
-            'limit'   => $limit,
-            'keyword' => $keyword,
+            'page'     => $page,
+            'pageSize' => $pageSize,
         ];
 
+        if (!empty($category)) {
+            $data['category'] = $category;
+        }
+        if (!empty($status)) {
+            $data['status'] = $status;
+        }
+        if (!empty($keyword)) {
+            $data['keyword'] = $keyword;
+        }
+
         try {
-            $result = $this->muuAgent->callApi('GET', '/prompt/list', $data, $uid);
+            $result = $this->muuAgent->callAdmin('GET', '/admin/prompt-template', $data);
             return $this->success('请求成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -55,15 +65,14 @@ class Prompt extends Admin
      */
     public function detail()
     {
-        $promptId = (string)input('get.prompt_id', '', 'text');  // 提示词模板 ID
-        $uid      = (string)input('get.uid', '', 'text');        // 终端用户 ID
+        $id = (string)input('get.id', '', 'text');  // 提示词模板 ID
 
-        if (empty($promptId)) {
+        if (empty($id)) {
             return $this->error('提示词模板 ID 不能为空');
         }
 
         try {
-            $result = $this->muuAgent->callApi('GET', '/prompt/detail', ['prompt_id' => $promptId], $uid);
+            $result = $this->muuAgent->callAdmin('GET', '/admin/prompt-template/' . $id);
             return $this->success('请求成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -78,36 +87,66 @@ class Prompt extends Admin
     public function create()
     {
         $name        = (string)input('post.name', '', 'text');        // 模板名称
-        $content     = (string)input('post.content', '', 'text');     // 模板内容（提示词文本）
-        $description = (string)input('post.description', '', 'text'); // 模板描述
+        $code        = (string)input('post.code', '', 'text');        // 模板代码
         $category    = (string)input('post.category', '', 'text');    // 模板分类
+        $content     = (string)input('post.content', '', 'text');     // 模板内容（提示词文本）
         $variables   = input('post.variables', '', 'text');           // 模板变量（JSON 字符串）
-        $uid         = (string)input('post.uid', '', 'text');         // 终端用户 ID
+        $isDefault   = (bool)input('post.is_default', false, 'bool'); // 是否默认模板
+        $status      = (bool)input('post.status', true, 'bool');      // 状态
+        $description = (string)input('post.description', '', 'text'); // 模板描述
+        $tags        = (string)input('post.tags', '', 'text');        // 标签（JSON 字符串）
+        $metadata    = (string)input('post.metadata', '', 'text');    // 元数据（JSON 字符串）
+        $isPublic    = (bool)input('post.is_public', false, 'bool');  // 是否公开
+        $createdBy   = (string)input('post.created_by', '', 'text');  // 创建者
 
         if (empty($name)) {
             return $this->error('模板名称不能为空');
+        }
+        if (empty($code)) {
+            return $this->error('模板代码不能为空');
+        }
+        if (empty($category)) {
+            return $this->error('模板分类不能为空');
         }
         if (empty($content)) {
             return $this->error('模板内容不能为空');
         }
 
         $data = [
-            'name'    => $name,
-            'content' => $content,
+            'name'     => $name,
+            'code'     => $code,
+            'category' => $category,
+            'content'  => $content,
+            'appCode'  => $this->muuAgent->getAppCode(), // 从扩展配置自动获取
         ];
 
-        if (!empty($description)) {
-            $data['description'] = $description;
-        }
-        if (!empty($category)) {
-            $data['category'] = $category;
-        }
         if (!empty($variables)) {
             $data['variables'] = is_string($variables) ? json_decode($variables, true) : $variables;
         }
+        if ($isDefault) {
+            $data['isDefault'] = $isDefault;
+        }
+        if (isset($status)) {
+            $data['status'] = $status;
+        }
+        if (!empty($description)) {
+            $data['description'] = $description;
+        }
+        if (!empty($tags)) {
+            $data['tags'] = is_string($tags) ? json_decode($tags, true) : $tags;
+        }
+        if (!empty($metadata)) {
+            $data['metadata'] = is_string($metadata) ? json_decode($metadata, true) : $metadata;
+        }
+        if ($isPublic) {
+            $data['isPublic'] = $isPublic;
+        }
+        if (!empty($createdBy)) {
+            $data['createdBy'] = $createdBy;
+        }
 
         try {
-            $result = $this->muuAgent->callApi('POST', '/prompt/create', $data, $uid);
+            $result = $this->muuAgent->callAdmin('POST', '/admin/prompt-template', $data);
             return $this->success('创建成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -121,38 +160,57 @@ class Prompt extends Admin
      */
     public function edit()
     {
-        $promptId    = (string)input('post.prompt_id', '', 'text');   // 提示词模板 ID
+        $code        = (string)input('post.code', '', 'text');        // 模板代码
         $name        = (string)input('post.name', '', 'text');        // 模板名称
-        $content     = (string)input('post.content', '', 'text');     // 模板内容
-        $description = (string)input('post.description', '', 'text'); // 模板描述
         $category    = (string)input('post.category', '', 'text');    // 模板分类
+        $content     = (string)input('post.content', '', 'text');     // 模板内容
         $variables   = input('post.variables', '', 'text');           // 模板变量（JSON 字符串）
-        $uid         = (string)input('post.uid', '', 'text');         // 终端用户 ID
+        $isDefault   = (bool)input('post.is_default', null, 'bool');  // 是否默认模板
+        $status      = (bool)input('post.status', null, 'bool');      // 状态
+        $description = (string)input('post.description', '', 'text'); // 模板描述
+        $tags        = (string)input('post.tags', '', 'text');        // 标签（JSON 字符串）
+        $metadata    = (string)input('post.metadata', '', 'text');    // 元数据（JSON 字符串）
+        $isPublic    = (bool)input('post.is_public', null, 'bool');   // 是否公开
 
-        if (empty($promptId)) {
-            return $this->error('提示词模板 ID 不能为空');
+        if (empty($code)) {
+            return $this->error('模板代码不能为空');
         }
 
-        $data = ['prompt_id' => $promptId];
+        $data = [];
 
         if (!empty($name)) {
             $data['name'] = $name;
         }
-        if (!empty($content)) {
-            $data['content'] = $content;
-        }
-        if (!empty($description)) {
-            $data['description'] = $description;
-        }
         if (!empty($category)) {
             $data['category'] = $category;
+        }
+        if (!empty($content)) {
+            $data['content'] = $content;
         }
         if (!empty($variables)) {
             $data['variables'] = is_string($variables) ? json_decode($variables, true) : $variables;
         }
+        if (isset($isDefault)) {
+            $data['isDefault'] = $isDefault;
+        }
+        if (isset($status)) {
+            $data['status'] = $status;
+        }
+        if (!empty($description)) {
+            $data['description'] = $description;
+        }
+        if (!empty($tags)) {
+            $data['tags'] = is_string($tags) ? json_decode($tags, true) : $tags;
+        }
+        if (!empty($metadata)) {
+            $data['metadata'] = is_string($metadata) ? json_decode($metadata, true) : $metadata;
+        }
+        if (isset($isPublic)) {
+            $data['isPublic'] = $isPublic;
+        }
 
         try {
-            $result = $this->muuAgent->callApi('POST', '/prompt/update', $data, $uid);
+            $result = $this->muuAgent->callAdmin('PUT', '/admin/prompt-template/' . $code, $data);
             return $this->success('更新成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -166,15 +224,14 @@ class Prompt extends Admin
      */
     public function del()
     {
-        $promptId = (string)input('post.prompt_id', '', 'text');  // 提示词模板 ID
-        $uid      = (string)input('post.uid', '', 'text');        // 终端用户 ID
+        $id = (string)input('post.id', '', 'text');  // 提示词模板 ID
 
-        if (empty($promptId)) {
+        if (empty($id)) {
             return $this->error('提示词模板 ID 不能为空');
         }
 
         try {
-            $result = $this->muuAgent->callApi('POST', '/prompt/delete', ['prompt_id' => $promptId], $uid);
+            $result = $this->muuAgent->callAdmin('DELETE', '/admin/prompt-template/' . $id);
             return $this->success('删除成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -188,11 +245,21 @@ class Prompt extends Admin
      */
     public function categories()
     {
-        $uid = (string)input('get.uid', '', 'text');  // 终端用户 ID
-
+        // 管理端没有专门的分类列表接口,可以通过查询模板列表来获取分类
         try {
-            $result = $this->muuAgent->callApi('GET', '/prompt/categories', [], $uid);
-            return $this->success('请求成功', $result);
+            $result = $this->muuAgent->callAdmin('GET', '/admin/prompt-template', ['pageSize' => 1000]);
+            
+            // 从模板列表中提取分类
+            $categories = [];
+            if (isset($result['data']['list']) && is_array($result['data']['list'])) {
+                foreach ($result['data']['list'] as $template) {
+                    if (isset($template['category']) && !in_array($template['category'], $categories)) {
+                        $categories[] = $template['category'];
+                    }
+                }
+            }
+            
+            return $this->success('请求成功', ['categories' => $categories]);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
         }
