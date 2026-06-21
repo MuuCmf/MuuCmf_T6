@@ -128,7 +128,7 @@ class AuthGroup extends Base
         $result = Db::table($prefix . self::AUTH_GROUP_ACCESS . ' g')
             ->join($prefix . self::AUTH_EXTEND . ' c on g.group_id=c.group_id')
             ->where("g.uid='$uid' and c.type='$type' and !isnull(extend_id)")
-            ->getfield('extend_id', true);
+            ->column('extend_id');
         if ($uid == get_uid() && $session) {
             session($session, $result);
         }

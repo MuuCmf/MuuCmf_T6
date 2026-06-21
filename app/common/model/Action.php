@@ -131,6 +131,10 @@ class Action extends Base
         //解析规则:table:$table|field:$field|condition:$condition|rule:$rule[|cycle:$cycle|max:$max][;......]
         $rules = json_decode($info['rule'], true);
 
+        if (empty($rules) || !is_array($rules)) {
+            return false;
+        }
+
         foreach ($rules as $key => &$rule) {
             foreach ($rule as $k => &$v) {
                 if (empty($v)) {
