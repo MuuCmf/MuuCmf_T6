@@ -317,7 +317,7 @@ Route::group('muu_agent', function () {
     Route::get('index', 'admin/muuAgent.Index/index');
 
     // 智能体管理
-    Route::get('agent/list', 'admin/muuAgent.Agent/lists');
+    Route::get('agent/list', 'admin/muuAgent.Agent/list');
     Route::get('agent/detail', 'admin/muuAgent.Agent/detail');
     Route::post('agent/create', 'admin/muuAgent.Agent/create');
     Route::post('agent/edit', 'admin/muuAgent.Agent/edit');
@@ -331,7 +331,7 @@ Route::group('muu_agent', function () {
     Route::post('chat/del', 'admin/muuAgent.Chat/del');
 
     // 知识库管理
-    Route::get('kb/list', 'admin/muuAgent.Kb/lists');
+    Route::get('kb/list', 'admin/muuAgent.Kb/list');
     Route::get('kb/detail', 'admin/muuAgent.Kb/detail');
     Route::post('kb/create', 'admin/muuAgent.Kb/create');
     Route::post('kb/edit', 'admin/muuAgent.Kb/edit');
@@ -340,7 +340,7 @@ Route::group('muu_agent', function () {
     Route::get('kb/documents', 'admin/muuAgent.Kb/documents');
 
     // 提示词模板管理
-    Route::get('prompt/list', 'admin/muuAgent.Prompt/lists');
+    Route::get('prompt/list', 'admin/muuAgent.Prompt/list');
     Route::get('prompt/detail', 'admin/muuAgent.Prompt/detail');
     Route::post('prompt/create', 'admin/muuAgent.Prompt/create');
     Route::post('prompt/edit', 'admin/muuAgent.Prompt/edit');
@@ -348,7 +348,7 @@ Route::group('muu_agent', function () {
     Route::get('prompt/categories', 'admin/muuAgent.Prompt/categories');
 
     // 会话管理
-    Route::get('conversation/list', 'admin/muuAgent.Conversation/lists');
+    Route::get('conversation/list', 'admin/muuAgent.Conversation/list');
     Route::get('conversation/detail', 'admin/muuAgent.Conversation/detail');
     Route::post('conversation/create', 'admin/muuAgent.Conversation/create');
     Route::post('conversation/edit', 'admin/muuAgent.Conversation/edit');
@@ -370,7 +370,7 @@ Route::group('muu_agent', function () {
     Route::get('log/statistics', 'admin/muuAgent.Log/statistics');
 
     // MCP Server管理
-    Route::get('mcp_server/list', 'admin/muuAgent.McpServer/lists');
+    Route::get('mcp_server/list', 'admin/muuAgent.McpServer/list');
     Route::get('mcp_server/detail', 'admin/muuAgent.McpServer/detail');
     Route::post('mcp_server/create', 'admin/muuAgent.McpServer/create');
     Route::post('mcp_server/edit', 'admin/muuAgent.McpServer/edit');
@@ -384,7 +384,7 @@ Route::group('muu_agent', function () {
     Route::post('mcp_server/refresh_cache', 'admin/muuAgent.McpServer/refreshCache');
 
     // 技能管理
-    Route::get('skill/list', 'admin/muuAgent.Skill/lists');
+    Route::get('skill/list', 'admin/muuAgent.Skill/list');
     Route::post('skill/scan', 'admin/muuAgent.Skill/scan');
     Route::get('skill/detail', 'admin/muuAgent.Skill/detail');
     Route::post('skill/import', 'admin/muuAgent.Skill/import');

@@ -27,7 +27,7 @@ class Kb extends Admin
      *
      * @return mixed 返回知识库列表数据
      */
-    public function lists()
+    public function list()
     {
         $pageNum  = (int)input('get.page_num', 1, 'intval');    // 页码
         $pageSize = (int)input('get.page_size', 10, 'intval');  // 每页条数

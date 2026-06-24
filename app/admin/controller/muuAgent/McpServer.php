@@ -28,7 +28,7 @@ class McpServer extends Admin
      *
      * @return mixed 返回MCP Server列表数据
      */
-    public function lists()
+    public function list()
     {
         $page        = (int)input('get.page', 1, 'intval');           // 页码，从1开始
         $pageSize    = (int)input('get.page_size', 10, 'intval');     // 每页条数

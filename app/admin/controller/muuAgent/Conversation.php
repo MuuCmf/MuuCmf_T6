@@ -27,7 +27,7 @@ class Conversation extends Admin
      *
      * @return mixed 返回会话列表数据
      */
-    public function lists()
+    public function list()
     {
         $page             = (int)input('get.page', 1, 'intval');           // 页码
         $pageSize         = (int)input('get.page_size', 20, 'intval');     // 每页条数
