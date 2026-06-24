@@ -346,4 +346,52 @@ Route::group('muu_agent', function () {
     Route::post('prompt/edit', 'admin/muuAgent.Prompt/edit');
     Route::post('prompt/del', 'admin/muuAgent.Prompt/del');
     Route::get('prompt/categories', 'admin/muuAgent.Prompt/categories');
+
+    // 会话管理
+    Route::get('conversation/list', 'admin/muuAgent.Conversation/lists');
+    Route::get('conversation/detail', 'admin/muuAgent.Conversation/detail');
+    Route::post('conversation/create', 'admin/muuAgent.Conversation/create');
+    Route::post('conversation/edit', 'admin/muuAgent.Conversation/edit');
+    Route::post('conversation/del', 'admin/muuAgent.Conversation/del');
+    Route::get('conversation/messages', 'admin/muuAgent.Conversation/messages');
+    Route::post('conversation/generate_title', 'admin/muuAgent.Conversation/generateTitle');
+
+    // 日志管理
+    Route::get('log/ai', 'admin/muuAgent.Log/ai');
+    Route::get('log/ai_detail', 'admin/muuAgent.Log/aiDetail');
+    Route::get('log/skill', 'admin/muuAgent.Log/skill');
+    Route::get('log/skill_detail', 'admin/muuAgent.Log/skillDetail');
+    Route::get('log/agent', 'admin/muuAgent.Log/agent');
+    Route::get('log/agent_detail', 'admin/muuAgent.Log/agentDetail');
+    Route::get('log/agent_reasoning', 'admin/muuAgent.Log/agentReasoning');
+    Route::get('log/retrieval', 'admin/muuAgent.Log/retrieval');
+    Route::get('log/retrieval_detail', 'admin/muuAgent.Log/retrievalDetail');
+    Route::get('log/retrieval_statistics', 'admin/muuAgent.Log/retrievalStatistics');
+    Route::get('log/statistics', 'admin/muuAgent.Log/statistics');
+
+    // MCP Server管理
+    Route::get('mcp_server/list', 'admin/muuAgent.McpServer/lists');
+    Route::get('mcp_server/detail', 'admin/muuAgent.McpServer/detail');
+    Route::post('mcp_server/create', 'admin/muuAgent.McpServer/create');
+    Route::post('mcp_server/edit', 'admin/muuAgent.McpServer/edit');
+    Route::post('mcp_server/del', 'admin/muuAgent.McpServer/del');
+    Route::post('mcp_server/import', 'admin/muuAgent.McpServer/import');
+    Route::post('mcp_server/discover_tools', 'admin/muuAgent.McpServer/discoverTools');
+    Route::post('mcp_server/sync_tools', 'admin/muuAgent.McpServer/syncTools');
+    Route::post('mcp_server/test_connection', 'admin/muuAgent.McpServer/testConnection');
+    Route::post('mcp_server/test_connection_by_id', 'admin/muuAgent.McpServer/testConnectionById');
+    Route::post('mcp_server/health_check', 'admin/muuAgent.McpServer/healthCheck');
+    Route::post('mcp_server/refresh_cache', 'admin/muuAgent.McpServer/refreshCache');
+
+    // 技能管理
+    Route::get('skill/list', 'admin/muuAgent.Skill/lists');
+    Route::post('skill/scan', 'admin/muuAgent.Skill/scan');
+    Route::get('skill/detail', 'admin/muuAgent.Skill/detail');
+    Route::post('skill/import', 'admin/muuAgent.Skill/import');
+    Route::post('skill/validate', 'admin/muuAgent.Skill/validate');
+    Route::post('skill/refresh', 'admin/muuAgent.Skill/refresh');
+    Route::post('skill/clear_cache', 'admin/muuAgent.Skill/clearCache');
+    Route::post('skill/clear_all_cache', 'admin/muuAgent.Skill/clearAllCache');
+    Route::post('skill/sync', 'admin/muuAgent.Skill/sync');
+    Route::get('skill/stats', 'admin/muuAgent.Skill/stats');
 });
