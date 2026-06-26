@@ -183,7 +183,7 @@ class Kb extends Admin
         }
 
         try {
-            $result = $this->muuAgent->callAdmin('PUT', '/admin/kb', $data);
+            $result = $this->muuAgent->callAdmin('PUT', '/api/admin/kb', $data);
             return $this->success('更新成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());

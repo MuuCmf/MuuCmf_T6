@@ -29,16 +29,21 @@ class Agent extends Admin
      */
     public function list()
     {
-        $page     = (int)input('get.page', 1, 'intval');           // 页码
-        $pageSize = (int)input('get.page_size', 10, 'intval');     // 每页条数
-        $keyword  = (string)input('get.keyword', '', 'text');      // 搜索关键词
-        $status   = (string)input('get.status', '', 'text');       // 状态筛选
-        $code     = (string)input('get.code', '', 'text');         // 智能体代码筛选
+        // 获取参数并确保为有效的正整数
+        $pageInput     = input('get.page');           // 页码
+        $pageSizeInput = input('get.pageSize');       // 每页条数
+        $keyword       = (string)input('get.keyword', '', 'text');      // 搜索关键词
+        $status        = (string)input('get.status', '', 'text');       // 状态筛选
+        $code          = (string)input('get.code', '', 'text');         // 智能体代码筛选
+
+        // 参数验证：确保为正整数，无效值使用默认值
+        $page = (is_numeric($pageInput) && intval($pageInput) > 0) ? intval($pageInput) : 1;
+        $pageSize = (is_numeric($pageSizeInput) && intval($pageSizeInput) > 0) ? intval($pageSizeInput) : 10;
 
         $data = [
             'page'     => $page,
             'pageSize' => $pageSize,
-            'appCode'  => $this->muuAgent->getAppCode(), // 从扩展配置自动获取
+            // 注意：管理端接口不需要传递 appCode，它通过 OAuth Token 自动识别应用
         ];
 
         if (!empty($keyword)) {
@@ -52,8 +57,10 @@ class Agent extends Admin
         }
 
         try {
-            $result = $this->muuAgent->callAdmin('GET', '/admin/agent', $data);
-            return $this->success('请求成功', $result);
+            $result = $this->muuAgent->callAdmin('GET', '/api/admin/agent', $data);
+            // 中台返回格式: { code, message, data: { list, total, page, pageSize }, timestamp }
+            // 只返回 data 部分给前端，避免嵌套
+            return $this->success('请求成功', $result['data'] ?? []);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
         }

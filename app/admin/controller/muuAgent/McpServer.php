@@ -53,7 +53,7 @@ class McpServer extends Admin
         }
 
         try {
-            $result = $this->muuAgent->callAdmin('GET', '/admin/mcp-server', $data);
+            $result = $this->muuAgent->callAdmin('GET', '/api/admin/mcp-server', $data);
             return $this->success('请求成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -74,7 +74,7 @@ class McpServer extends Admin
         }
 
         try {
-            $result = $this->muuAgent->callAdmin('GET', '/admin/mcp-server/' . $id);
+            $result = $this->muuAgent->callAdmin('GET', '/api/admin/mcp-server/' . $id);
             return $this->success('请求成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -160,7 +160,7 @@ class McpServer extends Admin
         }
 
         try {
-            $result = $this->muuAgent->callAdmin('POST', '/admin/mcp-server', $data);
+            $result = $this->muuAgent->callAdmin('POST', '/api/admin/mcp-server', $data);
             return $this->success('创建成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -233,7 +233,7 @@ class McpServer extends Admin
         }
 
         try {
-            $result = $this->muuAgent->callAdmin('PUT', '/admin/mcp-server/' . $id, $data);
+            $result = $this->muuAgent->callAdmin('PUT', '/api/admin/mcp-server/' . $id, $data);
             return $this->success('更新成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -254,7 +254,7 @@ class McpServer extends Admin
         }
 
         try {
-            $result = $this->muuAgent->callAdmin('DELETE', '/admin/mcp-server/' . $id);
+            $result = $this->muuAgent->callAdmin('DELETE', '/api/admin/mcp-server/' . $id);
             return $this->success('删除成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -279,7 +279,7 @@ class McpServer extends Admin
         ];
 
         try {
-            $result = $this->muuAgent->callAdmin('POST', '/admin/mcp-server/import', $data);
+            $result = $this->muuAgent->callAdmin('POST', '/api/admin/mcp-server/import', $data);
             return $this->success('导入成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -327,7 +327,7 @@ class McpServer extends Admin
         }
 
         try {
-            $result = $this->muuAgent->callAdmin('POST', '/admin/mcp-server/discover', $data);
+            $result = $this->muuAgent->callAdmin('POST', '/api/admin/mcp-server/discover', $data);
             return $this->success('发现成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -348,7 +348,7 @@ class McpServer extends Admin
         }
 
         try {
-            $result = $this->muuAgent->callAdmin('POST', '/admin/mcp-server/' . $id . '/sync');
+            $result = $this->muuAgent->callAdmin('POST', '/api/admin/mcp-server/' . $id . '/sync');
             return $this->success('同步成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -404,7 +404,7 @@ class McpServer extends Admin
         }
 
         try {
-            $result = $this->muuAgent->callAdmin('POST', '/admin/mcp-server/test', $data);
+            $result = $this->muuAgent->callAdmin('POST', '/api/admin/mcp-server/test', $data);
             return $this->success('测试成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -425,7 +425,7 @@ class McpServer extends Admin
         }
 
         try {
-            $result = $this->muuAgent->callAdmin('POST', '/admin/mcp-server/' . $id . '/test');
+            $result = $this->muuAgent->callAdmin('POST', '/api/admin/mcp-server/' . $id . '/test');
             return $this->success('测试成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -440,7 +440,7 @@ class McpServer extends Admin
     public function healthCheck()
     {
         try {
-            $result = $this->muuAgent->callAdmin('POST', '/admin/mcp-server/health-check');
+            $result = $this->muuAgent->callAdmin('POST', '/api/admin/mcp-server/health-check');
             return $this->success('检查完成', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -455,7 +455,7 @@ class McpServer extends Admin
     public function refreshCache()
     {
         try {
-            $result = $this->muuAgent->callAdmin('POST', '/admin/mcp-server/refresh-cache');
+            $result = $this->muuAgent->callAdmin('POST', '/api/admin/mcp-server/refresh-cache');
             return $this->success('缓存已刷新', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());

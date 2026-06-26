@@ -105,7 +105,7 @@ class MuuAgent
     /**
      * 调用中台管理端接口（OAuth Token 认证）
      * @param string $method 请求方法 GET/POST/PUT/DELETE
-     * @param string $path 接口路径，如 /admin/model
+     * @param string $path 接口路径，如 /admin/model 或 /api/admin/model
      * @param array $data 请求参数
      * @param array $extraHeaders 额外请求头
      * @return array 响应数据
@@ -114,6 +114,19 @@ class MuuAgent
     public function callAdmin(string $method, string $path, array $data = [], array $extraHeaders = []): array
     {
         $token = $this->getAccessToken();
+        
+        // 保存原始路径用于日志
+        $originalPath = $path;
+
+        // 自动修正路径：如果 path 以 /admin 开头但不是 /api/admin，自动添加 /api 前缀
+        // 这是因为某些 MuuAgent 服务器的前端应用占用了 /admin/* 路径，API 实际路径为 /api/admin/*
+        if (preg_match('#^/admin#', $path) && !preg_match('#^/api/admin#', $path)) {
+            $path = '/api' . $path;
+            Log::info('MuuAgent 管理端路径已自动修正', [
+                'original_path' => $originalPath,
+                'corrected_path' => $path,
+            ]);
+        }
 
         $headers = array_merge([
             'Authorization: Bearer ' . $token,
@@ -199,14 +212,21 @@ class MuuAgent
         // HTTP 状态码非 2xx 视为错误
         if ($httpCode < 200 || $httpCode >= 300) {
             $errorMsg = $response['error'] ?? ($response['message'] ?? '');
+            
+            // 确保 errorMsg 是字符串类型（可能是数组）
+            if (is_array($errorMsg)) {
+                $errorMsg = json_encode($errorMsg, JSON_UNESCAPED_UNICODE);
+            }
+            
             if (empty($errorMsg)) {
                 $errorMsg = $httpCode > 0 ? 'HTTP ' . $httpCode : '未知错误';
             }
+            
             Log::error('MuuAgent API 调用失败', [
                 'method' => $method,
                 'url'    => $url,
                 'code'   => $httpCode,
-                'msg'    => $errorMsg,
+                'msg'    => (string)$errorMsg,
             ]);
             throw new \RuntimeException('MuuAgent API 调用失败: ' . $errorMsg . ' [' . $method . ' ' . $path . ']');
         }
@@ -316,17 +336,44 @@ class MuuAgent
 
         $result = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
         $error = curl_error($ch);
         curl_close($ch);
 
         if ($error) {
-            Log::error('MuuAgent HTTP 请求失败: ' . $error, ['url' => $url]);
+            Log::error('MuuAgent HTTP 请求失败: ' . $error, [
+                'url' => $url,
+                'http_code' => $httpCode
+            ]);
             return ['error' => $error, 'http_code' => $httpCode];
+        }
+
+        // 检查响应是否为空
+        if (empty($result)) {
+            Log::error('MuuAgent 响应为空', [
+                'url' => $url,
+                'http_code' => $httpCode
+            ]);
+            return ['error' => '响应为空', 'http_code' => $httpCode];
+        }
+
+        // 去除可能的 BOM 和前后空白字符
+        $result = trim($result);
+        if (substr($result, 0, 3) === "\xEF\xBB\xBF") {
+            $result = substr($result, 3);
         }
 
         $decoded = json_decode($result, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
-            Log::error('MuuAgent 响应 JSON 解析失败: ' . json_last_error_msg(), ['response' => $result]);
+            // 截取响应内容前 1000 字符，避免日志过大
+            $preview = mb_substr($result, 0, 1000, 'UTF-8');
+            Log::error('MuuAgent 响应 JSON 解析失败: ' . json_last_error_msg(), [
+                'url' => $url,
+                'http_code' => $httpCode,
+                'content_type' => $contentType,
+                'response_preview' => $preview,
+                'response_length' => strlen($result)
+            ]);
             return ['error' => '响应格式错误', 'http_code' => $httpCode];
         }
 

@@ -47,7 +47,7 @@ class Skill extends Admin
         ];
 
         try {
-            $result = $this->muuAgent->callAdmin('GET', '/admin/skill/standard/list', $data);
+            $result = $this->muuAgent->callAdmin('GET', '/api/admin/skill/standard/list', $data);
             return $this->success('请求成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -62,7 +62,7 @@ class Skill extends Admin
     public function scan()
     {
         try {
-            $result = $this->muuAgent->callAdmin('POST', '/admin/skill/standard/scan');
+            $result = $this->muuAgent->callAdmin('POST', '/api/admin/skill/standard/scan');
             return $this->success('扫描成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -83,7 +83,7 @@ class Skill extends Admin
         }
 
         try {
-            $result = $this->muuAgent->callAdmin('GET', '/admin/skill/standard/' . $name);
+            $result = $this->muuAgent->callAdmin('GET', '/api/admin/skill/standard/' . $name);
             return $this->success('请求成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -124,7 +124,7 @@ class Skill extends Admin
         }
 
         try {
-            $result = $this->muuAgent->callAdmin('POST', '/admin/skill/import', $data);
+            $result = $this->muuAgent->callAdmin('POST', '/api/admin/skill/import', $data);
             return $this->success('导入成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -149,7 +149,7 @@ class Skill extends Admin
         ];
 
         try {
-            $result = $this->muuAgent->callAdmin('POST', '/admin/skill/validate', $data);
+            $result = $this->muuAgent->callAdmin('POST', '/api/admin/skill/validate', $data);
             return $this->success('验证成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -164,7 +164,7 @@ class Skill extends Admin
     public function refresh()
     {
         try {
-            $result = $this->muuAgent->callAdmin('POST', '/admin/skill/refresh');
+            $result = $this->muuAgent->callAdmin('POST', '/api/admin/skill/refresh');
             return $this->success('索引已刷新，数据库已同步，缓存已清除', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -185,7 +185,7 @@ class Skill extends Admin
         }
 
         try {
-            $result = $this->muuAgent->callAdmin('DELETE', '/admin/skill/cache/' . $name);
+            $result = $this->muuAgent->callAdmin('DELETE', '/api/admin/skill/cache/' . $name);
             return $this->success('技能 "' . $name . '" 的缓存已清除', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -200,7 +200,7 @@ class Skill extends Admin
     public function clearAllCache()
     {
         try {
-            $result = $this->muuAgent->callAdmin('DELETE', '/admin/skill/cache');
+            $result = $this->muuAgent->callAdmin('DELETE', '/api/admin/skill/cache');
             return $this->success('所有技能缓存已清除', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -215,7 +215,7 @@ class Skill extends Admin
     public function sync()
     {
         try {
-            $result = $this->muuAgent->callAdmin('POST', '/admin/skill/sync');
+            $result = $this->muuAgent->callAdmin('POST', '/api/admin/skill/sync');
             return $this->success('同步成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
@@ -230,7 +230,7 @@ class Skill extends Admin
     public function stats()
     {
         try {
-            $result = $this->muuAgent->callAdmin('GET', '/admin/skill/stats');
+            $result = $this->muuAgent->callAdmin('GET', '/api/admin/skill/stats');
             return $this->success('请求成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
