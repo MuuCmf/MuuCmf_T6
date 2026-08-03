@@ -10,39 +10,42 @@
     width: 100%;
     height: 60px;
     position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 
     .navbar-header {
-      float: none;
+      display: flex;
+      align-items: center;
       width: 1200px;
       height: 60px;
-      margin: 0 auto;
       background: transparent;
 
       .logo {
-        float: left;
-        width: 156px;
+        flex-shrink: 0;
 
         >h1 {
           margin: 0;
           padding: 5px 0;
 
           img {
-            height: 50px;
+            max-height: 50px;
+            height: auto;
             width: auto;
           }
         }
       }
 
       .navigation {
-        float: left;
+        flex: 1;
         font-size: 15px;
-        margin-left: 40px;
+        margin-left: 10px;
         padding-right: 10px;
-        width: 726px;
         height: 60px;
 
         >ul {
           list-style: none;
+          margin-bottom: 0;
 
           >li {
             float: left;
@@ -145,13 +148,14 @@
       }
 
       .attr-nav {
-        float: right;
+        flex-shrink: 0;
         margin-left: 13px;
         height: 60px;
         max-width: 265px;
+        display: flex;
+        align-items: center;
 
         .search-header {
-          float: left;
           line-height: 42px;
           padding: 10px 20px 10px 0;
           cursor: pointer;
@@ -214,7 +218,6 @@
         }
 
         .information {
-          float: left;
           position: relative;
           padding: 10px 20px 10px 0;
 
@@ -251,7 +254,6 @@
         .user-info {
           position: relative;
           height: 60px;
-          float: left;
 
           >a {
             display: block;

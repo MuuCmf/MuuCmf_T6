@@ -13,42 +13,82 @@
             </div>
             <div class="navigation">
                 <ul class="index-menu clearfix">
-                    {if $navbar_count > 7}
-                    {volist name="navbar" id="nav" key="key" offset="0" length="6"}
-                    <li class="{eq name='nav.url|get_nav_active' value='1'}active{else/}{/eq}">
+                    {volist name="navbar" id="nav" key="key"}
+                    <li class="nav-item {eq name='nav.url|get_nav_active' value='1'}active{else/}{/eq}">
                         <a class="active-item text-ellipsis" title="{$nav.title}" href="{$nav.url|get_nav_url}"
                             target="{eq name='nav.target' value='1'}_blank{else/}_self{/eq}">
                             <span>{$nav.title}</span>
                         </a>
                     </li>
                     {/volist}
-                    <li class="">
+                    <li class="nav-more hidden">
                         <a class="dropdown-toggle active-item" data-toggle="dropdown">
                             更多 <span class="caret"></span>
                         </a>
-                        <ul class="dropdown-menu">
-                            {volist name="navbar" id="nav" key="key" offset="6" length="999"}
-                            <li>
-                                <a class="active-item" title="{$nav.title}" href="{$nav.url|get_nav_url}"
-                                    target="{eq name='nav.target' value='1'}_blank{else/}_self{/eq}">
-                                    <span>{$nav.title}</span>
-                                </a>
-                            </li>
-                            {/volist}
-                        </ul>
+                        <ul class="dropdown-menu"></ul>
                     </li>
-                    {else/}
-                    {volist name="navbar" id="nav" key="key"}
-                    <li class="{eq name='nav.url|get_nav_active' value='1'}active{else/}{/eq}">
-                        <a class="active-item-low text-ellipsis" title="{$nav.title}" href="{$nav.url|get_nav_url}"
-                            target="{eq name='nav.target' value='1'}_blank{else/}_self{/eq}">
-                            <span>{$nav.title}</span>
-                        </a>
-                    </li>
-                    {/volist}
-                    {/if}
                 </ul>
             </div>
+            <style>
+                .navbar-header .index-menu { opacity: 0; transition: opacity .15s ease-out; }
+                .navbar-header .index-menu.nav-ready { opacity: 1; }
+            </style>
+            <script>
+                $(function(){
+                    var $menu = $('.navbar-header .index-menu');
+                    var $more = $menu.find('> li.nav-more');
+                    var $overflow = $more.find('.dropdown-menu');
+                    var timer;
+
+                    function adjustNav() {
+                        // 还原：把下拉框里的项全部移回主菜单
+                        $overflow.find('li').each(function(){
+                            $(this).insertBefore($more);
+                        });
+                        $more.addClass('hidden');
+
+                        var containerWidth = $menu.width();
+                        if (!containerWidth) return;
+
+                        // 测量“更多”按钮宽度（临时显示，同步执行不会触发重绘）
+                        $more.removeClass('hidden');
+                        var moreWidth = $more.outerWidth(true);
+                        $more.addClass('hidden');
+
+                        // 遍历菜单项，超出的移入下拉框
+                        var limit = containerWidth - moreWidth;
+                        var cumulative = 0;
+                        var overflowed = false;
+
+                        $menu.find('> li.nav-item').each(function(){
+                            var $li = $(this);
+                            if (overflowed) {
+                                $li.appendTo($overflow);
+                                return;
+                            }
+                            var w = $li.outerWidth(true);
+                            if (cumulative + w > limit) {
+                                overflowed = true;
+                                $li.appendTo($overflow);
+                            } else {
+                                cumulative += w;
+                            }
+                        });
+
+                        if (overflowed) {
+                            $more.removeClass('hidden');
+                        }
+                        $menu.addClass('nav-ready');
+                    }
+
+                    $(window).on('resize', function(){
+                        clearTimeout(timer);
+                        timer = setTimeout(adjustNav, 150);
+                    });
+
+                    adjustNav();
+                });
+            </script>
             <div class="attr-nav">
                 <div class="search-header">
                     <i class="search-header-btn fa fa-search"></i>
