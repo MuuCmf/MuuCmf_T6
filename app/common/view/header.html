@@ -12,7 +12,7 @@
                 </h1>
             </div>
             <div class="navigation">
-                <ul class="index-menu clearfix">
+                <ul class="index-menu clearfix nav-clipping">
                     {volist name="navbar" id="nav" key="key"}
                     <li class="nav-item {eq name='nav.url|get_nav_active' value='1'}active{else/}{/eq}">
                         <a class="active-item text-ellipsis" title="{$nav.title}" href="{$nav.url|get_nav_url}"
@@ -30,8 +30,7 @@
                 </ul>
             </div>
             <style>
-                .navbar-header .index-menu { opacity: 0; transition: opacity .15s ease-out; }
-                .navbar-header .index-menu.nav-ready { opacity: 1; }
+                .navbar-header .index-menu.nav-clipping { overflow: hidden; height: 60px; }
             </style>
             <script>
                 $(function(){
@@ -41,6 +40,9 @@
                     var timer;
 
                     function adjustNav() {
+                        // 重新启用裁切，防止调整过程中出现换行闪烁
+                        $menu.addClass('nav-clipping');
+
                         // 还原：把下拉框里的项全部移回主菜单
                         $overflow.find('li').each(function(){
                             $(this).insertBefore($more);
@@ -48,7 +50,10 @@
                         $more.addClass('hidden');
 
                         var containerWidth = $menu.width();
-                        if (!containerWidth) return;
+                        if (!containerWidth) {
+                            $menu.removeClass('nav-clipping');
+                            return;
+                        }
 
                         // 测量“更多”按钮宽度（临时显示，同步执行不会触发重绘）
                         $more.removeClass('hidden');
@@ -78,7 +83,8 @@
                         if (overflowed) {
                             $more.removeClass('hidden');
                         }
-                        $menu.addClass('nav-ready');
+                        // 调整完成，移除裁切，恢复下拉菜单展开能力
+                        $menu.removeClass('nav-clipping');
                     }
 
                     $(window).on('resize', function(){
