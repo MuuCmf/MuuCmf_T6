@@ -331,9 +331,12 @@
         ul.no-login {
           list-style: none;
           width: 125px;
+          height: 60px;
+          display: flex;
+          align-items: center;
+          margin-bottom: 0;
 
           .login {
-            float: left;
             font-size: 15px;
             line-height: 60px;
 
@@ -345,7 +348,6 @@
           }
 
           .registration {
-            float: left;
             font-size: 15px;
             line-height: 60px;
 
