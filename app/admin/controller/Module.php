@@ -35,7 +35,7 @@ class Module extends Admin
         $this->setTitle('应用管理');
 
         // 应用类型
-        $aType = (string)input('type', 'installed', 'text');
+        $aType = (string)input('type', 'all', 'text');
 
         $map = [];
         switch ($aType) {
