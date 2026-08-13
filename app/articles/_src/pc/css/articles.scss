@@ -1,6 +1,11 @@
 .article-section {
     padding-bottom: 38px;
 
+    .breadcrumb {
+        margin: 10px 0;
+        padding: 10px 0;
+    }
+
     .right-block {
 
         /*变量块标题*/
@@ -578,6 +583,7 @@
                             color: #03b8cf;
                         }
                     }
+
                     .list-group-item.active {
                         background-color: #03b8cf;
                         border-color: #03b8cf;
@@ -665,6 +671,7 @@
                             color: #00ce74;
                         }
                     }
+
                     .list-group-item.active {
                         background-color: #00ce74;
                         border-color: #00ce74;
@@ -752,6 +759,7 @@
                             color: #ea644a;
                         }
                     }
+
                     .list-group-item.active {
                         background-color: #ea644a;
                         border-color: #ea644a;
@@ -840,6 +848,7 @@
                             color: #ff9900;
                         }
                     }
+
                     .list-group-item.active {
                         background-color: #ff9900;
                         border-color: #ff9900;
@@ -928,6 +937,7 @@
                             color: #FFB6C1;
                         }
                     }
+
                     .list-group-item.active {
                         background-color: #FFB6C1;
                         border-color: #FFB6C1;
@@ -1016,6 +1026,7 @@
                             color: #8666b8;
                         }
                     }
+
                     .list-group-item.active {
                         background-color: #8666b8;
                         border-color: #8666b8;

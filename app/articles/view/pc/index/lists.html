@@ -9,84 +9,89 @@
 {/block}
 {block name="body"}
 <div id="main-container" class="article-section articles-lists-section">
-    <ol class="breadcrumb">
-        <li><a href="/">首页</a></li>
-        <li><a href="{:url('/articles/lists')}">文章列表</a></li>
-        <li class="active">
-            {if empty($category_id)}
-            全部分类
-            {else /}
-            {$category.title}
-            {/if}
-        </li>
+    <div class="container">
+        <ol class="breadcrumb">
+            <li><a href="/">首页</a></li>
+            <li><a href="{:url('/articles/lists')}">文章列表</a></li>
+            <li class="active">
+                {if empty($category_id)}
+                全部分类
+                {else /}
+                {$category.title}
+                {/if}
+            </li>
         </ol>
-    <div class="row">
-        <div class="col-md-9">
-            <div class="articles-lists-box">
-                <div class="">
-                    <section class="items clearfix">
-                        {notempty name="lists"}
-                        {volist name="lists.data" id="v"}
-                        <div class="item">
-                            <div class="cover">
-                                <a href="{:url('articles/pc.Index/detail', ['id'=>$v.id])}">
-                                    <img class="image" src="{$v.cover_200}" alt="{$v.title}" />
-                                </a>
-                            </div>
-                            <div class="content">
-                                <div class="title">
+    </div>
+
+    <div class="container">
+        <div class="row">
+            <div class="col-md-9">
+                <div class="articles-lists-box">
+                    <div class="">
+                        <section class="items clearfix">
+                            {notempty name="lists"}
+                            {volist name="lists.data" id="v"}
+                            <div class="item">
+                                <div class="cover">
                                     <a href="{:url('articles/pc.Index/detail', ['id'=>$v.id])}">
-                                        {$v.title}
+                                        <img class="image" src="{$v.cover_200}" alt="{$v.title}" />
                                     </a>
                                 </div>
-                                <div class="description text-ellipsis-2">
-                                    {$v.description}
-                                </div>
-                                <div class="data clearfix">
-                                    <div class="col-xs-4">
-                                        <span class="category">
-                                            {$v.category.title}
-                                        </span>
+                                <div class="content">
+                                    <div class="title">
+                                        <a href="{:url('articles/pc.Index/detail', ['id'=>$v.id])}">
+                                            {$v.title}
+                                        </a>
                                     </div>
-                                    <div class="col-xs-8 text-right">
-                                        <span class="view">
-                                            <i class="fa fa-eye" aria-hidden="true"></i> {$v.handling_view}
-                                        </span>
-                                        <span class="support">
-                                            <i class="fa fa-thumbs-up" aria-hidden="true"></i> {$v.handling_support}
-                                        </span>
-                                        <span class="favorites">
-                                            <i class="fa fa-star" aria-hidden="true"></i> {$v.handling_favorites}
-                                        </span>
-                                        <span class="time">
-                                            <i class="fa fa-clock-o" aria-hidden="true"></i> {$v.create_time_str}
-                                        </span>
+                                    <div class="description text-ellipsis-2">
+                                        {$v.description}
+                                    </div>
+                                    <div class="data clearfix">
+                                        <div class="col-xs-4">
+                                            <span class="category">
+                                                {$v.category.title}
+                                            </span>
+                                        </div>
+                                        <div class="col-xs-8 text-right">
+                                            <span class="view">
+                                                <i class="fa fa-eye" aria-hidden="true"></i> {$v.handling_view}
+                                            </span>
+                                            <span class="support">
+                                                <i class="fa fa-thumbs-up" aria-hidden="true"></i> {$v.handling_support}
+                                            </span>
+                                            <span class="favorites">
+                                                <i class="fa fa-star" aria-hidden="true"></i> {$v.handling_favorites}
+                                            </span>
+                                            <span class="time">
+                                                <i class="fa fa-clock-o" aria-hidden="true"></i> {$v.create_time_str}
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                        {/volist}
-                        {else/}
+                            {/volist}
+                            {else/}
                             <div style="font-size:1em;padding:2em 0;color: #ccc;text-align: center">
                                 该类型下没有内容~
                             </div>
-                        {/notempty}
-                    </section>
-                    <div class="page-section">
-                        {if !empty($pager)}
-                        {:htmlspecialchars_decode($pager)}
-                        {/if}
+                            {/notempty}
+                        </section>
+                        <div class="page-section">
+                            {if !empty($pager)}
+                            {:htmlspecialchars_decode($pager)}
+                            {/if}
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-        <div class="col-md-3">
-            <div class="right-block">
-                {include file="pc/common/_category" /}
-            </div>
-            <div class="right-block">
-                <div class="right-block-item">
-                    {include file="pc/common/_hot" /}
+            <div class="col-md-3">
+                <div class="right-block">
+                    {include file="pc/common/_category" /}
+                </div>
+                <div class="right-block">
+                    <div class="right-block-item">
+                        {include file="pc/common/_hot" /}
+                    </div>
                 </div>
             </div>
         </div>
