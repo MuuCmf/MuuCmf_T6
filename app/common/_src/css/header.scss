@@ -64,7 +64,7 @@
               color: #222;
               text-decoration: none;
               display: block;
-              padding: 1px 17px 0;
+              padding: 1px 15px 0;
               max-width: 180px;
               overflow: hidden;
             }
@@ -114,9 +114,14 @@
                   line-height: 46px;
                   font-size: 16px;
                   color: #555555;
-                  padding: 0 17px;
+                  padding: 0 15px;
                   max-width: none;
                   white-space: nowrap;
+                }
+              }
+              >li.active {
+                >a {
+                  background-color: transparent;
                 }
               }
 
@@ -437,12 +442,16 @@
 
       >ul {
         li {
-          .active-item,.active-item-low {
+
+          .active-item,
+          .active-item-low {
             color: #fff;
           }
 
           .dropdown-menu {
-            .active-item,.active-item-low {
+
+            .active-item,
+            .active-item-low {
               color: #000;
             }
           }
@@ -485,9 +494,10 @@
     .index-menu {
       li.active {
         a {
-          color: #03b8cf!important;
+          color: #03b8cf !important;
+
           &:after {
-            background-color: #03b8cf!important;
+            background-color: #03b8cf !important;
           }
         }
       }
@@ -500,9 +510,10 @@
     .index-menu {
       li.active {
         a {
-          color: #00ce74!important;
+          color: #00ce74 !important;
+
           &:after {
-            background-color: #00ce74!important;
+            background-color: #00ce74 !important;
           }
         }
       }
@@ -515,9 +526,10 @@
     .index-menu {
       li.active {
         a {
-          color: #ea644a!important;
+          color: #ea644a !important;
+
           &:after {
-            background-color: #ea644a!important;
+            background-color: #ea644a !important;
           }
         }
       }
@@ -530,9 +542,10 @@
     .index-menu {
       li.active {
         a {
-          color: #ff9900!important;
+          color: #ff9900 !important;
+
           &:after {
-            background-color: #ff9900!important;
+            background-color: #ff9900 !important;
           }
         }
       }
@@ -545,9 +558,10 @@
     .index-menu {
       li.active {
         a {
-          color: #FFB6C1!important;
+          color: #FFB6C1 !important;
+
           &:after {
-            background-color: #FFB6C1!important;
+            background-color: #FFB6C1 !important;
           }
         }
       }
@@ -560,9 +574,10 @@
     .index-menu {
       li.active {
         a {
-          color: #8666b8!important;
+          color: #8666b8 !important;
+
           &:after {
-            background-color: #8666b8!important;
+            background-color: #8666b8 !important;
           }
         }
       }
