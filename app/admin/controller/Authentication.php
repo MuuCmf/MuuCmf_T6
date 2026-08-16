@@ -97,9 +97,9 @@ class Authentication extends Admin
     {
         $uid = input('uid', 0, 'intval');
         if (request()->isPost()) {
-            $id = input('id', '=', 'intval');
+            $id = input('id', 0, 'intval');
             $status = input('status', 0, 'intval');
-            $uid = input('uid', '=', 'intval');
+            $uid = input('uid', 0, 'intval');
             $reason = input('reason', '', 'text');
 
             Db::startTrans();
