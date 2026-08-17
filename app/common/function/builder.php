@@ -259,11 +259,11 @@ if (!function_exists('get_action')) {
 if (!function_exists('get_action_type')) {
     /**
      * 获取行为类型
-     * @param intger $type 类型
+     * @param string|int $type 类型
      * @param bool $all 是否返回全部类型
      * @author huajie <banhuajie@163.com>
      */
-    function get_action_type($type, $all = false)
+    function get_action_type(string|int $type, $all = false)
     {
         $list = array(
             1 => '系统',
