@@ -2,7 +2,6 @@
 import './css/address.scss'
 import './css/author.scss'
 import './css/bind_weixin.scss'
-import './css/center.scss'
 import './css/config.scss'
 import './css/orders.scss'
 import './css/score.scss'
