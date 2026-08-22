@@ -238,3 +238,35 @@
         }
     }
 }
+
+// 主题色（与 body 上的类名对应）
+$ucenter-theme-colors: (
+    'Blue': #03b8cf,
+    'Green': #00ce74,
+    'LightRed': #ff6666,
+    'Orange': #ff9900,
+    'LightPink': #FFB6C1,
+    'Magenta': #8666b8,
+);
+
+// 根据 body 类名覆盖不同元素的主题色
+@each $theme-name, $theme-color in $ucenter-theme-colors {
+    body.#{$theme-name} {
+        .bind-wechat {
+            .to-bind .wechat-bind {
+                color: $theme-color;
+            }
+            .has-bind .action .wechat-bind {
+                color: $theme-color;
+            }
+        }
+        .wechat-modal {
+            .modal-content .wechat-body .schedule .progress-part >li.finish {
+                background: $theme-color;
+            }
+            .modal-content .part-three .col-xs-8 .operating .close {
+                background: $theme-color;
+            }
+        }
+    }
+}

@@ -2,39 +2,212 @@
     display: block;
     background: #ffffff;
     border-radius: 10px;
-    padding: 54px 20px;
+    padding: 46px 44px 60px;
+
+    .lists-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 34px;
+    }
+
     .lists-title {
-		font-size: 24px;
-		color: #222222;
-		margin: 0;
-	}
-    .add-btn-section {
-        margin-top: 29px;
+        font-size: 24px;
+        color: #222222;
+        margin: 0;
+        font-weight: 600;
+    }
+
+    .btn-add-address {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 44px;
+        padding: 0 24px;
+        border: 0;
+        border-radius: 8px;
+        font-size: 15px;
+        color: #fff;
+        background: #03b8cf;
+        box-shadow: 0 6px 16px rgba(3, 184, 207, 0.25);
+        transition: transform .25s ease, box-shadow .25s ease;
+
+        .fa {
+            margin-right: 6px;
+        }
+
+        &:hover {
+            color: #fff;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 22px rgba(3, 184, 207, 0.32);
+        }
+    }
+
+    // 地址卡片入场动画（依次淡入上浮）
+    @for $i from 1 through 8 {
+        .items .item:nth-child(#{$i}) {
+            animation-delay: #{$i * 60}ms;
+        }
     }
 
     .items {
         .item {
-            padding: 10px 15px;
-            background-color: #fff;
+            display: flex;
+            padding: 26px 30px;
+            margin-bottom: 16px;
+            background: #fff;
+            border: 1px solid #f0f0f0;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+            transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+            animation: addressFadeUp .5s ease both;
+
+            &:hover {
+                transform: translateY(-3px);
+                border-color: rgba(3, 184, 207, 0.35);
+                box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
+            }
+
+            .item-icon {
+                flex-shrink: 0;
+                width: 46px;
+                height: 46px;
+                margin-right: 20px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 20px;
+                color: #03b8cf;
+                background: rgba(3, 184, 207, 0.12);
+            }
+
+            .item-body {
+                flex: 1;
+                min-width: 0;
+            }
+
             .title h3 {
-                font-size: 16px;
+                display: flex;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 10px;
+                margin: 0 0 10px;
+                font-size: 18px;
                 font-weight: 600;
-                .first {
-                    font-size: 14px;
-                    border: 1px solid #ddd;
-                    background-color: #f2f2f2;
-                    padding: 5px 8px;
-                    border-radius: 3px;
+                color: #222;
+            }
+
+            .first {
+                font-size: 12px;
+                font-weight: 400;
+                color: #03b8cf;
+                background: rgba(3, 184, 207, 0.12);
+                border: 1px solid rgba(3, 184, 207, 0.3);
+                padding: 1px 10px;
+                border-radius: 999px;
+
+                .fa {
+                    margin-right: 4px;
                 }
             }
+
             .info {
+                font-size: 14px;
                 line-height: 30px;
+                color: #555;
+
+                .info-label {
+                    display: inline-block;
+                    min-width: 52px;
+                    margin-right: 14px;
+                    color: #999;
+                }
             }
 
             .operate {
-                padding: 10px 0 0 0;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+                margin-top: 16px;
+                padding-top: 14px;
+                border-top: 1px dashed #ececec;
+
+                .btn {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    height: 34px;
+                    padding: 0 16px;
+                    border-radius: 6px;
+                    font-size: 13px;
+                    transition: all .2s ease;
+
+                    .fa {
+                        margin-right: 5px;
+                    }
+                }
+
+                .btn-edit {
+                    color: #03b8cf;
+                    background: rgba(3, 184, 207, 0.08);
+                    border: 1px solid rgba(3, 184, 207, 0.28);
+
+                    &:hover {
+                        color: #03b8cf;
+                        background: rgba(3, 184, 207, 0.16);
+                    }
+                }
+
+                .btn-set-default {
+                    color: #666;
+                    background: #fff;
+                    border: 1px solid #e2e2e2;
+
+                    &:hover {
+                        color: #03b8cf;
+                        background: rgba(3, 184, 207, 0.06);
+                        border-color: rgba(3, 184, 207, 0.5);
+                    }
+                }
+
+                .btn-delete {
+                    color: #f0564a;
+                    background: #fff;
+                    border: 1px solid #f5c2bc;
+
+                    &:hover {
+                        color: #f0564a;
+                        background: #fef0ef;
+                        border-color: #f0564a;
+                    }
+                }
             }
         }
+
+        // 默认地址卡片：主题色边框 + 渐变底 + 实心图标
+        .item-default {
+            border-color: rgba(3, 184, 207, 0.45);
+            background: linear-gradient(90deg, rgba(3, 184, 207, 0.05), #fff 42%);
+
+            .item-icon {
+                color: #fff;
+                background: #03b8cf;
+                box-shadow: 0 6px 14px rgba(3, 184, 207, 0.35);
+            }
+        }
+    }
+}
+
+// 地址卡片入场动画
+@keyframes addressFadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(14px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
     }
 }
 
@@ -45,6 +218,77 @@
             select {
                 display: inline;
                 width: auto;
+            }
+        }
+    }
+}
+
+// 主题色（与 body 上的类名对应）
+$ucenter-theme-colors: (
+    'Blue': #03b8cf,
+    'Green': #00ce74,
+    'LightRed': #ff6666,
+    'Orange': #ff9900,
+    'LightPink': #FFB6C1,
+    'Magenta': #8666b8,
+);
+
+// 根据 body 类名覆盖不同元素的主题色
+@each $theme-name, $theme-color in $ucenter-theme-colors {
+    body.#{$theme-name} {
+        .address-lists {
+            .btn-add-address {
+                background: $theme-color;
+                box-shadow: 0 6px 16px rgba($theme-color, 0.25);
+
+                &:hover {
+                    box-shadow: 0 10px 22px rgba($theme-color, 0.32);
+                }
+            }
+
+            .items .item {
+                &:hover {
+                    border-color: rgba($theme-color, 0.35);
+                }
+
+                .item-icon {
+                    color: $theme-color;
+                    background: rgba($theme-color, 0.12);
+                }
+
+                .first {
+                    color: $theme-color;
+                    background: rgba($theme-color, 0.12);
+                    border-color: rgba($theme-color, 0.3);
+                }
+
+                .operate .btn-edit {
+                    color: $theme-color;
+                    background: rgba($theme-color, 0.08);
+                    border-color: rgba($theme-color, 0.28);
+
+                    &:hover {
+                        color: $theme-color;
+                        background: rgba($theme-color, 0.16);
+                    }
+                }
+
+                .operate .btn-set-default:hover {
+                    color: $theme-color;
+                    background: rgba($theme-color, 0.06);
+                    border-color: rgba($theme-color, 0.5);
+                }
+            }
+
+            .items .item-default {
+                border-color: rgba($theme-color, 0.45);
+                background: linear-gradient(90deg, rgba($theme-color, 0.05), #fff 42%);
+
+                .item-icon {
+                    color: #fff;
+                    background: $theme-color;
+                    box-shadow: 0 6px 14px rgba($theme-color, 0.35);
+                }
             }
         }
     }

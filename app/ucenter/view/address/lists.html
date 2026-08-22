@@ -4,53 +4,52 @@
 {/block}
 {block name="body"}
 
-<div id="main-container" class="user-config">
+<div id="main-container" class="ucenter-user-config">
     <div class="container-fixed clearfix">
         <div class="left-slide">
             {include file="common/_slide"/}
         </div>
         <div class="right-content">
             <div id="center" class="address-lists">
-                <h4 class="lists-title">我的地址</h4>
-                <div class="add-btn-section clearfix">
-                    <button type="button" class="btn btn-info" data-remote="{:url('ucenter/address/edit')}" data-toggle="modal">新增地址</button>
+                <div class="lists-header">
+                    <h4 class="lists-title">我的地址</h4>
+                    <button type="button" class="btn btn-add-address" data-remote="{:url('ucenter/address/edit')}" data-toggle="modal">
+                        <i class="fa fa-plus"></i>新增地址
+                    </button>
                 </div>
                 <!--列表容器-->
                 <div class="items">
                     {foreach $lists as $k=>$v}
-                    <div class="item margin-top-10" data-id="{$v.id|default=0}">
-                        <div class="title">
-                            <h3>
-                                {$v.name|default=''}
-                                {notempty name="v.first"}
-                                    <span class="first">默认地址</span>
-                                {/notempty}
-                            </h3>
+                    <div class="item margin-top-10{notempty name="v.first"} item-default{/notempty}" data-id="{$v.id|default=0}">
+                        <div class="item-icon">
+                            <i class="fa fa-map-marker"></i>
                         </div>
-                        <div class="info">
-                            <span>收货人：</span>{$v.name|default=''}
-                        </div>
-                        <div class="info">
-                            <span>地区：</span>{$v.pos_province|default=''} {$v.pos_city|default=''} {$v.pos_district|default=''}
-                        </div>
-                        <div class="info">
-                             <span>详细地址：</span>{$v.address|default=''}
-                        </div>
-                        <div class="info">
-                             <span>手机：</span>{$v.phone|default=''}
-                        </div>
-                        <div class="operate" data-id="{$v.id}">
-                            <span>
-                                <a class="btn btn-sm btn-info" data-toggle="modal" data-remote="{:url('ucenter/Address/edit',['id'=>$v['id']])}">编辑</a>
-                            </span>
-                            {empty name="v.first"}
-                                <span>
-                                    <a class="btn btn-sm btn-warning first-address" data-id="{$v.id}" data-url="{:url('api/address/setDefault',['id'=>$v['id']])}">设为默认地址</a>
-                                </span>
-                            {/empty}
-                            <span>
-                                <a class="btn btn-sm btn-danger ajax-post" href="{:url('api/address/del',['id'=>$v['id']])}" data-confirm="确认执行删除操作？">删除</a>
-                            </span>
+                        <div class="item-body">
+                            <div class="title">
+                                <h3>
+                                    {$v.name|default=''}
+                                    {notempty name="v.first"}
+                                        <span class="first"><i class="fa fa-check"></i>默认地址</span>
+                                    {/notempty}
+                                </h3>
+                            </div>
+                            <div class="info"><span class="info-label">收货人</span>{$v.name|default=''}</div>
+                            <div class="info"><span class="info-label">地区</span>{$v.pos_province|default=''} {$v.pos_city|default=''} {$v.pos_district|default=''}</div>
+                            <div class="info"><span class="info-label">详细地址</span>{$v.address|default=''}</div>
+                            <div class="info"><span class="info-label">手机</span>{$v.phone|default=''}</div>
+                            <div class="operate">
+                                <a class="btn btn-edit" data-toggle="modal" data-remote="{:url('ucenter/Address/edit',['id'=>$v['id']])}">
+                                    <i class="fa fa-pencil"></i>编辑
+                                </a>
+                                {empty name="v.first"}
+                                    <a class="btn btn-set-default first-address" data-id="{$v.id}" data-url="{:url('api/address/setDefault',['id'=>$v['id']])}">
+                                        <i class="fa fa-star-o"></i>设为默认地址
+                                    </a>
+                                {/empty}
+                                <a class="btn btn-delete ajax-post" href="{:url('api/address/del',['id'=>$v['id']])}" data-confirm="确认执行删除操作？">
+                                    <i class="fa fa-trash"></i>删除
+                                </a>
+                            </div>
                         </div>
                     </div>
                     {/foreach}

@@ -28,12 +28,10 @@
                     }
                     >a:hover{
                         background: #ffffff;
-                        color: #03b8cf;
                     }
                 }
                 .active{
                     >a{
-                       color: #03b8cf; 
                        background: #ffffff;
                        border: 0;
                     }
@@ -484,3 +482,67 @@
     }
 }
 
+
+
+// 主题色（与 body 上的类名对应）
+$ucenter-theme-colors: (
+    'Blue': #03b8cf,
+    'Green': #00ce74,
+    'LightRed': #ff6666,
+    'Orange': #ff9900,
+    'LightPink': #FFB6C1,
+    'Magenta': #8666b8,
+);
+
+// 根据 body 类名覆盖不同元素的主题色
+@each $theme-name, $theme-color in $ucenter-theme-colors {
+    body.#{$theme-name} {
+        .ucenter-user-config {
+            .left-slide .menu {
+                >li >a:hover {
+                    color: $theme-color;
+                }
+                .active >a {
+                    color: $theme-color;
+                }
+            }
+        }
+
+        .config-content {
+            .ucenter-avatar {
+                .action-box >button .iconfont {
+                    color: $theme-color;
+                }
+                .avatar-input .webuploader-pick {
+                    background: $theme-color;
+                }
+                .avatar-btns .btn-success {
+                    background: $theme-color;
+                }
+            }
+            .form-group {
+                .col-xs-10 >a.lh32 {
+                    color: $theme-color;
+                }
+                .col-sm-offset-2 {
+                    .btn-primary,
+                    .editing-item {
+                        background: $theme-color;
+                    }
+                }
+            }
+        }
+
+        .modal-content {
+            .information-popout .col-xs-10 .btn-primary {
+                background: $theme-color;
+            }
+        }
+
+        .authentication-section {
+            .tips .btn-primary {
+                background: $theme-color;
+            }
+        }
+    }
+}

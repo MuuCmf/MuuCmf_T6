@@ -1,64 +1,308 @@
 .orders-lists {
     background: #ffffff;
     border-radius: 10px;
-    padding: 54px 20px;
-	.lists-title {
-		font-size: 24px;
-		color: #222222;
-		margin: 0;
-	}
-	.nav-tabs {
-		margin-top: 29px;
-	}
-    .items {
+    padding: 46px 44px 60px;
 
-        .item {
-            border: 0;
-            .base-info {
-                margin-bottom: 5px;
+    .lists-title {
+        font-size: 24px;
+        color: #222222;
+        margin: 0;
+        font-weight: 600;
+    }
 
-                .status {
-                    text-align: right;
-                    color: red;
-                    margin-right: 0;
+    // 状态筛选标签
+    .nav-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        margin: 26px 0 30px;
+        padding: 0;
+        list-style: none;
+        border-bottom: 1px solid #f0f0f0;
+
+        >li {
+            margin: 0 28px 0 0;
+
+            >a {
+                display: block;
+                padding: 0 2px 14px;
+                font-size: 15px;
+                color: #666;
+                background: transparent;
+                border: 0;
+                border-bottom: 2px solid transparent;
+                border-radius: 0;
+                transition: color .2s ease, border-color .2s ease;
+
+                &:hover,
+                &:focus {
+                    color: #03b8cf;
+                    background: transparent;
                 }
             }
-            table {
-                td,th {
-                    vertical-align: middle;
+
+            &.active >a {
+                color: #03b8cf;
+                border-bottom-color: #03b8cf;
+                font-weight: 600;
+            }
+        }
+    }
+
+    // 订单卡片入场动画（依次淡入上浮）
+    @for $i from 1 through 8 {
+        .items .order-item:nth-child(#{$i}) {
+            animation-delay: #{$i * 60}ms;
+        }
+    }
+
+    .items {
+        .order-item {
+            margin-bottom: 18px;
+            background: #fff;
+            border: 1px solid #f0f0f0;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+            transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+            animation: orderFadeUp .5s ease both;
+
+            &:hover {
+                transform: translateY(-3px);
+                border-color: rgba(3, 184, 207, 0.35);
+                box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
+            }
+
+            // 卡片头部：订单信息 + 状态徽标
+            .order-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                flex-wrap: wrap;
+                gap: 8px 18px;
+                padding: 12px 22px;
+                background: #fafbfc;
+                border-bottom: 1px solid #f0f0f0;
+
+                .order-meta {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 18px;
+                    font-size: 13px;
+                    color: #666;
+
+                    .fa {
+                        margin-right: 5px;
+                        color: #aaa;
+                    }
                 }
-                .products {
+
+                .order-status {
+                    padding: 3px 12px;
+                    border-radius: 999px;
+                    font-size: 13px;
+                    font-weight: 600;
+
+                    &.status-0 { color: #999; background: #f0f0f0; }
+                    &.status-1 { color: #e8503a; background: #fdeceb; }
+                    &.status-2 { color: #e8890c; background: #fdf3e3; }
+                    &.status-3 { color: #03a9f4; background: rgba(3, 169, 244, 0.12); }
+                    &.status-4 { color: #8666b8; background: rgba(134, 102, 184, 0.12); }
+                    &.status-5 { color: #00b578; background: rgba(0, 181, 120, 0.12); }
+                    &.is-refund { color: #e8890c; background: #fdf3e3; }
+                }
+            }
+
+            // 卡片主体：商品 + 金额 + 支付状态 + 操作
+            .order-body {
+                display: flex;
+                align-items: center;
+                gap: 26px;
+                padding: 20px 22px;
+
+                .product {
+                    flex: 1;
+                    min-width: 0;
+                    display: flex;
+
                     .cover {
-                        float: left;
-                        width: 80px;
-                        height: 80px;
+                        flex-shrink: 0;
+                        width: 84px;
+                        height: 84px;
+                        border-radius: 8px;
+                        overflow: hidden;
+                        border: 1px solid #f0f0f0;
+                        background: #fafbfc;
+
                         img {
                             display: block;
-                            border-radius: 5px;
+                            width: 100%;
+                            height: 100%;
+                            object-fit: cover;
                         }
                     }
-                    .info {
-                        margin: 0;
-                        margin-left: 86px;
-                        width: 180px;
+
+                    .p-info {
+                        margin-left: 16px;
+                        min-width: 0;
+
                         .title {
-                            font-size: 14px;
+                            font-size: 15px;
                             font-weight: 600;
+                            color: #222;
+                            line-height: 1.5;
+                        }
+                        .description {
+                            margin-top: 6px;
+                            font-size: 13px;
+                            color: #999;
+                            line-height: 1.5;
+                        }
+                        .p-meta {
+                            margin-top: 10px;
+                            display: flex;
+                            flex-wrap: wrap;
+                            gap: 8px;
+
+                            span {
+                                font-size: 12px;
+                                color: #666;
+                                background: #f7f7f7;
+                                border-radius: 4px;
+                                padding: 2px 8px;
+                            }
                         }
                     }
                 }
-                .action {
+
+                .amount {
+                    flex-shrink: 0;
+                    text-align: right;
+                    line-height: 26px;
+
+                    .fee { display: block; font-size: 12px; color: #999; }
+                    .price { display: block; font-size: 13px; color: #666; }
+                    .total { display: block; font-size: 15px; font-weight: 700; color: #e8503a; }
+                }
+
+                .pay-status {
+                    flex-shrink: 0;
+                    text-align: center;
+                    font-size: 13px;
+                    line-height: 26px;
+
+                    .paid { display: block; color: #00b578; }
+                    .unpaid { display: block; color: #e8503a; }
+                    .evaluated { display: block; color: #00b578; }
+                    .unevaluated { display: block; color: #e8503a; }
+                }
+
+                .order-actions {
+                    flex-shrink: 0;
+                    min-width: 100px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: stretch;
+                    gap: 8px;
+
                     .btn {
-                        margin: 2px auto;
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
+                        height: 32px;
+                        padding: 0 14px;
+                        border-radius: 6px;
+                        font-size: 13px;
+                        transition: all .2s ease;
+                    }
+
+                    .btn-primary {
+                        color: #fff;
+                        background: #03b8cf;
+                        border: 1px solid #03b8cf;
+
+                        &:hover {
+                            color: #fff;
+                            box-shadow: 0 6px 14px rgba(3, 184, 207, 0.28);
+                        }
+                    }
+
+                    .btn-success {
+                        color: #fff;
+                        background: #00b578;
+                        border: 1px solid #00b578;
+
+                        &:hover {
+                            color: #fff;
+                            box-shadow: 0 6px 14px rgba(0, 181, 120, 0.28);
+                        }
+                    }
+
+                    .btn-danger {
+                        color: #e8503a;
+                        background: #fff;
+                        border: 1px solid rgba(232, 80, 58, 0.5);
+
+                        &:hover {
+                            color: #e8503a;
+                            background: #fdf0ee;
+                            border-color: #e8503a;
+                        }
+                    }
+
+                    .btn-warning {
+                        color: #e8890c;
+                        background: #fff;
+                        border: 1px solid rgba(232, 137, 12, 0.5);
+
+                        &:hover {
+                            color: #e8890c;
+                            background: #fdf6ea;
+                            border-color: #e8890c;
+                        }
+                    }
+
+                    .btn-default {
+                        color: #666;
+                        background: #fff;
+                        border: 1px solid #e2e2e2;
+
+                        &:hover {
+                            color: #333;
+                            background: #f7f7f7;
+                            border-color: #ccc;
+                        }
+                    }
+
+                    .btn.disabled,
+                    .btn[disabled] {
+                        color: #999;
+                        background: #f5f5f5;
+                        border-color: #eee;
+                        cursor: not-allowed;
+                        pointer-events: none;
+                        box-shadow: none;
                     }
                 }
             }
         }
     }
+
     .page-section {
+        margin-top: 26px;
         text-align: center;
     }
+}
 
+// 订单卡片入场动画
+@keyframes orderFadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(14px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 /*评价表单部分*/
@@ -171,4 +415,46 @@
 			width:240px;
 		}
 	}
+}
+
+// 主题色（与 body 上的类名对应）
+$ucenter-theme-colors: (
+    'Blue': #03b8cf,
+    'Green': #00ce74,
+    'LightRed': #ff6666,
+    'Orange': #ff9900,
+    'LightPink': #FFB6C1,
+    'Magenta': #8666b8,
+);
+
+// 根据 body 类名覆盖不同元素的主题色
+@each $theme-name, $theme-color in $ucenter-theme-colors {
+    body.#{$theme-name} {
+        .orders-lists {
+            .nav-tabs {
+                >li {
+                    >a:hover,
+                    >a:focus {
+                        color: $theme-color;
+                    }
+
+                    &.active >a {
+                        color: $theme-color;
+                        border-bottom-color: $theme-color;
+                    }
+                }
+            }
+
+            .items .order-item {
+                &:hover {
+                    border-color: rgba($theme-color, 0.35);
+                }
+
+                .order-actions .btn-primary {
+                    background: $theme-color;
+                    border-color: $theme-color;
+                }
+            }
+        }
+    }
 }

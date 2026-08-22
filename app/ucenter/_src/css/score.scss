@@ -1,3 +1,5 @@
+@use 'sass:map';
+@use 'sass:list';
 //我的积分页
 .integral {
     background: #ffffff;
@@ -433,6 +435,82 @@
             .part-one{
                 padding: 50px 21px 0 17px; 
                 justify-content: space-between;
+            }
+        }
+    }
+}
+
+// 主题色（与 body 上的类名对应）
+$ucenter-theme-colors: (
+    'Blue': #03b8cf,
+    'Green': #00ce74,
+    'LightRed': #ff6666,
+    'Orange': #ff9900,
+    'LightPink': #FFB6C1,
+    'Magenta': #8666b8,
+);
+
+// 积分等级进度条填充渐变色
+$ucenter-progress-gradients: (
+    'Blue': linear-gradient(-46deg, #95DBFF, #55E3F5),
+    'Green': linear-gradient(-46deg, #86efac, #4ade80),
+    'LightRed': linear-gradient(-46deg, #fca5a5, #f87171),
+    'Orange': linear-gradient(-46deg, #fdba74, #fb923c),
+    'LightPink': linear-gradient(-46deg, #fbcfe8, #f9a8d4),
+    'Magenta': linear-gradient(-46deg, #d8b4fe, #a78bfa),
+);
+
+// 等级图标颜色（1~7级由深到浅）
+$ucenter-icon-scales: (
+    'Blue': (#5ae3f6, #62e1f7, #6ce0f9, #75dffa, #7edefb, #87ddfd, #95dbff),
+    'Green': (#34d399, #4ade80, #6ee7b7, #86efac, #a7f3d0, #bbf7d0, #d1fae5),
+    'LightRed': (#f87171, #f9968b, #fca5a5, #fdb4ad, #fec6c0, #fed8d4, #ffe8e6),
+    'Orange': (#fb923c, #fdba74, #fcd34d, #fde68a, #fef3c7, #ffedd5, #fff7ed),
+    'LightPink': (#f9a8d4, #ffb6c1, #fbcfe8, #fecdd3, #fce7f3, #ffe4e6, #fdf2f8),
+    'Magenta': (#a78bfa, #c4b5fd, #d8b4fe, #ddd6fe, #e9d5ff, #f3e8ff, #f5f3ff),
+);
+
+// 根据 body 类名覆盖不同元素的主题色
+@each $theme-name, $theme-color in $ucenter-theme-colors {
+    $icon-scale: map.get($ucenter-icon-scales, $theme-name);
+    body.#{$theme-name} {
+        .scorerule {
+            .scorerule-content .integrate-etails >div >h4 {
+                color: $theme-color;
+            }
+        }
+        .score_estate {
+            .estste .level-reached >span {
+                color: $theme-color;
+            }
+            .estste .estate-progress-bar .progress_bar {
+                background: map.get($ucenter-progress-gradients, $theme-name);
+            }
+            .estste .estate-progress-bar .estate-icon {
+                >li >div .iconfont {
+                    color: list.nth($icon-scale, 1);
+                }
+                >li .estate2-item .iconfont {
+                    color: list.nth($icon-scale, 2);
+                }
+                >li .estate3-item .iconfont {
+                    color: list.nth($icon-scale, 3);
+                }
+                >li .estate4-item .iconfont {
+                    color: list.nth($icon-scale, 4);
+                }
+                >li .estate5-item .iconfont {
+                    color: list.nth($icon-scale, 5);
+                }
+                >li .estate6-item .iconfont {
+                    color: list.nth($icon-scale, 6);
+                }
+                >li .estate7-item .iconfont {
+                    color: list.nth($icon-scale, 7);
+                }
+            }
+            .estate-rule .estate-rule-header .score-acquire-rule >a {
+                color: $theme-color;
             }
         }
     }
