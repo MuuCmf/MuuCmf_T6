@@ -96,7 +96,12 @@ class WechatOfficialAccount extends Api
 
         //判断是否是扫码登录
         if (isset($message['EventKey'])) {
-            $event_key = convert_url_query($message['EventKey']);
+            $event_key_str = $message['EventKey'];
+            //兼容未关注用户扫码：subscribe 事件的 EventKey 带 qrscene_ 前缀
+            if (strpos($event_key_str, 'qrscene_') === 0) {
+                $event_key_str = substr($event_key_str, strlen('qrscene_'));
+            }
+            $event_key = convert_url_query($event_key_str);
             if (isset($event_key['islogin'])) {
                 //获取用户信息
                 $user_info = OfficialAccount::getApp()->user->get($message['FromUserName']);
@@ -231,7 +236,7 @@ class WechatOfficialAccount extends Api
                     'oauth_type' =>  'weixin_h5',
                     'shopid'    =>  $this->shopid,
                     'nickname'  =>  rand_nickname(config('system.USER_NICKNAME_PREFIX')),
-                    'avatar' => !empty($oauth_info['avatar']) ? $oauth_info['avatar'] : '',
+                    'avatar' => !empty($oauth_info['headimgurl']) ? $oauth_info['headimgurl'] : '',
                     'sex' => !empty($oauth_info['sex']) ? $oauth_info['sex'] : 0,
                 ];
                 $user = $MemberModel->oauth($this->shopid, $data);
