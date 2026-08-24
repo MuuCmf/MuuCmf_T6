@@ -213,12 +213,25 @@ class WechatOfficialAccount extends Api
             $scene_key = input('post.scene_key');
             $map = [
                 ['openid', '=', $openid],
-                ['type', '=', 'weixin_h5']
+                ['type', '=', 'weixin_h5'],
+                ['shopid', '=', $this->shopid]
             ];
             $uid = MemberSync::where($map)->value('uid');
+
             $MemberModel = new Member();
+            // 检查member模型用户是否存在
+            if (!$MemberModel->where([
+                ['shopid', '=', $this->shopid],
+                ['uid', '=', $uid],
+                ['status', '=', 1],
+            ])->find()) {
+                $uid = 0;
+                // 如果member不存在，移除sync记录
+                MemberSync::where($map)->delete();
+            }
+
             //初次扫码注册
-            if (!$uid) {
+            if (empty($uid)) {
                 $oauth_info = (new QrcodeLogin())->where('scene_key', $scene_key)->value('metadata');
                 if (!$oauth_info) {
                     return $this->error('没有授权信息');
@@ -254,6 +267,7 @@ class WechatOfficialAccount extends Api
                 }
                 return $this->success('登录成功', $token, $last_url);
             }
+            return $this->error('登录失败');
         }
     }
 

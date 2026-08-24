@@ -17,8 +17,8 @@ use \app\common\model\WechatMpConfig as WechatMpConfigModel;
  */
 class WechatMiniProgram extends Api
 {
-    protected $MemberSyncModel;
-    protected $MemberModel;
+    protected MemberSync $MemberSyncModel;
+    protected Member $MemberModel;
     protected $middleware = [
         'app\\common\\middleware\\CheckAuth' => ['only' => ['bindMobile']],
     ];

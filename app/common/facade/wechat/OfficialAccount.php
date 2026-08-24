@@ -6,21 +6,21 @@ use think\Facade;
 
 /**
  * Class OfficialAccount
- * @method serverOAath() static
- * @method getWechatServerIps() static
- * @method getWechatServerIp() static
- * @method getMenu() static
- * @method getApp() static
- * @method currentMenu() static
- * @method createMenu() static
- * @method currentMessage() static
- * @method getMaterialList($type,$offset,$count) static
- * @method getMaterial($media_id) static
- * @method getToken() static
- * @method oauth(array $params) static
- * @method createQrcode(string $content ,$expiration_time) static
- * @method getQrcodeUrl(string $ticket) static
- * @method sendTemplateMsg(array $data) static
+ * @method void serverOAath() static
+ * @method mixed getWechatServerIps() static
+ * @method mixed getWechatServerIp() static
+ * @method mixed getMenu() static
+ * @method \EasyWeChat\OfficialAccount\Application getApp() static
+ * @method mixed currentMenu() static
+ * @method mixed createMenu($menu) static
+ * @method mixed currentMessage() static
+ * @method mixed getMaterialList($type,$offset,$count) static
+ * @method mixed getMaterial($media_id) static
+ * @method mixed getToken() static
+ * @method mixed oauth(array $params) static
+ * @method mixed createQrcode(string $content ,$expiration_time) static
+ * @method string getQrcodeUrl(string $ticket) static
+ * @method mixed sendTemplateMsg(array $data) static
  */
 class OfficialAccount extends Facade
 {

@@ -218,4 +218,13 @@ class Base extends Model
     {
         return $this->where($map)->dec($field, $value);
     }
+
+    /**
+     * 获取错误信息
+     * @return mixed
+     */
+    public function getError()
+    {
+        return $this->error;
+    }
 }

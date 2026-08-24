@@ -219,6 +219,7 @@ class Member extends Base
      */
     public function login(int $shopid, int $uid, int $remember = 0)
     {
+        $user = null;
         if ($uid) {
             /* 检测是否在当前应用注册 */
             $user = $this->where([
@@ -227,8 +228,8 @@ class Member extends Base
             ])->find();
         }
 
-        if ($user['status'] !== 1) {
-            $this->error = '用户已禁用'; //应用级别禁用
+        if (!$user || $user['status'] !== 1) {
+            $this->error = '用户不存在或已禁用';
             return false;
         }
 
@@ -805,7 +806,6 @@ class Member extends Base
             $nickname = rand_nickname(Config::get('system.USER_NICKNAME_PREFIX'));
         }
         $member_data = [
-            'uid' => $uid,
             'shopid'    => $data['shopid'],
             'nickname'  => $nickname,
             'username'  => rand_username(''),
