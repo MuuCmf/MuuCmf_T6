@@ -1,4 +1,17 @@
 
+// 主题色（与 body 上的类名对应）
+$ucenter-theme-colors: (
+    'Blue': #03b8cf,
+    'Green': #00ce74,
+    'LightRed': #ff6666,
+    'Orange': #ff9900,
+    'LightPink': #FFB6C1,
+    'Magenta': #8666b8,
+);
+
+// 默认主题色（Blue）
+$primary: #03b8cf;
+
 body{
   font-family: -apple-system-font,"Helvetica Neue",Tahoma,"PingFang SC","lantinghei sc","Microsoft Yahei",sans-serif !important;
 }
@@ -129,34 +142,49 @@ body{
           width: 120px;
           height: 45px;
           padding: 13px 10px;
-          border: 1px solid #03b8cf;
+          border: 1px solid $primary;
           box-sizing: border-box;
           box-shadow: none;
-          color: #03b8cf;
+          color: $primary;
           background-color: #fff;
           border-radius: 0;
           line-height: 17px;
           border-radius: 22px;
           margin-left: auto;
           outline: none;
+          transition: all 0.3s ease;
+          &:hover {
+            background-color: $primary;
+            border-color: $primary;
+            color: #fff;
+          }
         }
         .register-agreement {
           color: #222;
           a {
-            color: #03b8cf;
+            color: $primary;
+            transition: color 0.3s ease;
             &:hover {
               text-decoration: underline;
             }
           }
         }
         .btn-submit {
-          background-color: #03b8cf;
+          background-color: $primary;
           color: #fff;
           border: 0;
           padding: 0;
           width: 480px;
           height: 56px;
           outline: none;
+          transition: all 0.3s ease;
+          &:hover {
+            filter: brightness(0.95);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+          }
+          &:active {
+            transform: translateY(1px);
+          }
         }
       }
     }
@@ -172,7 +200,11 @@ body{
       text-align: center;
 
       a {
-        color: #03b8cf;
+        color: $primary;
+        transition: color 0.3s ease;
+        &:hover {
+          text-decoration: underline;
+        }
       }
     }
   }
@@ -311,6 +343,10 @@ body{
         font-size: 50px;
         color: #999;
         position: relative;
+        transition: color 0.3s ease;
+        &:hover {
+          color: $primary;
+        }
       }
 
       .iconfont::after {
@@ -414,6 +450,10 @@ body{
           border-bottom: 1px solid #e9e9e9;
           line-height: 42px;
           font-size: 14px;
+          transition: border-color 0.3s ease;
+          &:focus {
+            border-bottom-color: $primary;
+          }
         }
         //账号
         // .login-account{
@@ -459,9 +499,15 @@ body{
           text-align: center;
           border-radius: 22px;
           font-size: 14px;
-          color: #03b8cf;
-          border: 1px solid #03b8cf ;
+          color: $primary;
+          border: 1px solid $primary ;
           background-color: rgba(0,0,0,0);
+          transition: all 0.3s ease;
+          &:hover {
+            background-color: $primary;
+            border-color: $primary;
+            color: #fff;
+          }
         }
         .ing{
           color: #d2d2d2;
@@ -533,16 +579,22 @@ body{
     position: relative;
 
     >div {
-      width: 100%;
-      >button {
-        width: 120px;
-        height: 44px;
-        border: 1px solid #03b8cf;
-        border-radius: 22px;
-        background: #fff;
-        color: #03b8cf;
+        width: 100%;
+        >button {
+          width: 120px;
+          height: 44px;
+          border: 1px solid $primary;
+          border-radius: 22px;
+          background: #fff;
+          color: $primary;
+          transition: all 0.3s ease;
+          &:hover {
+            background-color: $primary;
+            border-color: $primary;
+            color: #fff;
+          }
+        }
       }
-    }
 
     .captcha-btn {
       width: 120px;
@@ -551,18 +603,30 @@ body{
       bottom: 12px;
       .elicitcaptcha{
         >a{
-          color: #03b8cf;
+          color: $primary;
+          transition: color 0.3s ease;
+          &:hover {
+            text-decoration: underline;
+          }
         }
       }
     }
   }
 
   .btn-login {
-    background-color: #03b8cf;
+    background-color: $primary;
     color: #fff;
     border: 0;
     padding: 0;
     height: 56px;
+    transition: all 0.3s ease;
+    &:hover {
+      filter: brightness(0.95);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+    }
+    &:active {
+      transform: translateY(1px);
+    }
   }
 
   .register-section {
@@ -571,7 +635,11 @@ body{
     text-align: center;
 
     a {
-      color: #03b8cf;
+      color: $primary;
+      transition: color 0.3s ease;
+      &:hover {
+        text-decoration: underline;
+      }
     }
   }
 }
@@ -686,26 +754,40 @@ body{
           width: 120px;
           height: 45px;
           padding: 13px 10px;
-          border: 1px solid #03b8cf;
+          border: 1px solid $primary;
           box-sizing: border-box;
           box-shadow: none;
-          color: #03b8cf;
+          color: $primary;
           background-color: #fff;
           border-radius: 0;
           line-height: 17px;
           border-radius: 22px;
           margin-left: auto;
           outline: none;
+          transition: all 0.3s ease;
+          &:hover {
+            background-color: $primary;
+            border-color: $primary;
+            color: #fff;
+          }
         }
 
         .btn-submit {
-          background-color: #03b8cf;
+          background-color: $primary;
           color: #fff;
           border: 0;
           padding: 0;
           width: 480px;
           height: 56px;
           outline: none;
+          transition: all 0.3s ease;
+          &:hover {
+            filter: brightness(0.95);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+          }
+          &:active {
+            transform: translateY(1px);
+          }
         }
       }
     }
@@ -715,4 +797,123 @@ body{
       font-size: 16px;
     }
   }
+}
+
+// 根据 body 类名覆盖登录/注册页不同元素的主题色
+@each $theme-name, $theme-color in $ucenter-theme-colors {
+    body.#{$theme-name} {
+        // 登录页
+        .login-main {
+            .login-box .login-method .iconfont:hover {
+                color: $theme-color;
+            }
+
+            .normal-login .nav-tabs {
+                >li.active >a {
+                    color: $theme-color;
+                }
+                .underline.active {
+                    background-color: $theme-color;
+                }
+            }
+
+            .normal-login .tab-pane .login-group .login-input:focus {
+                border-bottom-color: $theme-color;
+            }
+
+            .normal-login .tab-pane .captcha-sms .captcha-code {
+                color: $theme-color;
+                border-color: $theme-color;
+                &:hover {
+                    background-color: $theme-color;
+                    border-color: $theme-color;
+                    color: #fff;
+                }
+            }
+
+            .captcha >div >button {
+                color: $theme-color;
+                border-color: $theme-color;
+                &:hover {
+                    background-color: $theme-color;
+                    border-color: $theme-color;
+                    color: #fff;
+                }
+            }
+
+            .captcha-btn .elicitcaptcha >a {
+                color: $theme-color;
+            }
+
+            .btn-login {
+                background-color: $theme-color;
+            }
+
+            .register-section a {
+                color: $theme-color;
+            }
+        }
+
+        // 注册页
+        .register {
+            .register-type-tab li.active a {
+                border-bottom-color: $theme-color;
+            }
+
+            .register-form-section .tab-content {
+                .get-verify {
+                    color: $theme-color;
+                    border-color: $theme-color;
+                    &:hover {
+                        background-color: $theme-color;
+                        border-color: $theme-color;
+                        color: #fff;
+                    }
+                }
+
+                .register-agreement a {
+                    color: $theme-color;
+                }
+
+                .btn-submit {
+                    background-color: $theme-color;
+                }
+
+                .form-control:focus {
+                    border-bottom-color: $theme-color;
+                }
+            }
+
+            .existing-account a {
+                color: $theme-color;
+            }
+        }
+
+        // 找回密码页
+        .reset {
+            .reset-type-tab li.active a {
+                border-bottom-color: $theme-color;
+            }
+
+            .reset-form-section .tab-content {
+                .get-verify {
+                    color: $theme-color;
+                    border-color: $theme-color;
+                    &:hover {
+                        background-color: $theme-color;
+                        border-color: $theme-color;
+                        color: #fff;
+                    }
+                }
+
+                .btn-submit {
+                    background-color: $theme-color;
+                }
+
+                .form-control:focus {
+                    border-bottom-color: $theme-color;
+                }
+            }
+        }
+    }
 }
