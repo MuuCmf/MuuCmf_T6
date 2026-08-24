@@ -1,4 +1,5 @@
 <?php
+
 namespace app\articles\controller\pc;
 
 use think\facade\View;
@@ -10,8 +11,9 @@ use app\articles\logic\Articles as ArticlesLogic;
 
 class Index extends Common
 {
-    protected $ArticlesModel;
-    protected $ArticlesLogic;
+    protected ArticlesModel $ArticlesModel;
+    protected ArticlesLogic $ArticlesLogic;
+
     function __construct()
     {
         parent::__construct();
@@ -39,7 +41,7 @@ class Index extends Common
         $category_id = input('category_id', 0, 'intval');
         View::assign('category_id', $category_id);
         $category = [];
-        if(!empty($category_id)){
+        if (!empty($category_id)) {
             $category = (new CategoryModel)->getDataById($category_id);
         }
         View::assign('category', $category);
@@ -51,8 +53,8 @@ class Index extends Common
         $lists = $this->ArticlesModel->getListByPage($map, 'sort DESC,id DESC', '*', $rows);
         $pager = $lists->render();
         $lists = $lists->toArray();
-        
-        foreach($lists['data'] as &$val){
+
+        foreach ($lists['data'] as &$val) {
             $val = $this->ArticlesLogic->formatData($val);
         }
         unset($val);
@@ -61,7 +63,7 @@ class Index extends Common
         View::assign('lists', $lists);
 
         // 设置页面TITLE
-        $this->setTitle(!empty($category_id)? $category['title'] : '全部文章');
+        $this->setTitle(!empty($category_id) ? $category['title'] : '全部文章');
         // 输出页面
         return View::fetch();
     }
@@ -71,7 +73,7 @@ class Index extends Common
      */
     public function detail()
     {
-        $id = input('id',0,'intval');
+        $id = input('id', 0, 'intval');
 
         /* 标识正确性检测 */
         if (!($id && is_numeric($id))) {
@@ -81,18 +83,18 @@ class Index extends Common
         $data = $this->ArticlesModel->getDataById($id);
         $data = $this->ArticlesLogic->formatData($data);
         View::assign('data', $data);
-        
+
         //未审核内容并不是作者浏览时报错
-        if($data['status'] != 1){
+        if ($data['status'] != 1) {
             return $this->error('内容审核中...');
         }
 
-        if(!empty($data)){
+        if (!empty($data)) {
             $uid = get_uid();
             //增加浏览数
             $this->ArticlesModel->setStep($id, 'view', 1);
             //写入浏览记录
-            if(!empty($uid)){
+            if (!empty($uid)) {
                 $products = [
                     'title' =>  $data['title'],
                     'desc'  =>  $data['description'],
@@ -132,22 +134,20 @@ class Index extends Common
         // 获取列表
         $hot_lists = $this->ArticlesModel->getList($map, 10, 'view DESC,id DESC');
         $hot_lists = $hot_lists->toArray();
-        
-        foreach($hot_lists as &$val){
+
+        foreach ($hot_lists as &$val) {
             $val = $this->ArticlesLogic->formatData($val);
         }
         unset($val);
 
         View::assign('hot_lists', $hot_lists);
     }
-    
+
 
     private function _category()
     {
         // 获取分类
         $category_tree = (new CategoryModel)->tree($this->shopid, 1);
-        View::assign('category_tree',$category_tree);
+        View::assign('category_tree', $category_tree);
     }
-
-    
 }

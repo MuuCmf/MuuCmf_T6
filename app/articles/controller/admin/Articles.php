@@ -11,10 +11,10 @@ use think\exception\ValidateException;
 
 class Articles extends Admin
 {
-    protected $CategoryModel;
-    protected $CategoryLogic;
-    protected $ArticlesModel;
-    protected $ArticlesLogic;
+    protected CategoryModel $CategoryModel;
+    protected CategoryLogic $CategoryLogic;
+    protected ArticlesModel $ArticlesModel;
+    protected ArticlesLogic $ArticlesLogic;
 
     public function __construct()
     {

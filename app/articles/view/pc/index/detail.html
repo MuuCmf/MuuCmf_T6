@@ -15,22 +15,22 @@
             <div class="">
                 <div class="articles-title">
                     <div class="title">
-                        <h2>{$data.title}</h2>
+                        <h2>{$data.title|default=''}</h2>
                     </div>
                     <div class="info">
                         <span class="category">
-                            <a href="{:url('/articles/lists',['category_id'=> $data.category.id])}">{$data.category.title}</a>
+                            <a href="{:url('/articles/lists',['category_id'=> $data.category.id])}">{$data.category.title|default=''}</a>
                         </span>
-                        <span class="create-time">发表于 {$data.create_time_str}</span>
+                        <span class="create-time">发表于 {$data.create_time_str|default=''}</span>
                     </div>
                     
-                    <div class="description clearfix" style="color: #999;font-size: 14px;">{$data.description}</div>
+                    <div class="description clearfix" style="color: #999;font-size: 14px;">{$data.description|default=''}</div>
                     
                     {notempty name="$data.keywords"}
                     <div class="keywords-box">
                         <span>关键字</span>
                         {volist name="$data.keywords" id="vo" key="k"}
-                            <span class="keywords">{$vo}</span> 
+                            <span class="keywords">{$vo|default=''}</span> 
                         {/volist}
                     </div>
                     {/notempty}
@@ -45,7 +45,7 @@
 
                         {notempty name="$data['source']"}
                         <div style="margin-bottom: 20px;color: #C0C0C0;">
-                            <i class="icon-chrome"></i> 来源：{$data.source}
+                            <i class="icon-chrome"></i> 来源：{$data.source|default=''}
                         </div>
                         {/notempty}
                     </div>

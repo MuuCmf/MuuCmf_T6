@@ -1,0 +1,1 @@
+import{K as r,i as a,w as s,x as n}from"./axios-DVg4cpe8.js";import{n as i}from"./index-KgwMsAmJ.js";a();var o=i({},[["render",function(a,i){return r(),s("div",null,[...i[0]||(i[0]=[n("h1",null,"文章列表",-1)])])}]]);export{o as default};

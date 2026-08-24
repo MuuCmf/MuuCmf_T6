@@ -17,7 +17,7 @@
                 {if empty($category_id)}
                 全部分类
                 {else /}
-                {$category.title}
+                {$category.title|default='全部分类'}
                 {/if}
             </li>
         </ol>
@@ -32,38 +32,40 @@
                             {notempty name="lists"}
                             {volist name="lists.data" id="v"}
                             <div class="item">
+                                {notempty name="v.cover_200"}
                                 <div class="cover">
                                     <a href="{:url('articles/pc.Index/detail', ['id'=>$v.id])}">
                                         <img class="image" src="{$v.cover_200}" alt="{$v.title}" />
                                     </a>
                                 </div>
+                                {/notempty}
                                 <div class="content">
                                     <div class="title">
                                         <a href="{:url('articles/pc.Index/detail', ['id'=>$v.id])}">
-                                            {$v.title}
+                                            {$v.title|default='无标题'}
                                         </a>
                                     </div>
                                     <div class="description text-ellipsis-2">
-                                        {$v.description}
+                                        {$v.description|default='无描述'}
                                     </div>
                                     <div class="data clearfix">
                                         <div class="col-xs-4">
                                             <span class="category">
-                                                {$v.category.title}
+                                                {$v.category.title|default='默认分类'}
                                             </span>
                                         </div>
                                         <div class="col-xs-8 text-right">
                                             <span class="view">
-                                                <i class="fa fa-eye" aria-hidden="true"></i> {$v.handling_view}
+                                                <i class="fa fa-eye" aria-hidden="true"></i> {$v.handling_view|default=0}
                                             </span>
                                             <span class="support">
-                                                <i class="fa fa-thumbs-up" aria-hidden="true"></i> {$v.handling_support}
+                                                <i class="fa fa-thumbs-up" aria-hidden="true"></i> {$v.handling_support|default=0}
                                             </span>
                                             <span class="favorites">
-                                                <i class="fa fa-star" aria-hidden="true"></i> {$v.handling_favorites}
+                                                <i class="fa fa-star" aria-hidden="true"></i> {$v.handling_favorites|default=0}
                                             </span>
                                             <span class="time">
-                                                <i class="fa fa-clock-o" aria-hidden="true"></i> {$v.create_time_str}
+                                                <i class="fa fa-clock-o" aria-hidden="true"></i> {$v.create_time_str|default=''}
                                             </span>
                                         </div>
                                     </div>
