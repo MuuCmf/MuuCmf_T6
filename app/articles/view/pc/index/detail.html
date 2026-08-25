@@ -19,7 +19,9 @@
                     </div>
                     <div class="info">
                         <span class="category">
+                            {if $data.category_id}
                             <a href="{:url('/articles/lists',['category_id'=> $data.category.id])}">{$data.category.title|default=''}</a>
+                            {/if}
                         </span>
                         <span class="create-time">发表于 {$data.create_time_str|default=''}</span>
                     </div>
