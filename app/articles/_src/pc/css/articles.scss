@@ -199,7 +199,8 @@
 }
 
 .articles-lists-section {
-    width: 1200px;
+    width: 100%;
+    max-width: 1200px;
     margin: 0 auto;
 
     .articles-lists-box {
@@ -288,7 +289,8 @@
 
 
 .articles-detail-section {
-    width: 1200px;
+    width: 100%;
+    max-width: 1200px;
     margin: 0 auto;
 
     .articles-title {
@@ -1080,6 +1082,143 @@
             .btn-articles {
                 background-color: #8666b8;
                 border-color: #8666b8;
+            }
+        }
+    }
+}
+
+/* ========== 响应式适配 ========== */
+
+/* 小于 1200px：内容区流式布局并增加左右内边距，避免固定宽度导致横向溢出 */
+@media (max-width: 1199.98px) {
+    .articles-lists-section,
+    .articles-detail-section {
+        padding: 0 15px;
+    }
+
+    .articles-lists-section .container {
+        width: 100%;
+        padding-left: 0;
+        padding-right: 0;
+    }
+}
+
+/* 平板及以下：缩小列表封面、微调详情标题字号 */
+@media (max-width: 991.98px) {
+    .articles-lists-section .articles-lists-box .items .item {
+        .cover {
+            width: 160px;
+            height: 120px;
+
+            .image {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+            }
+        }
+
+        .content {
+            margin-left: 170px;
+            height: 120px;
+
+            .title {
+                font-size: 18px;
+            }
+        }
+    }
+
+    .articles-detail-section .articles-title .title h2 {
+        font-size: 28px;
+    }
+}
+
+/* 手机：列表项与详情页各模块改为纵向堆叠 */
+@media (max-width: 767.98px) {
+    .articles-lists-section .articles-lists-box .items .item {
+        margin-bottom: 20px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid #f2f2f2;
+
+        .cover {
+            float: none;
+            width: 100%;
+            height: 180px;
+            margin-bottom: 10px;
+
+            .image {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+            }
+        }
+
+        .content {
+            margin-left: 0;
+            height: auto;
+            padding-bottom: 10px;
+
+            .title {
+                font-size: 17px;
+            }
+
+            .data {
+                position: static;
+                margin-top: 10px;
+            }
+        }
+    }
+
+    .articles-detail-section {
+        .articles-title .title h2 {
+            font-size: 22px;
+        }
+
+        .news-content .content p {
+            font-size: 15px;
+        }
+
+        .nav-link {
+            flex-direction: column;
+
+            .item {
+                padding-right: 0;
+                margin-bottom: 8px;
+            }
+        }
+
+        .action-section {
+            .support-section .support-btn,
+            .favorites-section .favorites-btn {
+                width: 64px;
+                height: 64px;
+                line-height: 58px;
+                font-size: 36px;
+            }
+        }
+
+        .comment-section .add-comment {
+            .user {
+                float: none;
+                width: 100%;
+                height: auto;
+                display: flex;
+                align-items: center;
+                padding-top: 0;
+
+                .avatar {
+                    margin: 0 10px 0 0;
+                }
+
+                .nickname {
+                    margin-top: 0;
+                    text-align: left;
+                }
+            }
+
+            .form-comment {
+                margin-left: 0;
+                padding-left: 0;
+                margin-top: 10px;
             }
         }
     }
