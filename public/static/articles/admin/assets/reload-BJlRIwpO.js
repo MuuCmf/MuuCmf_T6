@@ -1,0 +1,1 @@
+import{K as r,i as a,w as s}from"./axios-DVg4cpe8.js";import{n as i}from"./index-DJBCCI7Y.js";a();var o=i({},[["render",function(a,i){return r(),s("div")}]]);export{o as default};
