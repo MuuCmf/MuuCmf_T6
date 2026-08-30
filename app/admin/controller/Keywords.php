@@ -12,12 +12,12 @@ use think\exception\ValidateException;
  */
 class Keywords extends Admin
 {
-    protected $KeywordsModel;
-    protected $KeywordsLogic;
+    protected KeywordsModel $KeywordsModel;
+    protected KeywordsLogic $KeywordsLogic;
     /**
      * 构造方法
      * @access public
-     * @param  App  $app  应用对象
+     * @return void
      */
     public function __construct()
     {
@@ -111,6 +111,25 @@ class Keywords extends Admin
         $data['status'] = $status;
 
         $res = $this->KeywordsModel->where('id', 'in', $ids)->update($data);
+        if ($res) {
+            return $this->success($title . '成功');
+        } else {
+            return $this->error($title . '失败');
+        }
+    }
+
+    /**
+     * 推荐状态管理
+     * @description 批量更新关键字的推荐状态
+     */
+    public function recommend()
+    {
+        $ids = input('ids');
+        !is_array($ids) && $ids = explode(',', (string)$ids);
+        $recommend = input('recommend', 0, 'intval');
+        $title = $recommend == 1 ? '推荐' : '取消推荐';
+
+        $res = $this->KeywordsModel->where('id', 'in', $ids)->update(['recommend' => $recommend]);
         if ($res) {
             return $this->success($title . '成功');
         } else {
