@@ -158,7 +158,7 @@ Route::group('field', function () {
 Route::group('history', function () {
     // 浏览记录列表
     Route::get('list', 'admin/History/list');
-    Route::post('status', 'admin/History/setStatus');
+    Route::post('status', 'admin/History/status');
 });
 
 // 关键字管理
