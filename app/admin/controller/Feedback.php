@@ -10,13 +10,13 @@ use app\common\logic\Feedback as FeedbackLogic;
  */
 class Feedback extends Admin
 {
-    protected $FeedbackModel;
-    protected $FeedbackLogic;
+    protected FeedbackModel $FeedbackModel;
+    protected FeedbackLogic $FeedbackLogic;
 
     /**
      * 构造方法
      * @access public
-     * @param  App  $app  应用对象
+     * @return void
      */
     public function __construct()
     {

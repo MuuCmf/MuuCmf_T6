@@ -25,6 +25,25 @@ Route::group('action', function () {
     Route::post('limit/status', 'admin/Action/limitStatus'); // 行为限制状态
 });
 
+// 公告管理
+Route::group('announce', function () {
+    // 公告列表
+    Route::get('list', 'admin/Announce/list');
+    // 新增、编辑、删除公告
+    Route::any('edit', 'admin/Announce/edit');
+    Route::post('status', 'admin/Announce/status');
+});
+
+// 附件管理
+Route::group('attachment', function () {
+    // 附件列表
+    Route::get('list', 'admin/Attachment/list');
+    // 新增、编辑、删除附件
+    Route::any('edit', 'admin/Attachment/edit');
+    Route::post('del', 'admin/Attachment/del');
+});
+
+// 权限管理
 Route::group('auth', function () {
     // 权限组管理
     Route::any('group/list', 'admin/Auth/group');
@@ -38,6 +57,15 @@ Route::group('auth', function () {
     
     // 权限访问
     Route::get('access', 'admin/Auth/access');
+});
+
+// 实名认证管理
+Route::group('authentication', function () {
+    // 实名认证列表
+    Route::get('list', 'admin/Authentication/list');
+    // 新增、编辑、删除实名认证
+    Route::any('edit', 'admin/Authentication/edit');
+    Route::post('status', 'admin/Authentication/status');
 });
 
 Route::group('config', function () {
@@ -66,6 +94,7 @@ Route::group('crontab', function () {
     Route::get('log', 'admin/Crontab/log');
 });
 
+// 抖音小程序管理
 Route::group('douyin', function () {
     // 抖音小程序配置
     Route::any('config', 'admin/DouyinMiniprogram/config');
@@ -86,6 +115,7 @@ Route::group('douyin', function () {
     Route::any('template_message', 'admin/DouyinMiniprogram/templateMessage');
 });
 
+// 扩展配置管理
 Route::group('extend', function () {
     // 扩展配置分组列表
     Route::any('group/list', 'admin/Extend/groupList');
@@ -97,6 +127,21 @@ Route::group('extend', function () {
     Route::post('del', 'admin/Extend/del');
 });
 
+// 收藏管理
+Route::group('favorites', function () {
+    // 收藏列表
+    Route::get('list', 'admin/Favorites/list');
+    Route::post('status', 'admin/Favorites/status');
+});
+
+// 用户反馈管理
+Route::group('feedback', function () {
+    // 用户反馈列表
+    Route::get('list', 'admin/Feedback/list');
+    Route::post('status', 'admin/Feedback/status');
+});
+
+// 字段管理
 Route::group('field', function () {
     // 分组管理
     Route::get('group', 'admin/Field/group');
@@ -107,6 +152,24 @@ Route::group('field', function () {
     Route::get('list', 'admin/Field/list');
     Route::any('edit', 'admin/Field/editField');
     Route::post('status', 'admin/Field/setFieldStatus');
+});
+
+// 浏览记录管理
+Route::group('history', function () {
+    // 浏览记录列表
+    Route::get('list', 'admin/History/list');
+    Route::post('status', 'admin/History/setStatus');
+});
+
+// 关键字管理
+Route::group('keyword', function () {
+    // 关键字列表
+    Route::get('list', 'admin/Keyword/list');
+    // 新增、编辑、删除关键字
+    Route::any('edit', 'admin/Keyword/edit');
+    Route::post('status', 'admin/Keyword/status');
+    // 推荐状态管理
+    Route::post('recommend', 'admin/Keyword/recommend');
 });
 
 Route::group('menu', function () {

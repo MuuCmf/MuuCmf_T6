@@ -9,7 +9,7 @@ use app\common\model\Attachment as AttachmentModel;
  */
 class Attachment extends Admin
 {
-    protected $AttachmentModel;
+    protected AttachmentModel $AttachmentModel;
     /**
      * 构造方法
      * @access public

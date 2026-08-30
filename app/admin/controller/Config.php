@@ -14,7 +14,7 @@ use app\common\model\Config as MuuConfigModel;
  */
 class Config extends Admin
 {
-    protected $ConfigModel;
+    protected MuuConfigModel $ConfigModel;
     /**
      * 构造方法
      * @access public
@@ -37,7 +37,7 @@ class Config extends Admin
                 }
             }
             // 清除缓存
-            Cache::delete(request()->host() . '_MUUCMF_SYS_CONFIG_DATA', null);
+            Cache::delete(request()->host() . '_MUUCMF_SYS_CONFIG_DATA');
             return $this->success('保存成功', $config, cookie('__forward__'));
         } else {
             $group = input('group', 1, 'intval');

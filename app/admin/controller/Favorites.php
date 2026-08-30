@@ -7,8 +7,8 @@ use app\common\logic\Favorites as FavoritesLogic;
 
 class Favorites extends Admin
 {
-    protected $FavoritesModel;
-    protected $FavoritesLogic;
+    protected FavoritesModel $FavoritesModel;
+    protected FavoritesLogic $FavoritesLogic;
 
     public function __construct()
     {

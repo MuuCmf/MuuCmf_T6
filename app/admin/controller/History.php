@@ -8,15 +8,13 @@ use app\common\logic\History as HistoryLogic;
 class History extends Admin
 {
     /** @var HistoryModel 浏览记录模型 */
-    protected $HistoryModel;
-    
-    /** @var HistoryLogic 浏览记录逻辑 */
-    protected $HistoryLogic;
+    protected HistoryModel $HistoryModel;
 
-    public function __construct(
-        ?HistoryModel $historyModel = null,
-        ?HistoryLogic $historyLogic = null,
-    ) {
+    /** @var HistoryLogic 浏览记录逻辑 */
+    protected HistoryLogic $HistoryLogic;
+
+    public function __construct()
+    {
         parent::__construct();
         $this->HistoryModel = new HistoryModel();
         $this->HistoryLogic = new HistoryLogic();
@@ -53,7 +51,6 @@ class History extends Admin
 
         // json response
         return $this->success('success', $lists);
-       
     }
 
     /**

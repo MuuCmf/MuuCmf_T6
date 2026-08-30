@@ -14,14 +14,14 @@ use think\exception\ValidateException;
  */
 class Announce extends Admin
 {
-    protected $ModuleModel;
-    protected $AnnounceModel;
-    protected $AnnounceLogic;
+    protected ModuleModel $ModuleModel;
+    protected AnnounceModel $AnnounceModel;
+    protected AnnounceLogic $AnnounceLogic;
 
     /**
      * 构造方法
      * @access public
-     * @param  App  $app  应用对象
+     * @return void
      */
     public function __construct() {
         parent::__construct();
@@ -138,9 +138,9 @@ class Announce extends Admin
      * 显示编辑表单
      * @param int $id
      * @param string $teminal
-     * @return string
+     * @return void
      */
-    protected function showEditForm(int $id, string $teminal): string
+    protected function showEditForm(int $id, string $teminal): void
     {
         if ($id > 0) {
             $data = $this->AnnounceModel->getDataById($id);
