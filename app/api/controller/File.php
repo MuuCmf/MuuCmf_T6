@@ -109,6 +109,8 @@ class File extends Api
         $name = md5(uniqid((string)mt_rand(), true)) . '.' . $ext;
         $attachment = $file_dir . '/' . $name;      // 入库 attachment 相对路径
         $object = 'attachment/' . $attachment;      // 对象存储对象键
+        // 待发送的 Content-Type：OSS 直传必须与预签名里签入的一致
+        $mime = $this->Attachment->getMimeByExt($ext);
 
         $expireSec = 3600; // 预签名有效期 1 小时
         $policy = [
@@ -116,6 +118,7 @@ class File extends Api
             'driver' => 'local',
             'filename' => $filename,
             'ext' => $ext,
+            'mime' => $mime,
             'size' => $size,
             'max_size' => $rule['max'],
             'accept' => $rule['ext'],
@@ -137,7 +140,7 @@ class File extends Api
         }
         // 阿里云OSS 预签名直传
         if ($driver == 'aliyun') {
-            $uploadUrl = $this->Attachment->directSignUrl('oss', $object, $expireSec);
+            $uploadUrl = $this->Attachment->directSignUrl('oss', $object, $expireSec, $mime);
             if ($uploadUrl === false) {
                 $signErr = $this->Attachment->getDirectSignErr();
                 return $this->result(0, '阿里云OSS配置错误或签名失败' . ($signErr ? '：' . $signErr : ''));

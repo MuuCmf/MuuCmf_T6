@@ -1095,7 +1095,7 @@ class Attachment extends Base
      * @param int    $expireSec 有效期（秒）
      * @return string|false 预签名 PUT URL，配置缺失或签名失败返回 false
      */
-    public function directSignUrl($provider, $object, $expireSec = 3600)
+    public function directSignUrl($provider, $object, $expireSec = 3600, $mime = '')
     {
         $this->directSignErr = '';
         if ($provider == 'oss') {
@@ -1117,8 +1117,15 @@ class Attachment extends Base
                 $endpoint = 'https://' . $endpoint;
             }
             try {
+                // OSS URL 签名会按请求实际携带的 Content-Type 参与 StringToSign 校验，
+                // 而浏览器 PUT 会自动带 Content-Type，因此必须把将发送的 Content-Type 一起签进 URL，
+                // 否则浏览器直传必然 SignatureDoesNotMatch(403)。
+                $signOptions = [];
+                if ($mime !== '') {
+                    $signOptions[OssClient::OSS_CONTENT_TYPE] = $mime;
+                }
                 $ossClient = new OssClient($accessKeyId, $accessKeySecret, $endpoint);
-                return $ossClient->signUrl($bucket, $object, $expireSec, OssClient::OSS_HTTP_PUT);
+                return $ossClient->signUrl($bucket, $object, $expireSec, OssClient::OSS_HTTP_PUT, $signOptions ?: null);
             } catch (\Throwable $e) {
                 $this->directSignErr = $e->getMessage();
                 return false;
