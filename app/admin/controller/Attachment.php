@@ -126,8 +126,8 @@ class Attachment extends Admin
         // 删除附件数据
         $res = $this->AttachmentModel->where('id', '=', $id)->delete();
         if ($res) {
-            // 删除附件文件 TODO:该方法目前仅支持本地附件清除
-            $this->AttachmentModel->removFile($data['attachment']);
+            // 删除附件文件（本地或云端对象，按附件记录 driver 分发）
+            $this->AttachmentModel->removFile($data['attachment'], $data['driver'] ?? 'local');
             return $this->success('删除成功');
         } else {
             return $this->error('删除失败');

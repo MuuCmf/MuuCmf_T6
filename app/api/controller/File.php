@@ -4,6 +4,7 @@ namespace app\api\controller;
 
 use app\common\controller\Api;
 use app\common\model\Attachment;
+use think\facade\Cache;
 
 /**
  * 文件控制器
@@ -54,6 +55,149 @@ class File extends Api
             }
             return $this->result(0, $err_msg);
         }
+    }
+
+    /**
+     * 获取直传上传策略（COS/OSS 预签名直传 / 本地中转）
+     *
+     * 适用于不使用云点播、仅文件上传并使用腾讯云COS/阿里云OSS 时的大文件音视频上传。
+     * 流程：前端携带 type/filename/size 换取策略 → mode=direct 时 PUT upload_url 直传对象存储
+     *      → 成功后调用 api/file/complete 上报写附件表；mode=local 时仍走 api/file/upload 中转。
+     *
+     * @return \think\Response
+     */
+    public function policy()
+    {
+        $shopid = input('shopid', 0, 'intval');
+        $type = input('type', '', 'text');
+        $filename = input('filename', '', 'text');
+        $size = input('size', 0, 'intval');
+        $enforce = input('enforce', 'auto', 'text');
+        $uid = get_uid();
+
+        // 仅支持音视频直传
+        if (!in_array($type, ['video', 'audio'])) {
+            return $this->result(0, '不支持的直传类型');
+        }
+        if (empty($filename) || $size <= 0) {
+            return $this->result(0, '参数错误');
+        }
+
+        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        $rule = $this->Attachment->getUploadRule($type);
+        if (empty($ext) || !in_array($ext, $rule['ext'])) {
+            return $this->result(0, '不支持的文件格式' . ($ext ? '：.' . $ext : ''));
+        }
+        if ($size > $rule['max']) {
+            return $this->result(0, '文件大小超过限制（最大' . intval($rule['max'] / 1024 / 1024) . 'MB）');
+        }
+
+        // 存储驱动：local 走传统中转；aliyun/tencent 走对象存储预签名直传
+        $driver = ($enforce == 'local') ? 'local' : config('extend.FILE_UPLOAD_DRIVER');
+        if (!in_array($driver, ['local', 'aliyun', 'tencent'])) {
+            $driver = 'local';
+        }
+
+        // 服务端统一下发对象键，前端不可自选路径（防路径穿越/覆盖）
+        $file_dir = $rule['dir'];
+        if (!empty($shopid)) {
+            $shopid = intval($shopid);
+            if ($shopid > 0) {
+                $file_dir = $shopid . '/' . $file_dir;
+            }
+        }
+        $name = md5(uniqid((string)mt_rand(), true)) . '.' . $ext;
+        $attachment = $file_dir . '/' . $name;      // 入库 attachment 相对路径
+        $object = 'attachment/' . $attachment;      // 对象存储对象键
+
+        $expireSec = 3600; // 预签名有效期 1 小时
+        $policy = [
+            'mode' => 'local',
+            'driver' => 'local',
+            'filename' => $filename,
+            'ext' => $ext,
+            'size' => $size,
+            'max_size' => $rule['max'],
+            'accept' => $rule['ext'],
+            'attachment' => $attachment,
+            'upload_url' => '',
+            'expire' => $expireSec,
+        ];
+
+        // 腾讯云COS 预签名直传
+        if ($driver == 'tencent') {
+            $uploadUrl = $this->Attachment->directSignUrl('cos', $object, $expireSec);
+            if ($uploadUrl === false) {
+                $signErr = $this->Attachment->getDirectSignErr();
+                return $this->result(0, '腾讯云COS配置错误或签名失败' . ($signErr ? '：' . $signErr : ''));
+            }
+            $policy['mode'] = 'direct';
+            $policy['driver'] = 'cos';
+            $policy['upload_url'] = $uploadUrl;
+        }
+        // 阿里云OSS 预签名直传
+        if ($driver == 'aliyun') {
+            $uploadUrl = $this->Attachment->directSignUrl('oss', $object, $expireSec);
+            if ($uploadUrl === false) {
+                $signErr = $this->Attachment->getDirectSignErr();
+                return $this->result(0, '阿里云OSS配置错误或签名失败' . ($signErr ? '：' . $signErr : ''));
+            }
+            $policy['mode'] = 'direct';
+            $policy['driver'] = 'oss';
+            $policy['upload_url'] = $uploadUrl;
+        }
+
+        // 签发一次性直传凭证（缓存绑定 uid/对象键/归属，回调时校验）
+        $token = md5($uid . '_' . $object . '_' . time() . '_' . uniqid((string)mt_rand(), true));
+        $policy['token'] = $token;
+        Cache::set('file_upload_policy_' . $token, [
+            'uid' => $uid,
+            'shopid' => $shopid,
+            'type' => $type,
+            'filename' => $filename,
+            'ext' => $ext,
+            'size' => $size,
+            'driver' => $policy['driver'],
+            'attachment' => $attachment,
+            'object' => $object,
+            'mime' => $this->Attachment->getMimeByExt($ext),
+        ], $expireSec);
+
+        return $this->result(200, 'success', $policy);
+    }
+
+    /**
+     * 直传完成回调：校验凭证后写附件表，返回与 api/file/upload 一致的附件信息
+     *
+     * @return \think\Response
+     */
+    public function complete()
+    {
+        $token = input('token', '', 'text');
+        if (empty($token)) {
+            return $this->result(0, '参数错误');
+        }
+
+        $policy = Cache::get('file_upload_policy_' . $token);
+        if (empty($policy)) {
+            return $this->result(0, '上传凭证已失效，请重新上传');
+        }
+        // 一次性凭证，校验后即失效
+        Cache::delete('file_upload_policy_' . $token);
+
+        $duration = max(0, intval(input('duration', 0, 'intval')));
+        $md5 = input('md5', '', 'trim');
+        $sha1 = input('sha1', '', 'trim');
+        $policy['duration'] = $duration;
+        $policy['md5'] = $md5 ?: null;
+        $policy['sha1'] = $sha1 ?: null;
+
+        $result = $this->Attachment->completeDirect($policy);
+        if (is_array($result) && $result['code'] == 200) {
+            return $this->result(200, '上传成功', $result);
+        }
+        $msg = is_array($result) && !empty($result['msg']) ? $result['msg'] : '保存失败';
+        return $this->result(0, $msg);
     }
 
     /**

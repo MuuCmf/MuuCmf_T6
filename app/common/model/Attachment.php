@@ -34,6 +34,18 @@ class Attachment extends Base
         'tcvod' => '腾讯VOD',
     ];
 
+    // 预签名失败时的具体原因（诊断用）
+    protected $directSignErr = '';
+
+    /**
+     * 获取最近一次预签名失败的具体原因（诊断用）
+     * @return string
+     */
+    public function getDirectSignErr()
+    {
+        return $this->directSignErr;
+    }
+
     public function setUploadtimeAttr($value)
     {
         return strtotime($value);
@@ -286,6 +298,13 @@ class Attachment extends Base
                             unlink($file_path);
                         }
                         $data['driver'] = 'oss';
+                    } else {
+                        // 上传失败：清理本地临时文件并中断，避免产生不可访问的脏记录
+                        $this->removFile($data['attachment']);
+                        return [
+                            'code' => 0,
+                            'msg' => '阿里云OSS上传失败：' . $oss_res
+                        ];
                     }
                 }
                 // 腾讯云COS
@@ -300,6 +319,14 @@ class Attachment extends Base
                             unlink($file_path);
                         }
                         $data['driver'] = 'cos';
+                    } else {
+                        // 上传失败：清理本地临时文件并中断，避免产生不可访问的脏记录
+                        $this->removFile($data['attachment']);
+                        $msg = is_string($cos_res) && $cos_res !== '' ? $cos_res : '未知错误';
+                        return [
+                            'code' => 0,
+                            'msg' => '腾讯云COS上传失败：' . $msg
+                        ];
                     }
                 }
 
@@ -656,9 +683,11 @@ class Attachment extends Base
                 ));
 
                 return true;
+            } else {
+                return '无法读取本地文件';
             }
         } catch (\Exception $e) {
-            echo "$e\n";
+            return $e->getMessage();
         }
     }
 
@@ -886,15 +915,77 @@ class Attachment extends Base
      * @param string $attachment 附件路径（相对于public/attachment目录）
      * @return bool 删除成功返回true，文件不存在返回false
      */
-    public function removFile($attachment)
+    public function removFile($attachment, $driver = 'local')
     {
+        // 删除本地文件（若仍存在）
         $attachment_save_path = app()->getRootPath() . 'public/attachment';
         $attachment_all_path = $attachment_save_path . '/' . $attachment;
-
+        $local_ok = false;
         if (file_exists($attachment_all_path)) {
             unlink($attachment_all_path);
+            $local_ok = true;
+        }
+
+        // 删除对象存储文件（直传/中转上云后本地已删除，必须联动清理云对象，避免孤儿文件计费）
+        if ($driver == 'oss' || $driver == 'aliyun') {
+            return $this->deleteOssObject('attachment/' . $attachment);
+        }
+        if ($driver == 'cos' || $driver == 'tencent') {
+            return $this->deleteCosObject('attachment/' . $attachment);
+        }
+
+        return $local_ok;
+    }
+
+    /**
+     * 删除阿里云OSS对象
+     * @param string $object 对象键
+     * @return bool
+     */
+    public function deleteOssObject($object)
+    {
+        $accessKeyId = config('extend.OSS_ALIYUN_ACCESSKEYID');
+        $accessKeySecret = config('extend.OSS_ALIYUN_ACCESSKEYSECRET');
+        $endpoint = config('extend.OSS_ALIYUN_ENDPOINT');
+        $bucket = config('extend.OSS_ALIYUN_BUCKET');
+        if (empty($accessKeyId) || empty($accessKeySecret) || empty($endpoint) || empty($bucket)) {
+            return false;
+        }
+        try {
+            $ossClient = new OssClient($accessKeyId, $accessKeySecret, $endpoint);
+            $ossClient->deleteObject($bucket, $object);
             return true;
-        } else {
+        } catch (\Exception $e) {
+            return false;
+        }
+    }
+
+    /**
+     * 删除腾讯云COS对象
+     * @param string $object 对象键
+     * @return bool
+     */
+    public function deleteCosObject($object)
+    {
+        $secretId = config('extend.COS_TENCENT_SECRETID');
+        $secretKey = config('extend.COS_TENCENT_SECRETKEY');
+        $region = config('extend.COS_TENCENT_REGION');
+        $bucket = config('extend.COS_TENCENT_BUCKET');
+        if (empty($secretId) || empty($secretKey) || empty($region) || empty($bucket)) {
+            return false;
+        }
+        try {
+            $cosClient = new CosClient([
+                'region' => $region,
+                'schema' => 'https',
+                'credentials' => [
+                    'secretId'  => $secretId,
+                    'secretKey' => $secretKey,
+                ]
+            ]);
+            $cosClient->deleteObject(['Bucket' => $bucket, 'Key' => $object]);
+            return true;
+        } catch (\Exception $e) {
             return false;
         }
     }
@@ -936,6 +1027,198 @@ class Attachment extends Base
                 throw new Exception('非法文件');
             }
         }
+    }
+
+    /**
+     * 获取直传上传规则（音视频）
+     *
+     * 支持通过 extend 配置覆盖默认值：
+     *  UPLOAD_VIDEO_EXTS     视频扩展名，逗号分隔，如 mp4,mov
+     *  UPLOAD_VIDEO_MAXSIZE  视频最大体积（MB）
+     *  UPLOAD_AUDIO_EXTS     音频扩展名，逗号分隔，如 mp3,wav,m4a
+     *  UPLOAD_AUDIO_MAXSIZE  音频最大体积（MB）
+     *
+     * @param string $type video|audio
+     * @return array ['ext' => [], 'max' => int(byte), 'dir' => string]
+     */
+    public function getUploadRule($type)
+    {
+        // 直传默认限制（区别于本地中转上传，不经过 PHP 限制可放大到对象存储上限）
+        $default = [
+            'video' => ['ext' => $this->allowVideoExt, 'max' => 2048 * 1024 * 1024, 'dir' => 'video'],
+            'audio' => ['ext' => $this->allowAudioExt, 'max' => 512 * 1024 * 1024, 'dir' => 'audio'],
+        ];
+        if (!isset($default[$type])) {
+            return ['ext' => [], 'max' => 0, 'dir' => 'file'];
+        }
+        $rule = $default[$type];
+        $cfg_exts = '';
+        $cfg_max = '';
+        if ($type == 'video') {
+            $cfg_exts = config('extend.UPLOAD_VIDEO_EXTS');
+            $cfg_max = config('extend.UPLOAD_VIDEO_MAXSIZE');
+        } elseif ($type == 'audio') {
+            $cfg_exts = config('extend.UPLOAD_AUDIO_EXTS');
+            $cfg_max = config('extend.UPLOAD_AUDIO_MAXSIZE');
+        }
+        if (!empty($cfg_exts)) {
+            $rule['ext'] = array_values(array_filter(array_map('strtolower', explode(',', str_replace('，', ',', (string)$cfg_exts)))));
+        }
+        if (!empty($cfg_max) && intval($cfg_max) > 0) {
+            $rule['max'] = intval($cfg_max) * 1024 * 1024;
+        }
+        return $rule;
+    }
+
+    /**
+     * 根据扩展名推断 MIME 类型
+     * @param string $ext 扩展名（小写）
+     * @return string
+     */
+    public function getMimeByExt($ext)
+    {
+        $map = [
+            'mp4' => 'video/mp4', 'mov' => 'video/quicktime', 'webm' => 'video/webm',
+            'm4v' => 'video/x-m4v', 'avi' => 'video/x-msvideo', 'mkv' => 'video/x-matroska',
+            'flv' => 'video/x-flv', 'ts' => 'video/mp2t',
+            'mp3' => 'audio/mpeg', 'wav' => 'audio/wav', 'm4a' => 'audio/mp4',
+            'aac' => 'audio/aac', 'ogg' => 'audio/ogg', 'flac' => 'audio/flac', 'wma' => 'audio/x-ms-wma',
+        ];
+        return $map[strtolower($ext)] ?? 'application/octet-stream';
+    }
+
+    /**
+     * 生成对象存储预签名直传 URL
+     *
+     * @param string $provider cos|oss
+     * @param string $object  对象键，如 attachment/video/xxxx.mp4
+     * @param int    $expireSec 有效期（秒）
+     * @return string|false 预签名 PUT URL，配置缺失或签名失败返回 false
+     */
+    public function directSignUrl($provider, $object, $expireSec = 3600)
+    {
+        $this->directSignErr = '';
+        if ($provider == 'oss') {
+            $accessKeyId = config('extend.OSS_ALIYUN_ACCESSKEYID');
+            $accessKeySecret = config('extend.OSS_ALIYUN_ACCESSKEYSECRET');
+            $endpoint = config('extend.OSS_ALIYUN_ENDPOINT');
+            $bucket = config('extend.OSS_ALIYUN_BUCKET');
+            $empty = [];
+            if (empty($accessKeyId)) $empty[] = 'OSS_ALIYUN_ACCESSKEYID';
+            if (empty($accessKeySecret)) $empty[] = 'OSS_ALIYUN_ACCESSKEYSECRET';
+            if (empty($endpoint)) $empty[] = 'OSS_ALIYUN_ENDPOINT';
+            if (empty($bucket)) $empty[] = 'OSS_ALIYUN_BUCKET';
+            if (!empty($empty)) {
+                $this->directSignErr = '阿里云OSS配置缺失：' . implode(',', $empty);
+                return false;
+            }
+            // 浏览器直传必须是 HTTPS（后台部署为 HTTPS 时会拦截 HTTP），endpoint 未带协议时补 https://
+            if (strpos($endpoint, 'http://') !== 0 && strpos($endpoint, 'https://') !== 0) {
+                $endpoint = 'https://' . $endpoint;
+            }
+            try {
+                $ossClient = new OssClient($accessKeyId, $accessKeySecret, $endpoint);
+                return $ossClient->signUrl($bucket, $object, $expireSec, OssClient::OSS_HTTP_PUT);
+            } catch (\Throwable $e) {
+                $this->directSignErr = $e->getMessage();
+                return false;
+            }
+        }
+        if ($provider == 'cos') {
+            $secretId = config('extend.COS_TENCENT_SECRETID');
+            $secretKey = config('extend.COS_TENCENT_SECRETKEY');
+            $region = config('extend.COS_TENCENT_REGION');
+            $bucket = config('extend.COS_TENCENT_BUCKET');
+            $empty = [];
+            if (empty($secretId)) $empty[] = 'COS_TENCENT_SECRETID';
+            if (empty($secretKey)) $empty[] = 'COS_TENCENT_SECRETKEY';
+            if (empty($region)) $empty[] = 'COS_TENCENT_REGION';
+            if (empty($bucket)) $empty[] = 'COS_TENCENT_BUCKET';
+            if (!empty($empty)) {
+                $this->directSignErr = '腾讯云COS配置缺失：' . implode(',', $empty);
+                return false;
+            }
+            try {
+                $cosClient = new CosClient([
+                    'region' => $region,
+                    'schema' => 'https', // 浏览器直传必须 HTTPS，避免 mixed content 被拦截
+                    'credentials' => [
+                        'secretId'  => $secretId,
+                        'secretKey' => $secretKey,
+                    ]
+                ]);
+                // COS SDK 对 PutObject 强校验 Body/SourceFile 必须非空，预签名无需真实数据，传空串占位即可
+                $url = $cosClient->getPresignedUrl('PutObject', [
+                    'Bucket' => $bucket,
+                    'Key' => $object,
+                    'Body' => '',
+                ], '+' . intval($expireSec) . ' seconds');
+                return $url->__toString();
+            } catch (\Throwable $e) {
+                $this->directSignErr = $e->getMessage();
+                return false;
+            }
+        }
+        $this->directSignErr = '未知存储驱动：' . $provider;
+        return false;
+    }
+
+    /**
+     * 直传完成后写附件记录（COS/OSS 预签名直传配套）
+     *
+     * @param array $policy 直传凭证数据（含 uid/shopid/type/filename/ext/size/driver/attachment/mime）
+     * @return array 与 Attachment::file() 一致的返回结构；失败返回 ['code'=>0,'msg'=>...]
+     */
+    public function completeDirect($policy)
+    {
+        // 幂等处理：同一对象键已入库则直接复用（重复回调/刷新页面兜底）
+        $exist = $this->where('attachment', '=', $policy['attachment'])->find();
+        if (!empty($exist)) {
+            $data = $exist->toArray();
+            return [
+                'code' => 200,
+                'filename' => $data['filename'],
+                'type' => $data['type'],
+                'ext' => $data['ext'],
+                'size' => $data['size'],
+                'duration' => $data['duration'],
+                'attachment' => $data['attachment'],
+                'url' => get_attachment_src($data['attachment']),
+            ];
+        }
+
+        $duration = isset($policy['duration']) ? max(0, intval($policy['duration'])) : 0;
+        $data = [
+            'shopid' => isset($policy['shopid']) ? intval($policy['shopid']) : 0,
+            'uid' => isset($policy['uid']) ? intval($policy['uid']) : 0,
+            'filename' => isset($policy['filename']) ? $policy['filename'] : '',
+            'ext' => isset($policy['ext']) ? strtolower($policy['ext']) : '',
+            'size' => isset($policy['size']) ? intval($policy['size']) : 0,
+            'mime' => isset($policy['mime']) ? $policy['mime'] : $this->getMimeByExt($policy['ext'] ?? ''),
+            'type' => isset($policy['type']) ? $policy['type'] : 'file',
+            'driver' => isset($policy['driver']) ? $policy['driver'] : 'local',
+            'attachment' => isset($policy['attachment']) ? $policy['attachment'] : '',
+            'duration' => $duration > 0 ? $duration : null,
+            // 浏览器直传拿不到文件服务端哈希，md5/sha1 列 NOT NULL DEFAULT ''，缺省写空串而非 null
+            'md5' => !empty($policy['md5']) ? $policy['md5'] : '',
+            'sha1' => !empty($policy['sha1']) ? $policy['sha1'] : '',
+        ];
+
+        $res = $this->save($data);
+        if ($res === false) {
+            return ['code' => 0, 'msg' => '附件记录保存失败'];
+        }
+
+        return [
+            'code' => 200,
+            'filename' => $data['filename'],
+            'type' => $data['type'],
+            'ext' => $data['ext'],
+            'size' => $data['size'],
+            'duration' => $data['duration'],
+            'attachment' => $data['attachment'],
+            'url' => get_attachment_src($data['attachment']),
+        ];
     }
 
     /**
