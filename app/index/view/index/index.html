@@ -5,311 +5,415 @@
 {/block}
 
 {block name="body"}
-    <section id='section1'>
-    <!--顶部大图-->
-        <div class="muucmfHead">
-            <div class="container">
-                <div class="headInfo">
-                    <h2><span>MuuCmf T6</span> 开源低代码应用开发框架</h2>
 
-                    <h3><span>MuuCmf</span> Open Source Management Framework</h3>
+<!-- ============================================================
+     S1 首屏 Hero：AI 原生 Coding 底座
+============================================================ -->
+<section class="m-hero" id="home">
+    <div class="m-hero__glow m-hero__glow--a" aria-hidden="true"></div>
+    <div class="m-hero__glow m-hero__glow--b" aria-hidden="true"></div>
+    <div class="m-hero__grid" aria-hidden="true"></div>
+    <canvas id="heroCanvas" class="m-hero__canvas" aria-hidden="true"></canvas>
 
-                    <h3>包罗万象 自由组合</h3>
-                    <p class="downBtn">
-                        <a href="https://gitee.com/dameng100/MuuCmf" class="btn btn-lg btn-info" type="button">MuuCmf T6 下载</a>
-                        <a href="https://gitee.com/dameng100/MuuCmf" class="btn btn-lg btn-info" type="button" target="_blank">Gitee</a>
-                        <a href="http://www.muucmf.cc/muu/frame/index" class="btn btn-lg btn-info" type="button" target="_blank">在线手册</a>
-                    </p>
-                </div>
-            </div>
-            <canvas id="canvas" width="1950px" height="800px"></canvas>
-            <canvas id="canvasbg" width="1950px" height="800px"></canvas>
+    <div class="container m-hero__inner">
+        <div class="m-hero__badge reveal">
+            <i class="fa fa-bolt"></i>
+            <span>全新 MuuCMF · 原生 AI Coding 底座</span>
         </div>
-    </section>
-    
-    <section id='section2' class="features">
-        <div class="descBox">
-            <h2 class="text-center">持续探索产品新特性</h2>
-            <hr class="light">
-            <div class="cont text-center">
-                <p>不止于开发 更注重产品迭代</p>
-            </div>
 
-            <div class="container">
-                <ul>
-                  <li>
-                    <div><img src="https://www.muucmf.cc/static/muu/images/frame/best-practice.png" alt=""></div>
-                    <h4>最佳实践沉淀</h4>
-                    <p>产品设计融合专业团队多年研发最佳实践，不仅是单纯的开发框架</p>
-                  </li>
-                  <li>
-                    <div><img src="https://www.muucmf.cc/static/muu/images/frame/Integration-icon.png" alt=""></div>
-                    <h4>多应用整合支持</h4>
-                    <p>不管是开发一个小功能还是一个全新的应用，你只是增加了一个应用，完全解耦，即可独立运行，亦可整合使用</p>
-                  </li>
-                  <li>
-                    <div><img src="https://www.muucmf.cc/static/muu/images/frame/efficiency-icon.png" alt=""></div>
-                    <h4>提高开发效率</h4>
-                    <p>系统进行了常用功能和第三方API大量封装，融合多年研发效率实践，告别重复劳动，让开发效能大幅提升</p>
-                  </li>
-                  <li>
-                    <div><img src="https://www.muucmf.cc/static/muu/images/frame/skilled-workers.png" alt=""></div>
-                    <h4>专业人才招聘难题</h4>
-                    <p>主流开源框架拥有庞大用户群体，解决专业技术人才少，降低人力成本，招聘难题</p>
-                  </li>
-                </ul>
-                <ul style="padding-top:40px;">
-                  <li>
-                    <div><img src="https://www.muucmf.cc/static/muu/images/frame/privatization-icon.png" alt=""></div>
-                    <h4>私有化部署、渐进式扩展</h4>
-                    <p>具有自主可控、稳定可靠、持续进化，支持新功能的无缝交付，新服务的快速引入，更快满足企业新业务扩展保障</p>
-                  </li>
-                  <li>
-                    <div><img src="https://www.muucmf.cc/static/muu/images/frame/cost-reduction.png" alt=""></div>
-                    <h4>降低开发、学习成本</h4>
-                    <p>基于主流开源框架开发，让您和团队开箱即用，降低学习、开发成本</p>
-                  </li>
-                  <li>
-                    <div><img src="https://www.muucmf.cc/static/muu/images/frame/service-icon.png" alt=""></div>
-                    <h4>基础软件服务团队</h4>
-                    <p>专业的研发和支持团队，多年最佳实践高可用架构保障服务更稳定</p>
-                  </li>
-                  <li>
-                    <div><img src="https://www.muucmf.cc/static/muu/images/frame/open-source.png" alt=""></div>
-                    <h4>开源、开放</h4>
-                    <p>代码完全开放、开源，对商业使用友好</p>
-                  </li>
-                </ul>
-              </div>
+        <h1 class="reveal">重构 <span class="grad-text">AI 时代</span><br/>应用开发新范式</h1>
+
+        <p class="m-hero__sub reveal">
+            MuuCMF 以
+            <b>AICoding 原生架构底座</b>、<b>轻量化高性能内核</b>、<b>完全开源可控</b>、<b>模块化解耦拓展</b>
+            四大核心能力，搭载 Muu+ 全场景应用矩阵，一站式解决个人开发者、技术团队、企业机构的全维度开发需求。
+        </p>
+
+        <div class="m-hero__actions reveal">
+            <a class="m-btn m-btn--primary" href="https://gitee.com/dameng100/MuuCmf">下载 MuuCmf T6<i class="fa fa-download"></i></a>
+            <a class="m-btn m-btn--ghost" href="https://gitee.com/dameng100/MuuCmf" target="_blank"><i class="fa fa-star"></i>Gitee 开源仓库</a>
+            <a class="m-btn m-btn--ghost" href="http://www.muucmf.cc/muu/frame/index" target="_blank"><i class="fa fa-book"></i>在线手册</a>
         </div>
-        
-        
-    </section>
 
+        <ul class="m-hero__chips reveal">
+            <li><i class="fa fa-microchip"></i><span>AI Coding原生架构底座</span></li>
+            <li><i class="fa fa-tachometer"></i><span>轻量高性能内核</span></li>
+            <li><i class="fa fa-unlock-alt"></i><span>完全开源可控</span></li>
+            <li><i class="fa fa-cubes"></i><span>模块化解耦拓展</span></li>
+        </ul>
+    </div>
 
+    <div class="m-hero__scroll"><i class="fa fa-angle-double-down"></i></div>
+</section>
 
-    <section id='section_ecology'>
-        <div class="container">
-            <div class="descBox clearfix">
-                <div class="Info text-center">
-                    <h2>MuuCmf标准化生态</h2>
-                    <hr class="light">
-                    <div class="cont">
-                        <p>在优雅的社区成长 共建MuuCmf新生态</p>  
-                    </div>
-                    <div class="ecology">
-                        <div class="item">
-                            MuuCmf
-                        </div>
-                        <span class="add">+</span>
-                        <div class="item">
-                            开发者社区
-                        </div>
-                        <span class="add">+</span>
-                        <div class="item">
-                            应用商店
-                        </div>
-                        <span class="add">+</span>
-                        <div class="item">
-                            Muu+计划
-                        </div>
+<!-- ============================================================
+     S2 时代底座：AI 原生 Coding 架构
+============================================================ -->
+<section class="m-cap" id="capabilities">
+    <div class="container">
+        <header class="m-sec-head reveal">
+            <span class="m-eyebrow">01 · 时代底座</span>
+            <h2>为「人机协同开发」而生的 <span class="grad-text">AI Coding 原生底座</span></h2>
+            <p>AI 编程已成开发行业标配。MuuCMF 不把 AI 当作外挂工具，而是从架构底层重构内核、原生适配大模型编码逻辑，
+                以人机协同开发为核心设计标准，让 AI 与业务架构无缝耦合。</p>
+        </header>
 
-                    </div>
-                    
-                </div>
-            </div>
+        <div class="m-cap__grid">
+            <article class="m-cap__card reveal">
+                <span class="m-card__no">01</span>
+                <div class="m-card__ico"><i class="fa fa-plug"></i></div>
+                <h3>底层架构原生适配</h3>
+                <strong>全链路 AI 工程化赋能</strong>
+                <p>全新轻量化内核原生兼容主流 AI 大模型，打通需求拆解、代码编写、逻辑重构、Bug 修复、接口联调全工程链路。</p>
+            </article>
+
+            <article class="m-cap__card reveal">
+                <span class="m-card__no">02</span>
+                <div class="m-card__ico"><i class="fa fa-th-large"></i></div>
+                <h3>标准化解耦设计</h3>
+                <strong>适配 AI 精准编码</strong>
+                <p>全局统一代码规范、模块化清晰拆分、业务逻辑层级明确，极简干净架构让 AI 精准识别、快速生成适配代码。</p>
+            </article>
+
+            <article class="m-cap__card reveal">
+                <span class="m-card__no">03</span>
+                <div class="m-card__ico"><i class="fa fa-users"></i></div>
+                <h3>人机协同架构</h3>
+                <strong>极致压缩开发周期</strong>
+                <p>构建「AI 批量基建 + 人工核心深耕」范式，通用底层与标准功能交由 AI 极速生成，开发者聚焦核心业务创新。</p>
+            </article>
+
+            <article class="m-cap__card reveal">
+                <span class="m-card__no">04</span>
+                <div class="m-card__ico"><i class="fa fa-rocket"></i></div>
+                <h3>高弹性拓展内核</h3>
+                <strong>支撑 AI 无限业务创新</strong>
+                <p>基于彻底解耦的模块化架构，无底层逻辑束缚、无功能冗余限制，无缝承接各类 AI 智能化场景开发。</p>
+            </article>
         </div>
-    </section>
+    </div>
+</section>
+
+<!-- ============================================================
+     S3 底层硬核：新版 MuuCMF T6 开源框架
+============================================================ -->
+<section class="m-str" id="strengths">
+    <div class="container">
+        <header class="m-sec-head reveal">
+            <span class="m-eyebrow">02 · 底层硬核</span>
+            <h2>轻量纯粹、高能可控的 <span class="grad-text">应用开源框架</span></h2>
+            <p>并非普通模板化 CMS，而是 CMS 与企业级开发框架双向融合的全能开源底座：开箱即用、低门槛二次开发。</p>
+        </header>
+
+        <div class="m-str__grid">
+            <article class="m-str__card reveal">
+                <div class="m-str__icon"><i class="fa fa-mouse-pointer"></i></div>
+                <h3>零 / 低代码可视化 DIY</h3>
+                <p>搭载拖拽式可视化搭建引擎，所见即所得、组件自由组合、页面自定义配置，快速搭建 PC、公众号、小程序多端应用。</p>
+            </article>
+
+            <article class="m-str__card reveal">
+                <div class="m-str__icon"><i class="fa fa-cubes"></i></div>
+                <h3>全新技术栈 · 丝滑交互</h3>
+                <p>采用 Vue3 + Pinia + Element Plus 技术栈重构后台，界面丝滑、交互便捷、性能大幅提升。</p>
+            </article>
+
+            <article class="m-str__card reveal">
+                <div class="m-str__icon"><i class="fa fa-leaf"></i></div>
+                <h3>全开源 · 自主可控</h3>
+                <p>源码全量公开、透明开源，无授权绑定、无隐形收费、无商用版权纠纷，支持私有化独立部署、数据本地留存。</p>
+            </article>
+
+            <article class="m-str__card reveal">
+                <div class="m-str__icon"><i class="fa fa-bolt"></i></div>
+                <h3>轻量高性能 · 稳定迭代</h3>
+                <p>剔除老旧冗余逻辑，架构精简高效、资源占用极低、运行流畅稳定，长期迭代更新、漏洞修复、性能优化。</p>
+            </article>
+        </div>
+    </div>
+</section>
+
+<!-- ============================================================
+     S4 生态闭环：Muu+ 全系列应用矩阵
+============================================================ -->
+<section class="m-apps" id="apps">
+    <div class="container">
+        <header class="m-sec-head reveal">
+            <span class="m-eyebrow">03 · 生态闭环</span>
+            <h2>一套底座，撑起 <span class="grad-text">全品类智能业务</span></h2>
+            <p>Muu+ 全系商业应用矩阵均基于新版 MuuCMF底层深度自研适配，模块化独立部署、自由组合、一键安装，
+                直接落地成熟商用系统。</p>
+        </header>
+
+        <div class="m-apps__grid">
+            <article class="m-apps__card reveal">
+                <div class="m-apps__icon a1"><i class="fa fa-graduation-cap"></i></div>
+                <h3>Muu 云课堂</h3>
+                <span class="m-apps__tag">私有化知识付费生态</span>
+                <p>多模式课程付费、可视化店铺装修、AI 智能课程推荐与学情分析，适配知识变现、机构教学、企业内训场景。</p>
+            </article>
+
+            <article class="m-apps__card reveal">
+                <div class="m-apps__icon a2"><i class="fa fa-shopping-bag"></i></div>
+                <h3>Muu 云小店</h3>
+                <span class="m-apps__tag">轻量化智能电商系统</span>
+                <p>摒弃传统电商臃肿架构，多端统一后台、数据实时同步、可视化店铺装修，快速搭建小程序商城与线上零售店铺。</p>
+            </article>
+
+            <article class="m-apps__card reveal">
+                <div class="m-apps__icon a3"><i class="fa fa-gift"></i></div>
+                <h3>Muu 积分商城</h3>
+                <span class="m-apps__tag">全域会员营销工具</span>
+                <p>模块化自定义积分体系，实物 / 虚拟商品兑换、消费返利、任务攒积分全玩法，AI 精准拆解用户行为实现裂变。</p>
+            </article>
+
+            <article class="m-apps__card reveal">
+                <div class="m-apps__icon a4"><i class="fa fa-cloud-download"></i></div>
+                <h3>Muu 资料下载</h3>
+                <span class="m-apps__tag">付费资料资源管理</span>
+                <p>免费 / 付费双模式资源分发、批量激活码生成、智能分类管理，支持 AI 智能归类、快速检索、内容优化。</p>
+            </article>
+
+            <article class="m-apps__card reveal">
+                <div class="m-apps__icon a5"><i class="fa fa-pencil-square-o"></i></div>
+                <h3>Muu 题库考试</h3>
+                <span class="m-apps__tag">全场景在线测评系统</span>
+                <p>覆盖刷题练习、在线考试、技能测评、企业考核全场景，AI 智能组卷、错题归集、学情测评，与云课堂学考联动。</p>
+            </article>
+
+            <article class="m-apps__card reveal">
+                <div class="m-apps__icon a6"><i class="fa fa-credit-card"></i></div>
+                <h3>Muu 超级会员卡</h3>
+                <span class="m-apps__tag">多应用统一会员体系</span>
+                <p>打通 Muu+ 全系应用会员数据，统一会员管控、权限分配、付费权益管理，AI 用户分层运营、精准权益推送。</p>
+            </article>
+
+            <article class="m-apps__card reveal">
+                <div class="m-apps__icon a7"><i class="fa fa-puzzle-piece"></i></div>
+                <h3>Muu 微应用 DIY</h3>
+                <span class="m-apps__tag">万能可视化搭建工具</span>
+                <p>适配全系框架应用，自由拖拽组件、自定义页面样式与功能，AI 辅助页面搭建与样式优化，解锁无限业务场景。</p>
+            </article>
+
+            <a class="m-apps__card m-apps__card--more reveal" href="https://www.muucmf.cc/" target="_blank">
+                <div class="m-apps__icon a8"><i class="fa fa-plus"></i></div>
+                <h3>Muu+ 生态上新</h3>
+                <span class="m-apps__tag">应用矩阵持续扩展</span>
+                <p>基于 AI 原生底座的更多行业应用陆续上架，独立部署、自由组合、一键安装，敬请期待。<i class="fa fa-long-arrow-right"></i></p>
+            </a>
+        </div>
+
+        <ul class="m-apps__note reveal">
+            <li><i class="fa fa-check-circle"></i>模块化独立部署</li>
+            <li><i class="fa fa-check-circle"></i>应用自由组合</li>
+            <li><i class="fa fa-check-circle"></i>一键安装即用</li>
+            <li><i class="fa fa-check-circle"></i>一套底座全品类</li>
+        </ul>
+    </div>
+</section>
+
+<!-- ============================================================
+     S5 核心底气：为什么选择 MuuCMF
+============================================================ -->
+<section class="m-why" id="why">
+    <div class="container">
+        <header class="m-sec-head reveal">
+            <span class="m-eyebrow">04 · 核心底气</span>
+            <h2>为什么选择 <span class="grad-text">MuuCMF</span></h2>
+            <p>一套 AI 原生生态，根治新时代开发痛点，让开源与商业化皆可持续。</p>
+        </header>
+
+        <div class="m-why__grid">
+            <article class="m-why__card reveal">
+                <span class="m-why__num">01</span>
+                <h3>原生适配 AI 开发趋势</h3>
+                <p>底层架构为 AI 编码量身打造，深度适配人机协同开发模式，规避传统框架技术滞后、适配性差的短板。</p>
+            </article>
+
+            <article class="m-why__card reveal">
+                <span class="m-why__num">02</span>
+                <h3>彻底告别重复造轮</h3>
+                <p>统一标准化 AI 优化底层，全系应用生态互通、数据同源，大幅降低开发、运维、学习综合成本。</p>
+            </article>
+
+            <article class="m-why__card reveal">
+                <span class="m-why__num">03</span>
+                <h3>极速业务落地迭代</h3>
+                <p>低代码可视化搭建 + 全链路 AI 智能赋能，极简操作、高效交付，快速响应市场变化与高频迭代需求。</p>
+            </article>
+
+            <article class="m-why__card reveal">
+                <span class="m-why__num">04</span>
+                <h3>开源商用完全自由</h3>
+                <p>源码全开源、自主可控，无版权束缚、无商用限制，私有化部署模式保障企业数据合规安全。</p>
+            </article>
+
+            <article class="m-why__card reveal">
+                <span class="m-why__num">05</span>
+                <h3>模块化高弹性适配</h3>
+                <p>应用按需安装、功能自由组合、架构无限拓展，灵活适配小型项目、中型系统、大型企业级平台。</p>
+            </article>
+
+            <article class="m-why__card reveal">
+                <span class="m-why__num">06</span>
+                <h3>长期技术迭代保值</h3>
+                <p>专业研发团队持续跟进 AI 技术迭代与行业需求，常态化架构升级、功能优化、漏洞修复，生态持续领先。</p>
+            </article>
+        </div>
+    </div>
+</section>
+
+<!-- ============================================================
+     S6 结语 CTA
+============================================================ -->
+<section class="m-cta" id="cta">
+    <div class="container">
+        <ul class="m-cta__eco reveal">
+            <li class="eco-item">MuuCMF开发底座</li>
+            <li class="eco-add">+</li>
+            <li class="eco-item">开发者社区</li>
+            <li class="eco-add">+</li>
+            <li class="eco-item">应用商店</li>
+            <li class="eco-add">+</li>
+            <li class="eco-item">Muu+ 商业应用矩阵</li>
+        </ul>
+
+        <p class="m-cta__quote reveal">AI 为势，架构为根，生态为翼。</p>
+        <h2 class="reveal">定义 <span class="grad-text">AI 时代</span> 应用开发新范式</h2>
+        <p class="m-cta__sub reveal">
+            从 0 到 1 极速搭建智能化应用，从 1 到 100 规模化迭代商业化系统。
+            <br/>个人开发提效、团队智能交付、企业数字化转型，一套 Muu+ 生态全盘搞定。
+        </p>
+
+        <div class="m-cta__actions reveal">
+            <a class="m-btn m-btn--light" href="https://gitee.com/dameng100/MuuCmf">MuuCmf T6 下载<i class="fa fa-download"></i></a>
+            <a class="m-btn m-btn--outline-light" href="http://www.muucmf.cc/muu/frame/index" target="_blank"><i class="fa fa-book"></i>阅读在线手册</a>
+        </div>
+
+        <ul class="m-cta__dots reveal">
+            <li><i class="fa fa-microchip"></i>原生AICoding 底座</li>
+            <li><i class="fa fa-unlock-alt"></i>框架开源无限制商用</li>
+            <li><i class="fa fa-edit"></i>零 / 低代码搭建</li>
+            <li><i class="fa fa-mobile"></i>多端全场景覆盖</li>
+        </ul>
+    </div>
+</section>
+
 {/block}
 
 {block name="script"}
 <script>
-// min and max radius, radius threshold and percentage of filled circles
-var radMin = 5,
-  radMax = 125,
-  filledCircle = 60, //percentage of filled circles
-  concentricCircle = 30, //percentage of concentric circles
-  radThreshold = 25; //IFF special, over this radius concentric, otherwise filled
+(function () {
+    'use strict';
 
-//min and max speed to move
-var speedMin = 0.3,
-  speedMax = 2.5;
-
-//max reachable opacity for every circle and blur effect
-var maxOpacity = 0.6;
-
-//default palette choice
-var colors = ['52,168,83', '117,95,147', '199,108,23', '194,62,55', '0,172,212', '120,120,120'],
-  bgColors = ['52,168,83', '117,95,147', '199,108,23', '194,62,55', '0,172,212', '120,120,120'],
-  circleBorder = 10,
-  backgroundLine = bgColors[0];
-var backgroundMlt = 0.85;
-
-//min distance for links
-var linkDist = Math.min(canvas.width, canvas.height) / 2.4,
-  lineBorder = 2.5;
-
-//most importantly: number of overall circles and arrays containing them
-var maxCircles = 12,
-  points = [],
-  pointsBack = [];
-
-//populating the screen
-for (var i = 0; i < maxCircles * 2; i++) points.push(new Circle());
-for (var i = 0; i < maxCircles; i++) pointsBack.push(new Circle(true));
-
-//experimental vars
-var circleExp = 1,
-  circleExpMax = 1.003,
-  circleExpMin = 0.997,
-  circleExpSp = 0.00004,
-  circlePulse = false;
-
-//circle class
-function Circle(background) {
-  //if background, it has different rules
-  this.background = (background || false);
-  this.x = randRange(-canvas.width / 2, canvas.width / 2);
-  this.y = randRange(-canvas.height / 2, canvas.height / 2);
-  this.radius = background ? hyperRange(radMin, radMax) * backgroundMlt : hyperRange(radMin, radMax);
-  this.filled = this.radius < radThreshold ? (randint(0, 100) > filledCircle ? false : 'full') : (randint(0, 100) > concentricCircle ? false : 'concentric');
-  this.color = background ? bgColors[randint(0, bgColors.length - 1)] : colors[randint(0, colors.length - 1)];
-  this.borderColor = background ? bgColors[randint(0, bgColors.length - 1)] : colors[randint(0, colors.length - 1)];
-  this.opacity = 0.05;
-  this.speed = (background ? randRange(speedMin, speedMax) / backgroundMlt : randRange(speedMin, speedMax)); // * (radMin / this.radius);
-  this.speedAngle = Math.random() * 2 * Math.PI;
-  this.speedx = Math.cos(this.speedAngle) * this.speed;
-  this.speedy = Math.sin(this.speedAngle) * this.speed;
-  var spacex = Math.abs((this.x - (this.speedx < 0 ? -1 : 1) * (canvas.width / 2 + this.radius)) / this.speedx),
-    spacey = Math.abs((this.y - (this.speedy < 0 ? -1 : 1) * (canvas.height / 2 + this.radius)) / this.speedy);
-  this.ttl = Math.min(spacex, spacey);
-};
-
-Circle.prototype.init = function() {
-  Circle.call(this, this.background);
-}
-
-//support functions
-//generate random int a<=x<=b
-function randint(a, b) {
-    return Math.floor(Math.random() * (b - a + 1) + a);
-  }
-  //generate random float
-function randRange(a, b) {
-    return Math.random() * (b - a) + a;
-  }
-  //generate random float more likely to be close to a
-function hyperRange(a, b) {
-  return Math.random() * Math.random() * Math.random() * (b - a) + a;
-}
-
-//rendering function
-function drawCircle(ctx, circle) {
-  //circle.radius *= circleExp;
-  var radius = circle.background ? circle.radius *= circleExp : circle.radius /= circleExp;
-  ctx.beginPath();
-  ctx.arc(circle.x, circle.y, radius * circleExp, 0, 2 * Math.PI, false);
-  ctx.lineWidth = Math.max(1, circleBorder * (radMin - circle.radius) / (radMin - radMax));
-  ctx.strokeStyle = ['rgba(', circle.borderColor, ',', circle.opacity, ')'].join('');
-  if (circle.filled == 'full') {
-    ctx.fillStyle = ['rgba(', circle.borderColor, ',', circle.background ? circle.opacity * 0.8 : circle.opacity, ')'].join('');
-    ctx.fill();
-    ctx.lineWidth=0;
-    ctx.strokeStyle = ['rgba(', circle.borderColor, ',', 0, ')'].join('');
-  }
-  ctx.stroke();
-  if (circle.filled == 'concentric') {
-    ctx.beginPath();
-    ctx.arc(circle.x, circle.y, radius / 2, 0, 2 * Math.PI, false);
-    ctx.lineWidth = Math.max(1, circleBorder * (radMin - circle.radius) / (radMin - radMax));
-    ctx.strokeStyle = ['rgba(', circle.color, ',', circle.opacity, ')'].join('');
-    ctx.stroke();
-  }
-  circle.x += circle.speedx;
-  circle.y += circle.speedy;
-  if (circle.opacity < (circle.background ? maxOpacity : 1)) circle.opacity += 0.01;
-  circle.ttl--;
-}
-
-//initializing function
-function init() {
-  window.requestAnimationFrame(draw);
-}
-
-//rendering function
-function draw() {
-
-  if (circlePulse) {
-    if (circleExp < circleExpMin || circleExp > circleExpMax) circleExpSp *= -1;
-    circleExp += circleExpSp;
-  }
-  var ctxfr = document.getElementById('canvas').getContext('2d');
-  var ctxbg = document.getElementById('canvasbg').getContext('2d');
-
-  ctxfr.globalCompositeOperation = 'destination-over';
-  ctxfr.clearRect(0, 0, canvas.width, canvas.height); // clear canvas
-  ctxbg.globalCompositeOperation = 'destination-over';
-  ctxbg.clearRect(0, 0, canvas.width, canvas.height); // clear canvas
-
-  ctxfr.save();
-  ctxfr.translate(canvas.width / 2, canvas.height / 2);
-  ctxbg.save();
-  ctxbg.translate(canvas.width / 2, canvas.height / 2);
-
-  //function to render each single circle, its connections and to manage its out of boundaries replacement
-  function renderPoints(ctx, arr) {
-    for (var i = 0; i < arr.length; i++) {
-      var circle = arr[i];
-      //checking if out of boundaries
-      if (circle.ttl<0) {}
-      var xEscape = canvas.width / 2 + circle.radius,
-        yEscape = canvas.height / 2 + circle.radius;
-      if (circle.ttl < -20) arr[i].init(arr[i].background);
-      //if (Math.abs(circle.y) > yEscape || Math.abs(circle.x) > xEscape) arr[i].init(arr[i].background);
-      drawCircle(ctx, circle);
-    }
-    for (var i = 0; i < arr.length - 1; i++) {
-      for (var j = i + 1; j < arr.length; j++) {
-        var deltax = arr[i].x - arr[j].x;
-        var deltay = arr[i].y - arr[j].y;
-        var dist = Math.pow(Math.pow(deltax, 2) + Math.pow(deltay, 2), 0.5);
-        //if the circles are overlapping, no laser connecting them
-        if (dist <= arr[i].radius + arr[j].radius) continue;
-        //otherwise we connect them only if the dist is < linkDist
-        if (dist < linkDist) {
-          var xi = (arr[i].x < arr[j].x ? 1 : -1) * Math.abs(arr[i].radius * deltax / dist);
-          var yi = (arr[i].y < arr[j].y ? 1 : -1) * Math.abs(arr[i].radius * deltay / dist);
-          var xj = (arr[i].x < arr[j].x ? -1 : 1) * Math.abs(arr[j].radius * deltax / dist);
-          var yj = (arr[i].y < arr[j].y ? -1 : 1) * Math.abs(arr[j].radius * deltay / dist);
-          ctx.beginPath();
-          ctx.moveTo(arr[i].x + xi, arr[i].y + yi);
-          ctx.lineTo(arr[j].x + xj, arr[j].y + yj);
-          var samecolor = arr[i].color == arr[j].color;
-          ctx.strokeStyle = ["rgba(", arr[i].borderColor, ",", Math.min(arr[i].opacity, arr[j].opacity) * ((linkDist - dist) / linkDist), ")"].join("");
-          ctx.lineWidth = (arr[i].background ? lineBorder * backgroundMlt : lineBorder) * ((linkDist - dist) / linkDist); //*((linkDist-dist)/linkDist);
-          ctx.stroke();
+    /* ---------- 1. 滚动入场动画 ---------- */
+    var revealTimer;
+    function initReveal() {
+        document.documentElement.classList.add('reveal-ready');
+        var els = document.querySelectorAll('.reveal');
+        if (!('IntersectionObserver' in window)) {
+            for (var i = 0; i < els.length; i++) els[i].classList.add('is-in');
+            return;
         }
-      }
+        var io = new IntersectionObserver(function (entries) {
+            for (var i = 0; i < entries.length; i++) {
+                if (entries[i].isIntersecting) {
+                    entries[i].target.classList.add('is-in');
+                    io.unobserve(entries[i].target);
+                }
+            }
+        }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+        for (var j = 0; j < els.length; j++) io.observe(els[j]);
     }
-  }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initReveal);
+    } else {
+        // 延后一帧，确保样式已就绪后再做观察
+        if (window.requestAnimationFrame) window.requestAnimationFrame(initReveal);
+        else initReveal();
+    }
+    window.addEventListener('resize', function () { if (revealTimer) clearTimeout(revealTimer); }, false);
 
-  var startTime = Date.now();
-  renderPoints(ctxfr, points);
-  renderPoints(ctxbg, pointsBack);
-  deltaT = Date.now() - startTime;
+    /* ---------- 2. Hero 粒子连线画布 ---------- */
+    var canvas = document.getElementById('heroCanvas');
+    var host = document.getElementById('home');
+    if (canvas && host) {
+        var ctx = canvas.getContext('2d');
+        var dpr = Math.min(window.devicePixelRatio || 1, 2);
+        var w = 0, h = 0, parts = [], running = true;
+        var COLORS = ['rgba(47,107,255,', 'rgba(0,194,255,', 'rgba(124,92,255,', 'rgba(0,168,232,'];
+        var COUNT = 68;
+        var LINK = 132;
 
-  ctxfr.restore();
-  ctxbg.restore();
+        function seed() {
+            parts = [];
+            for (var i = 0; i < COUNT; i++) {
+                parts.push({
+                    x: Math.random() * w,
+                    y: Math.random() * h,
+                    vx: (Math.random() - 0.5) * 0.42,
+                    vy: (Math.random() - 0.5) * 0.42,
+                    r: Math.random() * 1.7 + 0.8,
+                    c: COLORS[Math.floor(Math.random() * COLORS.length)]
+                });
+            }
+        }
 
-  window.requestAnimationFrame(draw);
-}
+        function resize() {
+            w = host.clientWidth;
+            h = host.clientHeight;
+            canvas.width = Math.round(w * dpr);
+            canvas.height = Math.round(h * dpr);
+            canvas.style.width = w + 'px';
+            canvas.style.height = h + 'px';
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            seed();
+        }
 
-init();
+        function tick() {
+            if (!running) return;
+            ctx.clearRect(0, 0, w, h);
+            var i, j, p, q, dx, dy, dist, alpha;
+            for (i = 0; i < parts.length; i++) {
+                p = parts[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                if (p.x < -24) p.x = w + 24; else if (p.x > w + 24) p.x = -24;
+                if (p.y < -24) p.y = h + 24; else if (p.y > h + 24) p.y = -24;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                ctx.fillStyle = p.c + '0.6)';
+                ctx.fill();
+            }
+            for (i = 0; i < parts.length; i++) {
+                p = parts[i];
+                for (j = i + 1; j < parts.length; j++) {
+                    q = parts[j];
+                    dx = p.x - q.x;
+                    dy = p.y - q.y;
+                    dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < LINK) {
+                        alpha = (1 - dist / LINK) * 0.32;
+                        ctx.beginPath();
+                        ctx.moveTo(p.x, p.y);
+                        ctx.lineTo(q.x, q.y);
+                        ctx.strokeStyle = p.c + alpha + ')';
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
+            }
+            window.requestAnimationFrame(tick);
+        }
 
-/*Credits and aknowledgements:
-Original Idea and Design by Luca Luzzatti
-
-Optimizing tips from Benjamin K?stner
-General tips from Salvatore Previti*/
+        window.addEventListener('resize', resize, false);
+        document.addEventListener('visibilitychange', function () {
+            running = !document.hidden;
+            if (running) window.requestAnimationFrame(tick);
+        }, false);
+        resize();
+        tick();
+    }
+})();
 </script>
 {/block}
