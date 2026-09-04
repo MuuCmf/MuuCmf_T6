@@ -1,50 +1,48 @@
-<div class="hot-section">
-    <div class="slide-title clearfix">
-        <div class="extend-line"></div>
-        <h3 class="title">热门</h3>
+<div class="widget widget-hot">
+    <div class="widget-head">
+        <span class="head-bar"></span>
+        <h3 class="head-title">热门文章</h3>
+        <span class="head-tip"><i class="fa fa-fire"></i> HOT</span>
     </div>
-    <ul class="list-group">
-        {foreach $hot_lists as $k => $v}
-        {if 2 > $k}
-        <div class="item top-item clearfix">
-            <a href="{:url('articles/pc.Index/detail', ['id'=>$v.id])}" title="{$v.title}">
-            <div class="cover">
-                <img class="image" src="{$v['cover_400']}">
-                <div class="bg"></div>
-                <span class="num num{:intval($k+1)}"></span>
-            </div>
-            <div class="content">
-                <h3 class="title text-ellipsis-2">{$v['title']}</h3>
-                <div class="info">
-                    <div class="category">
-                        {$v['category']['title']}
-                    </div>
-                </div>
-            </div>
+    <div class="widget-body">
+        {notempty name="$hot_lists"}
+        <div class="hot-list">
+            {foreach $hot_lists as $k => $v}
+            {if 2 > $k}
+            <!-- TOP 大图 -->
+            <a class="hot-top" href="{:url('articles/pc.Index/detail', ['id'=>$v.id])}" title="{$v.title}">
+                <span class="rank rank-{php}echo intval($k+1);{/php}">{php}echo intval($k+1);{/php}</span>
+                {notempty name="$v.cover_400"}
+                <img class="hot-img" src="{$v['cover_400']}" alt="{$v['title']}">
+                {else/}
+                <span class="hot-img hot-img-empty"><i class="fa fa-picture-o"></i></span>
+                {/notempty}
+                <span class="hot-mask"></span>
+                <span class="hot-info">
+                    <span class="hot-title text-ellipsis-2">{$v['title']}</span>
+                    <span class="hot-meta">
+                        <span class="cate">{$v['category']['title']|default='文章'}</span>
+                        <span class="view"><i class="fa fa-eye"></i> {$v['handling_view']|default=0}</span>
+                    </span>
+                </span>
             </a>
+            {else/}
+            <!-- 常规小图 -->
+            <a class="hot-line" href="{:url('articles/pc.Index/detail', ['id'=>$v.id])}" title="{$v.title}">
+                <span class="rank rank-{php}echo intval($k+1);{/php}">{php}echo intval($k+1);{/php}</span>
+                <span class="line-body">
+                    <span class="line-title text-ellipsis">{$v['title']}</span>
+                    <span class="line-meta">
+                        <span class="cate">{$v['category']['title']|default='文章'}</span>
+                        <span class="time"><i class="fa fa-clock-o"></i>{$v['create_time_str']|default=''}</span>
+                    </span>
+                </span>
+            </a>
+            {/if}
+            {/foreach}
         </div>
-        {else}
-        <div class="item other-item clearfix">
-            <div class="cover">
-                <a href="{:url('articles/pc.Index/detail', ['id'=>$v.id])}" title="{$v.title}">
-                    <img class="image" src="{$v['cover_400']}">
-                </a>
-                <div class="bg"></div>
-                <span class="num num{php echo intval($k+1)}"></span>
-            </div>
-            <div class="content">
-                <a href="{:url('articles/pc.Index/detail', ['id'=>$v.id])}" title="{$v.title}">
-                    <h3 class="title text-ellipsis-2">{$v['title']}</h3>
-                </a>
-                <div class="info">
-                    <div class="create-time">
-                        <span><i class="fa fa-clock-o" aria-hidden="true"></i></span> {$v['create_time_str']}
-                    </div>
-                </div>
-            </div>
-        </div>
-        {/if}
-
-        {/foreach}
-    </ul>
+        {else/}
+        <div class="hot-empty">暂无热门内容</div>
+        {/notempty}
+    </div>
 </div>

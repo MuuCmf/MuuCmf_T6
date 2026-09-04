@@ -1,107 +1,147 @@
 {extend name="../../common/view/main"/}
 {block name="style"}
 <link href="__STATIC__/articles/pc/css/main.min.css" rel="stylesheet">
-<style>
-    body {
-        background-color: #fff;
-    }
-</style>
 {/block}
 {block name="body"}
-<div id="main-container" class="article-section articles-lists-section">
-    <div class="container">
-        <ol class="breadcrumb">
-            <li><a href="/">首页</a></li>
-            <li><a href="{:url('/articles/lists')}">文章列表</a></li>
-            <li class="active">
-                {if empty($category_id)}
-                全部分类
-                {else /}
-                {$category.title|default='全部分类'}
-                {/if}
-            </li>
-        </ol>
-    </div>
+<div id="main-container" class="article-page articles-lists-page">
+    <div class="article-container">
 
-    <div class="container">
-        <div class="row">
-            <div class="col-md-9">
-                <div class="articles-lists-box">
-                    <div class="">
-                        <section class="items clearfix">
-                            {notempty name="lists"}
-                            {volist name="lists.data" id="v"}
-                            <div class="item">
-                                {notempty name="v.cover_200"}
-                                <div class="cover">
-                                    <a href="{:url('articles/pc.Index/detail', ['id'=>$v.id])}">
-                                        <img class="image" src="{$v.cover_200}" alt="{$v.title}" />
-                                    </a>
-                                </div>
-                                {/notempty}
-                                <div class="content">
-                                    <div class="title">
-                                        <a href="{:url('articles/pc.Index/detail', ['id'=>$v.id])}">
-                                            {$v.title|default='无标题'}
-                                        </a>
-                                    </div>
-                                    <div class="description text-ellipsis-2">
-                                        {$v.description|default='无描述'}
-                                    </div>
-                                    <div class="data clearfix">
-                                        <div class="col-xs-4">
-                                            <span class="category">
-                                                {$v.category.title|default='默认分类'}
-                                            </span>
-                                        </div>
-                                        <div class="col-xs-8 text-right">
-                                            <span class="view">
-                                                <i class="fa fa-eye" aria-hidden="true"></i> {$v.handling_view|default=0}
-                                            </span>
-                                            <span class="support">
-                                                <i class="fa fa-thumbs-up" aria-hidden="true"></i> {$v.handling_support|default=0}
-                                            </span>
-                                            <span class="favorites">
-                                                <i class="fa fa-star" aria-hidden="true"></i> {$v.handling_favorites|default=0}
-                                            </span>
-                                            <span class="time">
-                                                <i class="fa fa-clock-o" aria-hidden="true"></i> {$v.create_time_str|default=''}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
+        <!-- 面包屑 -->
+        <div class="article-breadcrumb">
+            <a href="/">首页</a>
+            <span class="sep"><i class="fa fa-angle-right"></i></span>
+            <a href="{:url('/articles/lists')}">文章列表</a>
+            <span class="sep"><i class="fa fa-angle-right"></i></span>
+            {if empty($category_id)}
+            <span class="cur">全部分类</span>
+            {else /}
+            <span class="cur">{$category.title|default='全部分类'}</span>
+            {/if}
+        </div>
+
+        <div class="article-layout">
+            <!-- 左侧主内容 -->
+            <section class="article-main">
+                <div class="list-card">
+                    <!-- 头部 -->
+                    <header class="list-head">
+                        <div class="head-info">
+                            <div class="head-icon">
+                                <i class="fa fa-file-text-o"></i>
                             </div>
-                            {/volist}
-                            {else/}
-                            <div style="font-size:1em;padding:2em 0;color: #ccc;text-align: center">
-                                该类型下没有内容~
+                            <div class="head-text">
+                                {if !empty($keyword)}
+                                <h2 class="title">搜索：{$keyword}</h2>
+                                {else/}
+                                <h2 class="title">{if empty($category_id)}全部文章{else/}{$category.title|default='全部文章'}{/if}</h2>
+                                {/if}
+                                <p class="sub">
+                                    {if !empty($keyword)}
+                                    为你找到的相关内容
+                                    {elseif !empty($category) && !empty($category['description'])}
+                                    {$category.description}
+                                    {else/}
+                                    汇聚优质内容，发现有趣观点
+                                    {/if}
+                                    <span class="total">共 {$lists.total|default=0} 篇</span>
+                                </p>
                             </div>
-                            {/notempty}
-                        </section>
-                        <div class="page-section">
-                            {if !empty($pager)}
-                            {:htmlspecialchars_decode($pager)}
-                            {/if}
                         </div>
+
+                        <!-- 列表页搜索 -->
+                        <form class="list-search" action="{:url('articles/pc.Index/lists')}" method="get" role="search">
+                            {notempty name="$category_id"}
+                            <input type="hidden" name="category_id" value="{$category_id}">
+                            {/notempty}
+                            <div class="search-wrap">
+                                <i class="fa fa-search"></i>
+                                <input type="text" name="keyword" value="{$keyword|default=''}" placeholder="搜索文章关键字…">
+                                <button type="submit">搜索</button>
+                            </div>
+                        </form>
+                    </header>
+
+                    <!-- 文章列表 -->
+                    <div class="list-body">
+                        {notempty name="lists"}
+                        {foreach $lists.data as $v}
+                        <article class="article-item {if empty($v.cover_200)}no-cover{/if}">
+                            {notempty name="$v.cover_200"}
+                            <a class="thumb" href="{:url('articles/pc.Index/detail', ['id'=>$v.id])}" title="{$v.title}">
+                                <img src="{$v.cover_200}" alt="{$v.title}">
+                                <span class="mask"><i class="fa fa-search-plus"></i></span>
+                            </a>
+                            {/notempty}
+
+                            <div class="item-body">
+                                <h3 class="item-title">
+                                    <a href="{:url('articles/pc.Index/detail', ['id'=>$v.id])}" title="{$v.title}">
+                                        {$v.title|default='无标题'}
+                                    </a>
+                                </h3>
+
+                                <div class="item-summary text-ellipsis-2">
+                                    {$v.description|default='该文章暂无摘要…'}
+                                </div>
+
+                                <div class="item-meta">
+                                    <div class="meta-left">
+                                        {if !empty($v['category']['id'])}
+                                        <a class="cat-tag" href="{:url('articles/pc.Index/lists', ['category_id'=>$v.category.id])}">
+                                            <i class="fa fa-folder-open-o"></i>{$v.category.title|default='默认分类'}
+                                        </a>
+                                        {else/}
+                                        <span class="cat-tag"><i class="fa fa-folder-open-o"></i>默认分类</span>
+                                        {/if}
+                                    </div>
+                                    <div class="meta-right">
+                                        <span class="meta-item" title="浏览">
+                                            <i class="fa fa-eye"></i>{$v.handling_view|default=0}
+                                        </span>
+                                        <span class="meta-item" title="点赞">
+                                            <i class="fa fa-thumbs-up"></i>{$v.handling_support|default=0}
+                                        </span>
+                                        <span class="meta-item" title="收藏">
+                                            <i class="fa fa-star"></i>{$v.handling_favorites|default=0}
+                                        </span>
+                                        <span class="meta-item item-time" title="发布时间">
+                                            <i class="fa fa-clock-o"></i>{$v.create_time_str|default=''}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </article>
+                        {/foreach}
+                        {else/}
+                        <div class="empty-list">
+                            <div class="empty-icon"><i class="fa fa-inbox"></i></div>
+                            <p class="empty-title">该分类下暂时没有内容</p>
+                            <p class="empty-tip">稍后再来看看，或者换个分类浏览吧～</p>
+                            <a class="empty-btn" href="{:url('articles/pc.Index/lists')}">返回全部文章</a>
+                        </div>
+                        {/notempty}
                     </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="right-block">
-                    {include file="pc/common/_category" /}
-                </div>
-                <div class="right-block">
-                    <div class="right-block-item">
-                        {include file="pc/common/_hot" /}
+
+                    <!-- 分页 -->
+                    {if !empty($pager)}
+                    <div class="page-nav">
+                        {:htmlspecialchars_decode($pager)}
                     </div>
+                    {/if}
                 </div>
-            </div>
+            </section>
+
+            <!-- 右侧侧边栏 -->
+            <aside class="article-aside">
+                {include file="pc/common/_category" /}
+                {include file="pc/common/_hot" /}
+            </aside>
         </div>
     </div>
 </div>
 {/block}
 {block name="script"}
 <script>
-
+    // 列表页：暂无额外脚本
 </script>
 {/block}

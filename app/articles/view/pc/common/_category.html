@@ -1,16 +1,38 @@
-<div class="category-section">
-    <div class="slide-title clearfix">
-        <div class="extend-line"></div>
-        <h3 class="title">分类</h3>
+<div class="widget widget-category">
+    <div class="widget-head">
+        <span class="head-bar"></span>
+        <h3 class="head-title">文章分类</h3>
     </div>
-    <ul class="list-group">
-        <a class="list-group-item {if empty($category_id)}active{/if}" href="{:url('articles/pc.Index/lists')}">
-            全部分类
-        </a>
-        {foreach $category_tree as $k => $v}
-        <a class="list-group-item {if !empty($category_id) && ($category_id == $v['id'] || $category_id == $v['pid'])}active{/if}" href="{:url('articles/pc.Index/lists', ['category_id' => $v.id])}">
-                {$v['title']}
-        </a>
-        {/foreach}
-    </ul>
+    <div class="widget-body">
+        <ul class="cate-list">
+            <li class="cate-item {if empty($category_id)}active{/if}">
+                <a href="{:url('articles/pc.Index/lists')}">
+                    
+                    <span class="cate-name">全部分类</span>
+                    <i class="fa fa-angle-right arrow"></i>
+                </a>
+            </li>
+            {foreach $category_tree as $v}
+            <li class="cate-item {if !empty($category_id) && ($category_id == $v['id'] || $category_id == $v['pid'])}active{/if}">
+                <a href="{:url('articles/pc.Index/lists', ['category_id' => $v.id])}">
+                    
+                    <span class="cate-name">{$v['title']}</span>
+                    <i class="fa fa-angle-right arrow"></i>
+                </a>
+                {notempty name="$v._child"}
+                <ul class="cate-sub">
+                    {foreach $v._child as $cc}
+                    <li class="{if !empty($category_id) && $category_id == $cc['id']}active{/if}">
+                        <a href="{:url('articles/pc.Index/lists', ['category_id' => $cc.id])}">
+                            <span class="dot"></span>
+                            {$cc['title']}
+                        </a>
+                    </li>
+                    {/foreach}
+                </ul>
+                {/notempty}
+            </li>
+            {/foreach}
+        </ul>
+    </div>
 </div>
