@@ -49,6 +49,9 @@ class Articles extends Admin
         
         foreach($lists['data'] as &$val){
             $val = $this->ArticlesLogic->formatData($val);
+            //拼接url地址
+            $val['h5_url'] = url('h5\index', [], true, true) . '#/articles/pages/articles/detail?id=' . $val['id'];
+            $val['pc_url'] = (string)url('articles/pc.Index/detail', ['id' => $val['id']], true, true);
         }
         unset($val);
 

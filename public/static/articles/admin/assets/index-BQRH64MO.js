@@ -1,0 +1,1 @@
+import{Q as r,Y as e,dt as n}from"./element-plus-DYt1rhvT.js";import{n as s}from"./index-DGBnWwGI.js";var t=s({},[["render",function(s,t){return n(),r("div",null,[...t[0]||(t[0]=[e("h1",null,"文章列表",-1)])])}]]);export{t as default};

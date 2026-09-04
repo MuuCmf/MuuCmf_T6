@@ -1,1 +1,0 @@
-import{G as r,J as e,st as n}from"./element-plus-C7K0LEAh.js";import{n as s}from"./index-CSUUXaod.js";var t=s({},[["render",function(s,t){return n(),e("div",null,[...t[0]||(t[0]=[r("h1",null,"文章列表",-1)])])}]]);export{t as default};

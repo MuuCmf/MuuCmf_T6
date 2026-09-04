@@ -1,0 +1,1 @@
+import{Q as r,dt as e}from"./element-plus-DYt1rhvT.js";import{n as t}from"./index-DGBnWwGI.js";var n=t({},[["render",function(t,n){return e(),r("div")}]]);export{n as default};
