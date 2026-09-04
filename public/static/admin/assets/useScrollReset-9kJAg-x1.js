@@ -1,0 +1,1 @@
+import{Qt as l,_n as e}from"./element-plus-yEiliPVJ.js";function o(){const o=e(null);return{scrollContainerRef:o,resetScrollTop:()=>{l(()=>{o.value&&(o.value.scrollTop=0)})}}}export{o as t};

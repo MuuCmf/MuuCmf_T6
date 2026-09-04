@@ -1,1 +1,0 @@
-import{L as o,gt as l,i as r}from"./axios-CmiPLYrR.js";function s(){const r=l(null);return{scrollContainerRef:r,resetScrollTop:()=>{o(()=>{r.value&&(r.value.scrollTop=0)})}}}r();export{s as t};
