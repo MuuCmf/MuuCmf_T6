@@ -1,0 +1,1 @@
+import{J as r,st as e}from"./element-plus-C7K0LEAh.js";import{n as s}from"./index-CSUUXaod.js";var t=s({},[["render",function(s,t){return e(),r("div")}]]);export{t as default};

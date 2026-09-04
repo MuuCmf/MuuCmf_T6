@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS `muucmf_articles_category` (
   `id` int(11) unsigned NOT NULL AUTO_INCREMENT COMMENT '自增ID',
   `shopid` int(11) unsigned NOT NULL DEFAULT '0' COMMENT '店铺ID',
   `title` varchar(32) NOT NULL COMMENT '标题',
+  `description` varchar(200) NOT NULL DEFAULT '' COMMENT '描述',
   `cover` varchar(256) NOT NULL COMMENT '图标',
   `pid` int(11) unsigned NOT NULL DEFAULT '0' COMMENT '上级分类ID',
   `can_post` tinyint(4) NOT NULL DEFAULT '0' COMMENT '前台可投稿',

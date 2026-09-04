@@ -397,3 +397,5 @@ UPDATE `muucmf_extend_config` SET `remark` = '平台证书模式下需填写' WH
 
 INSERT INTO `muucmf_menu` (`id`, `title`, `pid`, `sort`, `url`, `hide`, `type`, `tip`, `group`, `is_dev`, `icon`, `module`) VALUES
 ('30DC271B-AFF8-467F-5A1D-B54B7D0C52A3', 'MuuAgent', '167253B8-B360-E5C8-3F94-F0502E971DAF', 10, 'admin/extend/muuagent', 0, 0, 'MuuAgent配置项', '第三方扩展', 0, 'microchip', 'admin');
+
+ALTER TABLE `muucmf_articles_category` ADD `description` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '简短描述' AFTER `title`;
