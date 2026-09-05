@@ -14,7 +14,7 @@ class Comment extends Base
     /**
      * 内容状态
      */
-    public array $_status = [
+     protected array $__status = [
         1  => '启用',
         0  => '禁用',
         -1 => '未审核',
@@ -83,7 +83,7 @@ class Comment extends Base
                 }
             }
 
-            $data['status_str'] = $this->_status[$data['status']];
+            $data['status_str'] = $this->__status[$data['status']];
             if (!empty($data['create_time'])) {
                 $data['create_time_str'] = time_format($data['create_time']);
                 $data['create_time_friendly_str'] = friendly_date($data['create_time']);

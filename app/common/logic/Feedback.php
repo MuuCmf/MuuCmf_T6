@@ -10,7 +10,7 @@ use app\common\model\Module;
 
 class Feedback
 {
-    public array $_status  = [
+     protected array $__status  = [
         2  => '已完成',
         1  => '处理中',
         0  => '待处理',
@@ -46,7 +46,7 @@ class Feedback
             }
         }
         $data['type_str'] = $this->_type[$data['type']] ?? '';
-        $data['status_str'] = $this->_status[$data['status']] ?? '';
+        $data['status_str'] = $this->__status[$data['status']] ?? '';
         //时间戳格式化
         $data['create_time_str'] = time_format($data['create_time']);
         $data['update_time_str'] = time_format($data['update_time']);

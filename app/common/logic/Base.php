@@ -6,7 +6,7 @@ use think\Exception;
 
 class Base
 {
-    public array $_status = [
+    public $_status = [
         1  => '启用',
         0  => '禁用',
         -1 => '已删除',

@@ -9,7 +9,7 @@ class Announce
         1 => '图片'
     ];
 
-    public array $_status  = [
+    protected array $__status  = [
         1  => '启用',
         0  => '禁用',
         -1 => '删除',
@@ -28,7 +28,7 @@ class Announce
         $data['teminal_str'] = $this->_teminal[$data['teminal']];
         
         if (isset($data['status'])) {
-            $data['status_str'] = $this->_status[$data['status']];
+            $data['status_str'] = $this->__status[$data['status']];
         }
 
         if (isset($data['type'])) {

@@ -7,7 +7,7 @@ use app\common\logic\VipCard as VipCardLogic;
 
 class Vip extends Base
 {
-    public array $_status = [
+     protected array $__status = [
         1 => '启用',
         0 => '已禁用',
         -1 => '已删除',
@@ -33,7 +33,7 @@ class Vip extends Base
                 $data['vip_card_info'] = (new VipCardLogic())->formatData($card_data);
             }
 
-            $data = $this->setStatusAttr($data, $this->_status);
+            $data = $this->setStatusAttr($data, $this->__status);
             $data = $this->setTimeAttr($data);
             if ($data['end_time'] == 0) {
                 $data['end_time_str'] = '永久';

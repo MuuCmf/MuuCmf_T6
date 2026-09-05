@@ -24,7 +24,7 @@ class Orders extends Base
      * 订单通用状态
      * @var array
      */
-    public array $_status = [
+    public $_status = [
         1 => '待付款',
         2 => '待发货',
         3 => '待收货',

@@ -10,7 +10,7 @@ use app\common\model\AuthorGroup;
 class Author extends Base
 {
 
-    public array $_status = [
+     protected array $__status = [
         0 => '已禁用',
         1 => '已启用',
         -1 => '未审核',
@@ -71,7 +71,7 @@ class Author extends Base
             }
 
             // 状态描述
-            $data['status_str'] = $this->_status[$data['status']];
+            $data['status_str'] = $this->__status[$data['status']];
             // 时间处理
             if (!empty($data['create_time'])) {
                 $data['create_time_str'] = time_format($data['create_time']);
