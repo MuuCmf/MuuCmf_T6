@@ -7,7 +7,7 @@ use app\common\logic\VipCard as VipCardLogic;
 
 class Vip extends Base
 {
-    public $_status = [
+    public array $_status = [
         1 => '启用',
         0 => '已禁用',
         -1 => '已删除',

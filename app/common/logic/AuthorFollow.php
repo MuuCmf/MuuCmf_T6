@@ -11,7 +11,7 @@ use app\common\model\AuthorGroup as AuthorGroupModel;
 class AuthorFollow extends Base
 {
 
-    public $_status = [
+    public array $_status = [
         0 => '未关注',
         1 => '已关注',
     ];

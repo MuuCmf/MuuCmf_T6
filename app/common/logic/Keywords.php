@@ -5,7 +5,7 @@ namespace app\common\logic;
 class Keywords extends Base
 {
 
-    public $_status  = [
+    public array $_status  = [
         1  => '启用',
         0  => '禁用',
         -1 => '删除',

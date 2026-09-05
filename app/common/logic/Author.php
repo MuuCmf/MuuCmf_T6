@@ -10,7 +10,7 @@ use app\common\model\AuthorGroup;
 class Author extends Base
 {
 
-    public $_status = [
+    public array $_status = [
         0 => '已禁用',
         1 => '已启用',
         -1 => '未审核',

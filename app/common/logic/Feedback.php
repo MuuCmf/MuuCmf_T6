@@ -10,7 +10,7 @@ use app\common\model\Module;
 
 class Feedback
 {
-    public $_status  = [
+    public array $_status  = [
         2  => '已完成',
         1  => '处理中',
         0  => '待处理',

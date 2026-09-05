@@ -9,7 +9,7 @@ class Announce
         1 => '图片'
     ];
 
-    public $_status  = [
+    public array $_status  = [
         1  => '启用',
         0  => '禁用',
         -1 => '删除',
