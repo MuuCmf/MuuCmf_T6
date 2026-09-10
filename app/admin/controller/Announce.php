@@ -49,13 +49,16 @@ class Announce extends Admin
         $fields = '*';
         $rows = input('rows', 20, 'intval');
         $lists = $this->AnnounceModel->getListByPage($map, 'sort desc,create_time desc', $fields, $rows);
-        $pager = $lists->render();
+
         $lists = $lists->toArray();
 
         foreach ($lists['data'] as &$val) {
             $val = $this->AnnounceLogic->formatData($val);
         }
         unset($val);
+
+        // 返回Micro模块是否安装，用于前端控制"链接至"功能的显示
+        $lists['micro_is_install'] = $this->ModuleModel->checkInstalled('micro');
 
         // 返回数据
         return $this->success('success', $lists);
@@ -74,7 +77,6 @@ class Announce extends Admin
             return $this->handleEdit((int)$id, $title);
         }
         
-        // return $this->showEditForm((int)$id, (string)$teminal);
     }
     
     /**
@@ -132,38 +134,6 @@ class Announce extends Admin
         ];
         
         return json_encode($linkTo, JSON_UNESCAPED_UNICODE);
-    }
-    
-    /**
-     * 显示编辑表单
-     * @param int $id
-     * @param string $teminal
-     * @return void
-     */
-    protected function showEditForm(int $id, string $teminal): void
-    {
-        if ($id > 0) {
-            $data = $this->AnnounceModel->getDataById($id);
-            $data = $this->AnnounceLogic->formatData($data);
-            $teminal = $data['teminal'] ?? $teminal;
-            
-            // 链接参数二次处理
-            if (!empty($data['link'])) {
-                $link = $data['link'];
-                $link['param'] = json_encode($link['param'], JSON_UNESCAPED_UNICODE);
-                $data['link'] = $link;
-            }
-        } else {
-            // 初始化数据
-            $data = $this->getDefaultData($teminal);
-        }
-        
-        // 获取Micro应用是否安装
-        $microIsSetup = $this->ModuleModel->checkInstalled('micro');
-
-        if ($microIsSetup) {
-            $this->loadMicroLinks($teminal);
-        }
     }
     
     /**

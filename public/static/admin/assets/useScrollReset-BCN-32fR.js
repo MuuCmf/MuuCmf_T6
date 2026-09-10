@@ -1,0 +1,1 @@
+import{en as e,yn as l}from"./element-plus-ClFgJQZT.js";function o(){const o=l(null);return{scrollContainerRef:o,resetScrollTop:()=>{e(()=>{o.value&&(o.value.scrollTop=0)})}}}export{o as t};
