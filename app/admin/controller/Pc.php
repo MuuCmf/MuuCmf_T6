@@ -4,16 +4,15 @@ namespace app\admin\controller;
 
 use think\facade\Db;
 use think\Exception;
-use app\common\model\Module as ModuleModel;
 use app\common\model\UserNav as UserNavModel;
 use app\common\model\Channel as ChannelModel;
 use app\common\model\SeoRule as SeoRuleModel;
 
 class Pc extends Admin
 {
-    protected $userNavModel;
-    protected $channelModel;
-    protected $seoRuleModel;
+    protected UserNavModel $userNavModel;
+    protected ChannelModel $channelModel;
+    protected SeoRuleModel $seoRuleModel;
     /**
      * 构造方法
      * @access public

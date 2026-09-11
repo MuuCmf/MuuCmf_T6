@@ -11,9 +11,9 @@ use app\common\model\FieldSetting as FieldSettingModel;
  */
 class Field extends Admin
 {
-    protected $FieldModel;
-    protected $FieldGroupModel;
-    protected $FieldSettingModel;
+    protected FieldModel $FieldModel;
+    protected FieldGroupModel $FieldGroupModel;
+    protected FieldSettingModel $FieldSettingModel;
 
     public function __construct()
     {

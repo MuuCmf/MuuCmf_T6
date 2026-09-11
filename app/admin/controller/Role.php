@@ -10,9 +10,9 @@ use app\common\model\AuthorGroup as AuthorGroupModel;
 
 class Role extends Admin
 {
-    protected $AuthorModel;
-    protected $AuthorLogic;
-    protected $AuthorGroupModel;
+    protected AuthorModel $AuthorModel;
+    protected AuthorLogic $AuthorLogic;
+    protected AuthorGroupModel $AuthorGroupModel;
 
     public function __construct()
     {

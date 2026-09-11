@@ -15,12 +15,12 @@ use app\common\model\ScoreType as ScoreTypeModel;
  */
 class Action extends Admin
 {
-    protected $MemberModel;
-    protected $ActionModel;
-    protected $ActionLimitModel;
-    protected $ActionLogModel;
-    protected $ModuleModel;
-    protected $ScoreTypeModel;
+    protected MemberModel $MemberModel;
+    protected ActionModel $ActionModel;
+    protected ActionLimitModel $ActionLimitModel;
+    protected ActionLogModel $ActionLogModel;
+    protected ModuleModel $ModuleModel;
+    protected ScoreTypeModel $ScoreTypeModel;
 
     public function __construct()
     {

@@ -13,8 +13,8 @@ use app\common\facade\channel\Channel as ChannelServer;
 
 class Withdraw extends Admin
 {
-    protected $WithdrawModel;
-    protected $WithdrawLogic;
+    protected WithdrawModel $WithdrawModel;
+    protected WithdrawLogic $WithdrawLogic;
     function __construct()
     {
         parent::__construct();
@@ -40,7 +40,7 @@ class Withdraw extends Admin
         $rows = input('rows', 15, 'intval');
         // rows限制
         $rows = min($rows, 100);
-        
+
         // 获取分页列表
         $lists = $this->WithdrawModel->getListByPage($map, 'id desc create_time desc', '*', $rows);
         $pager = $lists->render();
@@ -78,7 +78,7 @@ class Withdraw extends Admin
     {
         $id = input('id', 0, 'intval');
         if (request()->isPost()) {
-            
+
             try {
                 $map = [
                     ['id', '=', $id],
@@ -160,13 +160,12 @@ class Withdraw extends Admin
                 $pay_config = ChannelServer::config($channel, $this->shopid);
                 $PayService = PayServer::init($pay_config['appid'], $pay_channel, $this->shopid);
                 $result = $PayService->server->cancelTransfer($data['order_no']);
-                
+
                 //解冻冻结资金(返还至用户余额)
                 (new MemberWallet())->freeze($data['shopid'], $data['uid'], $data['price'], 0);
- 
+
                 Db::commit();
                 return $this->success('操作成功');
-
             } catch (Exception $e) {
                 Db::rollback();
                 return $this->error($e->getMessage());

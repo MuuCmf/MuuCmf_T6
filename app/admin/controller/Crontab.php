@@ -9,9 +9,9 @@ use app\common\model\CrontabLog as CrontabLogModel;
 
 class Crontab extends Admin
 {
-    protected $CrontabLogic;
-    protected $CrontabModel;
-    protected $CrontabLogModel;
+    protected CrontabLogic $CrontabLogic;
+    protected CrontabModel $CrontabModel;
+    protected CrontabLogModel $CrontabLogModel;
 
     function __construct()
     {

@@ -2,13 +2,10 @@
 
 namespace app\admin\controller;
 
-use think\facade\Db;
 use think\facade\View;
 use app\common\model\Attachment;
 use app\common\model\Member as MemberModel;
-use app\common\model\MemberSync as MemberSyncModel;
 use app\common\model\AuthGroup;
-use app\common\model\ScoreType as ScoreTypeModel;
 use app\common\model\ScoreLog as ScoreLogModel;
 
 /**
@@ -16,8 +13,8 @@ use app\common\model\ScoreLog as ScoreLogModel;
  */
 class Member extends Admin
 {
-    protected $MemberModel;
-    protected $Attachment;
+    protected MemberModel $MemberModel;
+    protected Attachment $Attachment;
 
     /**
      * 构造方法

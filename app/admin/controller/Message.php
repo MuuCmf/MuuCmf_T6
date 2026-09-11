@@ -2,7 +2,6 @@
 
 namespace app\admin\controller;
 
-use app\common\model\AuthGroup;
 use app\common\model\MessageContent as MessageContentModel;
 use app\common\model\MessageType as MessageTypeModel;
 use app\common\model\Message as MessageModel;
@@ -15,9 +14,9 @@ use think\exception\ValidateException;
  */
 class Message extends Admin
 {
-    protected $MessageModel;
-    protected $MessageContentModel;
-    protected $MessageTypeModel;
+    protected MessageModel $MessageModel;
+    protected MessageContentModel $MessageContentModel;
+    protected MessageTypeModel $MessageTypeModel;
 
     /**
      * 构造方法

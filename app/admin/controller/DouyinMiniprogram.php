@@ -10,8 +10,8 @@ use app\common\logic\Orders as OrdersLogic;
 
 class DouyinMiniprogram extends Admin
 {
-    private $MiniProgramModel;
-    protected $DouyinMpSettleModel;
+    private DouyinMpConfig $MiniProgramModel;
+    protected DouyinMpSettleModel $DouyinMpSettleModel;
     function __construct()
     {
         parent::__construct();

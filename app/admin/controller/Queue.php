@@ -2,8 +2,6 @@
 
 namespace app\admin\controller;
 
-use think\paginator\driver\Bootstrap;
-
 /**
  * 消息队列控制器
  */

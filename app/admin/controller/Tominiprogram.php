@@ -12,8 +12,8 @@ use app\common\model\Tominiprogram as TominiprogramModel;
  */
 class Tominiprogram extends Admin
 {
-    protected $TominiprogramModel;
-    protected $TominiprogramLogic;
+    protected TominiprogramModel $TominiprogramModel;
+    protected TominiprogramLogic $TominiprogramLogic;
     protected $type;
     public function __construct()
     {

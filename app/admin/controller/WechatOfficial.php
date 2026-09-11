@@ -15,8 +15,8 @@ use app\admin\validate\Account as AccountValidate;
  */
 class WechatOfficial extends Admin
 {
-    private $wechatConfigModel;
-    private $autoReplyModel;
+    private WechatConfig $wechatConfigModel;
+    private WechatAutoReply $autoReplyModel;
     function __construct()
     {
         parent::__construct();

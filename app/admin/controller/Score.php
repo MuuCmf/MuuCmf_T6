@@ -12,9 +12,9 @@ use app\common\model\ScoreType as ScoreTypeModel;
  */
 class Score extends Admin
 {
-    protected $MemberModel;
-    protected $scoreLogModel;
-    protected $scoreTypeModel;
+    protected MemberModel $MemberModel;
+    protected ScoreLogModel $scoreLogModel;
+    protected ScoreTypeModel $scoreTypeModel;
 
     /**
      * 构造方法
