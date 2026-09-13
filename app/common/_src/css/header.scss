@@ -21,6 +21,12 @@
       height: 60px;
       background: transparent;
 
+      // 调整溢出菜单时裁切，防止换行闪烁
+      .index-menu.nav-clipping {
+        overflow: hidden;
+        height: 60px;
+      }
+
       .logo {
         flex-shrink: 0;
 
