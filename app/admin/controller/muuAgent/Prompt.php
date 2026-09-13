@@ -249,10 +249,10 @@ class Prompt extends Admin
         try {
             $result = $this->muuAgent->callAdmin('GET', '/admin/prompt-template', ['pageSize' => 1000]);
             
-            // 从模板列表中提取分类
+            // 从模板列表中提取分类（callAdmin 已统一解包 envelope，$result 即业务数据 { list, ... }）
             $categories = [];
-            if (isset($result['data']['list']) && is_array($result['data']['list'])) {
-                foreach ($result['data']['list'] as $template) {
+            if (isset($result['list']) && is_array($result['list'])) {
+                foreach ($result['list'] as $template) {
                     if (isset($template['category']) && !in_array($template['category'], $categories)) {
                         $categories[] = $template['category'];
                     }

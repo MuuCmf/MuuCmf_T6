@@ -108,7 +108,7 @@ class MuuAgent
      * @param string $path 接口路径，如 /admin/model 或 /api/admin/model
      * @param array $data 请求参数
      * @param array $extraHeaders 额外请求头
-     * @return array 响应数据
+     * @return array 中台业务数据（已统一解包 envelope，不再包含 code/message/data 外层结构）
      * @throws \RuntimeException
      */
     public function callAdmin(string $method, string $path, array $data = [], array $extraHeaders = []): array
@@ -148,7 +148,7 @@ class MuuAgent
      * @param array $data 请求参数
      * @param string $uid 终端用户 ID（必传，用于标识操作者）
      * @param array $extraHeaders 额外请求头
-     * @return array 响应数据
+     * @return array 中台业务数据（已统一解包 envelope，不再包含 code/message/data 外层结构）
      * @throws \RuntimeException
      */
     public function callApi(string $method, string $path, array $data = [], string $uid = '', array $extraHeaders = []): array
@@ -232,6 +232,13 @@ class MuuAgent
         }
 
         unset($response['http_code']);
+
+        // 统一响应规范：中台标准响应格式为 { code, message, data, timestamp }，
+        // 此处统一解包，只保留业务数据 data，避免把中台 envelope 透传给控制器
+        // 造成前端收到双层 data 嵌套；若响应不含 data 键（非标准格式），原样返回
+        if (array_key_exists('data', $response)) {
+            return $response['data'] ?? [];
+        }
 
         return $response;
     }

@@ -58,9 +58,8 @@ class Agent extends Admin
 
         try {
             $result = $this->muuAgent->callAdmin('GET', '/api/admin/agent', $data);
-            // 中台返回格式: { code, message, data: { list, total, page, pageSize }, timestamp }
-            // 只返回 data 部分给前端，避免嵌套
-            return $this->success('请求成功', $result['data'] ?? []);
+            // callAdmin 已统一解包中台 envelope，$result 即业务数据 { list, total, page, pageSize }
+            return $this->success('请求成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
         }

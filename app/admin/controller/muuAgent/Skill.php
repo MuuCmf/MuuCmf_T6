@@ -33,10 +33,10 @@ class Skill extends Admin
      */
     public function list()
     {
-        $page      = (int)input('get.page', 1, 'intval');           // 页码，从1开始
-        $pageSize  = (int)input('get.page_size', 20, 'intval');     // 每页条数
-        $sortBy    = (string)input('get.sort_by', 'name', 'text');  // 排序字段
-        $sortOrder = (string)input('get.sort_order', 'asc', 'text'); // 排序方向
+        $page      = (int)input('get.page', 1, 'intval');            // 页码，从1开始
+        $pageSize  = (int)input('get.pageSize', 20, 'intval');       // 每页条数（与前端 camelCase 参数名对齐）
+        $sortBy    = (string)input('get.sortBy', 'name', 'text');    // 排序字段
+        $sortOrder = (string)input('get.sortOrder', 'asc', 'text');  // 排序方向
 
         $data = [
             'page'      => $page,

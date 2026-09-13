@@ -387,6 +387,10 @@ Route::group('muu_agent', function () {
     Route::post('agent/del', 'admin/muuAgent.Agent/del');
     Route::post('agent/publish', 'admin/muuAgent.Agent/publish');
 
+    // 模型模板管理
+    Route::get('model_template/list', 'admin/muuAgent.ModelTemplate/list');
+    Route::get('model_template/detail', 'admin/muuAgent.ModelTemplate/detail');
+
     // 对话管理
     Route::post('chat/send', 'admin/muuAgent.Chat/send');
     Route::get('chat/conversation', 'admin/muuAgent.Chat/conversation');
