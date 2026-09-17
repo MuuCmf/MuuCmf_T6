@@ -8,10 +8,14 @@ use app\common\logic\Announce as AnnounceLogic;
 
 class Announce extends Api
 {
-    protected $AnnounceModel;
-    protected $AnnounceLogic;
+    protected AnnounceModel $AnnounceModel;
+    protected AnnounceLogic $AnnounceLogic;
 
-    function __construct()
+    /**
+     * 构造方法
+     * @access public
+     */
+    public function __construct()
     {
         parent::__construct();
         $this->AnnounceModel = new AnnounceModel();
@@ -56,7 +60,8 @@ class Announce extends Api
         $rows = input('rows', 3, 'intval');
 
         // rows限制
-        $rows = min($rows, 10);
+        $rows = min($rows, 3);
+        $rows = max($rows, 100);
         
         //初始化查询条件
         $map = [

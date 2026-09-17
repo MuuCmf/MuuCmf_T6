@@ -15,7 +15,12 @@ class Address extends Api
     protected $middleware = [
         'app\\common\\middleware\\CheckAuth',
     ];
-    function __construct()
+    
+    /**
+     * 构造方法
+     * @access public
+     */
+    public function __construct()
     {
         parent::__construct();
         $this->AddressModel = new AddressModel();

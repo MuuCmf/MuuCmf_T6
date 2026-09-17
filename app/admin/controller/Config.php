@@ -14,6 +14,7 @@ use app\common\model\Config as MuuConfigModel;
  */
 class Config extends Admin
 {
+    // 配置模型
     protected MuuConfigModel $ConfigModel;
     /**
      * 构造方法
@@ -24,8 +25,10 @@ class Config extends Admin
         parent::__construct();
         $this->ConfigModel = new MuuConfigModel();
     }
-
-    // 获取某个标签的配置参数
+    
+    /**
+     * 获取某个标签的配置参数
+     */
     public function group()
     {
         if (request()->isPost()) {

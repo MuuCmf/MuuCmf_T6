@@ -96,7 +96,8 @@ class Action extends Admin
 
     /**
      * 删除日志
-     * @param mixed $ids
+     * @param array|int $ids  日志ID数组或ID
+     * @return json
      */
     public function remove()
     {

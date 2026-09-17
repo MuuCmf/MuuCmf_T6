@@ -12,13 +12,12 @@ use app\common\model\MemberAuthentication as AuthenticationModel;
  */
 class Authentication extends Admin
 {
-    protected $MemberModel;
-    protected $AuthenticationModel;
+    protected MemberModel $MemberModel;
+    protected AuthenticationModel $AuthenticationModel;
 
     /**
      * 构造方法
      * @access public
-     * @param  App  $app  应用对象
      */
     public function __construct()
     {
@@ -28,6 +27,10 @@ class Authentication extends Admin
         $this->AuthenticationModel = new AuthenticationModel();
     }
 
+    /**
+     * 实名认证用户列表
+     * @return json
+     */
     public function list()
     {
         $map = [];

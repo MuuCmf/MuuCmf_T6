@@ -25,7 +25,6 @@ class Common extends Admin
      */
     public function clearCache()
     {
-
         // 清理缓存
         $res = Cache::clear();
 

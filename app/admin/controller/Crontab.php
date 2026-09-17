@@ -13,7 +13,11 @@ class Crontab extends Admin
     protected CrontabModel $CrontabModel;
     protected CrontabLogModel $CrontabLogModel;
 
-    function __construct()
+    /**
+     * 构造方法
+     * @access public
+     */
+    public function __construct()
     {
         parent::__construct();
         $this->CrontabModel = new CrontabModel();

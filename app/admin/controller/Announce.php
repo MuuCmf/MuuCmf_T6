@@ -23,7 +23,8 @@ class Announce extends Admin
      * @access public
      * @return void
      */
-    public function __construct() {
+    public function __construct()
+    {
         parent::__construct();
         $this->ModuleModel = new ModuleModel();
         $this->AnnounceModel = new AnnounceModel();
@@ -31,13 +32,14 @@ class Announce extends Admin
     }
 
     /**
-     * 列表
+     * 公告列表
+     * @return json
      */
     public function list()
     {
         // 查询条件
         $map = [
-            ['status', '>', -1],
+            ['status', 'in', [0, 1]],
             ['shopid', '=', 0]
         ];
         // 搜索关键字
@@ -46,9 +48,24 @@ class Announce extends Admin
             $map[] = ['title', 'like', '%' . $keyword . '%'];
         }
 
+        // 排序字段
+        $order_field = input('order_field', 'id', 'text');
+        $order_type = input('order_type', 'desc', 'text');
+
+        // 定义允许排序的字段白名单
+        $allowed_fields = ['id', 'create_time', 'update_time'];
+        $allowed_types = ['asc', 'desc'];
+        // 白名单验证
+        $order_field = in_array($order_field, $allowed_fields) ? $order_field : 'create_time';
+        $order_type = in_array($order_type, $allowed_types) ? $order_type : 'desc';
+        // 排序字段
+        $order = 'sort desc,' . $order_field . ' ' . $order_type;
+
         $fields = '*';
         $rows = input('rows', 20, 'intval');
-        $lists = $this->AnnounceModel->getListByPage($map, 'sort desc,create_time desc', $fields, $rows);
+        //rows限制
+        $rows = min($rows, 100);
+        $lists = $this->AnnounceModel->getListByPage($map, $order, $fields, $rows);
 
         $lists = $lists->toArray();
 
@@ -76,9 +93,8 @@ class Announce extends Admin
         if (request()->isPost()) {
             return $this->handleEdit((int)$id, $title);
         }
-        
     }
-    
+
     /**
      * 处理编辑提交
      * @param int $id
@@ -90,7 +106,7 @@ class Announce extends Admin
         $data = input();
         $data['shopid'] = $this->shopid;
         $data['uid'] = get_uid();
-        
+
         // 数据验证
         try {
             validate(Common::class)->scene('announce')->check([
@@ -100,20 +116,20 @@ class Announce extends Admin
         } catch (ValidateException $e) {
             return $this->error($e->getError());
         }
-        
+
         // 处理链接数据
         $data['link_to'] = $this->buildLinkData($data);
-        
+
         // 写入数据表
         $res = $this->AnnounceModel->edit($data);
-        
+
         if ($res) {
             return $this->success($title . '成功', $res, cookie('__forward__'));
         }
-        
+
         return $this->error($title . '失败');
     }
-    
+
     /**
      * 构建链接数据
      * @param array $data
@@ -124,7 +140,7 @@ class Announce extends Admin
         if (empty($data['link_type']) && empty($data['link_title'])) {
             return '';
         }
-        
+
         $linkTo = [
             'app' => $data['link_app'] ?? '',
             'type' => $data['link_type'] ?? '',
@@ -132,10 +148,10 @@ class Announce extends Admin
             'type_title' => $data['link_type_title'] ?? '',
             'param' => json_decode($data['link_param'] ?? '{}', true)
         ];
-        
+
         return json_encode($linkTo, JSON_UNESCAPED_UNICODE);
     }
-    
+
     /**
      * 获取默认数据
      * @param string $teminal
@@ -154,7 +170,7 @@ class Announce extends Admin
             'sort' => 0,
         ];
     }
-    
+
     /**
      * 加载 Micro 链接数据
      * @param string $teminal

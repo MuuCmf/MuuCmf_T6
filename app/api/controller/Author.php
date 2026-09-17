@@ -14,9 +14,13 @@ class Author extends Api
     protected AuthorLogic $AuthorLogic;
     
     protected $middleware = [
-        'app\\common\\middleware\\CheckAuth' => ['only' => ['follow', 'isfollow']],
+        'app\\common\\middleware\\CheckAuth' => ['only' => ['follow', 'isfollow']]
     ];
-
+    
+    /**
+     * 构造方法
+     * @access public
+     */
     public function __construct()
     {
         parent::__construct();
@@ -35,6 +39,7 @@ class Author extends Api
     public function lists()
     {
         $rows = input('rows', 20, 'intval');
+        $rows = max($rows, 100);
         $keyword = input('keyword', '', 'text');
         $order_field = input('order_field', 'id', 'text');
         $order_type = input('order_type', 'desc', 'text');
@@ -61,10 +66,10 @@ class Author extends Api
 
     /**
      * 详情
-     *
+     * @access public
      * @param      integer  $id     The identifier
-     * @return     <type>   ( description_of_the_return_value )
-     */
+     * @return     json
+    */
     public function detail()
     {
         $id = input('id', 0, 'intval');
