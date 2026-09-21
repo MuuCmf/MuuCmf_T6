@@ -404,7 +404,9 @@ Route::group('muu_agent', function () {
     Route::post('kb/edit', 'admin/muuAgent.Kb/edit');
     Route::post('kb/del', 'admin/muuAgent.Kb/del');
     Route::post('kb/upload', 'admin/muuAgent.Kb/upload');
+    Route::post('kb/batch_upload', 'admin/muuAgent.Kb/batchUpload');
     Route::get('kb/documents', 'admin/muuAgent.Kb/documents');
+    Route::post('kb/delete_document', 'admin/muuAgent.Kb/deleteDocument');
 
     // 提示词模板管理
     Route::get('prompt/list', 'admin/muuAgent.Prompt/list');

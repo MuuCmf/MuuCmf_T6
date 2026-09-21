@@ -188,7 +188,7 @@ class Agent extends Admin
         $systemPrompt = (string)input('post.system_prompt', '', 'text'); // 系统提示词
         $skills       = (string)input('post.skills', '', 'text');     // 技能列表（JSON数组）
         $mcpServers   = (string)input('post.mcp_servers', '', 'text'); // MCP 服务器列表（JSON数组）
-        $maxSteps     = (int)input('post.max_steps', 0, 'intval');    // 最大步骤数
+        $maxSteps     = input('post.max_steps', null);         // 最大步骤数（0 表示不限制）
         $status       = (bool)input('post.status', null, 'bool');     // 状态
         $sort         = (int)input('post.sort', 0, 'intval');         // 排序
         $modelTemplateCode = (string)input('post.model_template_code', '', 'text'); // 模型模板代码
@@ -225,8 +225,8 @@ class Agent extends Admin
         if (!empty($mcpServers)) {
             $data['mcpServers'] = $mcpServers;
         }
-        if ($maxSteps > 0) {
-            $data['maxSteps'] = $maxSteps;
+        if ($maxSteps !== null && $maxSteps !== '') {
+            $data['maxSteps'] = (int)$maxSteps;
         }
         if (isset($status)) {
             $data['status'] = $status;
