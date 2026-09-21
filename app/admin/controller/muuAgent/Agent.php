@@ -110,6 +110,7 @@ class Agent extends Admin
         $kbRetrievalConfig = (string)input('post.kb_retrieval_config', '', 'text'); // 知识库检索配置（JSON）
         $allowedBuiltinTools = (string)input('post.allowed_builtin_tools', '', 'text'); // 允许的内置工具列表（JSON数组）
         $isPublic    = (bool)input('post.is_public', false, 'bool');  // 是否公开
+        $callableByAgents = input('post.callable_by_agents', null); // 可被调用的智能体白名单（JSON数组字符串；null=不限制，'[]'=禁止）
 
         if (empty($name)) {
             return $this->error('智能体名称不能为空');
@@ -165,6 +166,10 @@ class Agent extends Admin
         if ($isPublic) {
             $data['isPublic'] = $isPublic;
         }
+        // 白名单：前端显式提交时透传（null=清除白名单恢复不限制；'[]'=禁止被调用）
+        if ($callableByAgents !== null) {
+            $data['callableByAgents'] = $callableByAgents;
+        }
 
         try {
             $result = $this->muuAgent->callAdmin('POST', '/admin/agent', $data);
@@ -199,6 +204,7 @@ class Agent extends Admin
         $kbRetrievalConfig = (string)input('post.kb_retrieval_config', '', 'text'); // 知识库检索配置（JSON）
         $allowedBuiltinTools = (string)input('post.allowed_builtin_tools', '', 'text'); // 允许的内置工具列表（JSON数组）
         $isPublic     = (bool)input('post.is_public', null, 'bool');  // 是否公开
+        $callableByAgents = input('post.callable_by_agents', null); // 可被调用的智能体白名单（JSON数组字符串；null=不限制，'[]'=禁止）
 
         if (empty($id)) {
             return $this->error('智能体 ID 不能为空');
@@ -257,6 +263,10 @@ class Agent extends Admin
         }
         if (isset($isPublic)) {
             $data['isPublic'] = $isPublic;
+        }
+        // 白名单：前端显式提交时透传（null=清除白名单恢复不限制；'[]'=禁止被调用）
+        if ($callableByAgents !== null) {
+            $data['callableByAgents'] = $callableByAgents;
         }
 
         try {
