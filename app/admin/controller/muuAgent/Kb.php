@@ -82,14 +82,14 @@ class Kb extends Admin
      */
     public function create()
     {
-        $kbName           = (string)input('post.kb_name', '', 'text');        // 知识库名称
-        $kbCode           = (string)input('post.kb_code', '', 'text');        // 知识库代码
-        $embeddingModel   = (string)input('post.embedding_model', '', 'text'); // 嵌入模型
-        $chunkSize        = (int)input('post.chunk_size', 500, 'intval');     // 分块大小
-        $chunkOverlap     = (int)input('post.chunk_overlap', 50, 'intval');   // 分块重叠
-        $similarityThresh = (float)input('post.similarity_thresh', 0.7, 'float'); // 相似度阈值
-        $topN             = (int)input('post.top_n', 5, 'intval');            // 返回数量
-        $retrievalMethod  = (string)input('post.retrieval_method', 'hybrid', 'text'); // 检索方法
+        $kbName           = (string)input('post.kbName', '', 'text');        // 知识库名称
+        $kbCode           = (string)input('post.kbCode', '', 'text');        // 知识库代码
+        $embeddingModel   = (string)input('post.embeddingModel', '', 'text'); // 嵌入模型
+        $chunkSize        = (int)input('post.chunkSize', 500, 'intval');     // 分块大小
+        $chunkOverlap     = (int)input('post.chunkOverlap', 50, 'intval');   // 分块重叠
+        $similarityThresh = (float)input('post.similarityThresh', 0.7, 'float'); // 相似度阈值
+        $topN             = (int)input('post.topN', 5, 'intval');            // 返回数量
+        $retrievalMethod  = (string)input('post.retrievalMethod', 'hybrid', 'text'); // 检索方法
         $description      = (string)input('post.description', '', 'text');    // 知识库描述
         $uid              = (string)input('post.uid', '', 'text');            // 用户 ID
 
@@ -133,14 +133,14 @@ class Kb extends Admin
      */
     public function edit()
     {
-        $kbId             = (string)input('post.kb_id', '', 'text');         // 知识库 ID
-        $kbName           = (string)input('post.kb_name', '', 'text');       // 知识库名称
-        $embeddingModel   = (string)input('post.embedding_model', '', 'text'); // 嵌入模型
-        $chunkSize        = (int)input('post.chunk_size', 0, 'intval');      // 分块大小
-        $chunkOverlap     = (int)input('post.chunk_overlap', 0, 'intval');   // 分块重叠
-        $similarityThresh = (float)input('post.similarity_thresh', 0, 'float'); // 相似度阈值
-        $topN             = (int)input('post.top_n', 0, 'intval');           // 返回数量
-        $retrievalMethod  = (string)input('post.retrieval_method', '', 'text'); // 检索方法
+        $kbId             = (string)input('post.kbId', '', 'text');         // 知识库 ID
+        $kbName           = (string)input('post.kbName', '', 'text');       // 知识库名称
+        $embeddingModel   = (string)input('post.embeddingModel', '', 'text'); // 嵌入模型
+        $chunkSize        = (int)input('post.chunkSize', 0, 'intval');      // 分块大小
+        $chunkOverlap     = (int)input('post.chunkOverlap', 0, 'intval');   // 分块重叠
+        $similarityThresh = (float)input('post.similarityThresh', 0, 'float'); // 相似度阈值
+        $topN             = (int)input('post.topN', 0, 'intval');           // 返回数量
+        $retrievalMethod  = (string)input('post.retrievalMethod', '', 'text'); // 检索方法
         $description      = (string)input('post.description', '', 'text');   // 知识库描述
         $status           = (bool)input('post.status', null, 'bool');        // 状态
         $uid              = (string)input('post.uid', '', 'text');           // 用户 ID
@@ -197,7 +197,7 @@ class Kb extends Admin
      */
     public function del()
     {
-        $kbId = (string)input('post.kb_id', '', 'text');  // 知识库 ID
+        $kbId = (string)input('post.kbId', '', 'text');  // 知识库 ID
         $uid  = (string)input('post.uid', '', 'text');    // 用户 ID
 
         if (empty($kbId)) {

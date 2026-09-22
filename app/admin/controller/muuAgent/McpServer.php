@@ -89,14 +89,14 @@ class McpServer extends Admin
     public function create()
     {
         $name        = (string)input('post.name', '', 'text');        // MCP Server名称（唯一标识）
-        $displayName = (string)input('post.display_name', '', 'text'); // 显示名称
+        $displayName = (string)input('post.displayName', '', 'text'); // 显示名称
         $description = (string)input('post.description', '', 'text'); // 描述
         $transport   = (string)input('post.transport', 'http', 'text'); // 传输协议（http/sse/stdio）
         $url         = (string)input('post.url', '', 'text');        // HTTP/SSE端点地址
         $command     = (string)input('post.command', '', 'text');    // stdio命令
         $args        = (string)input('post.args', '', 'text');       // stdio参数（JSON数组）
         $env         = (string)input('post.env', '', 'text');        // 环境变量（JSON对象）
-        $apiKey      = (string)input('post.api_key', '', 'text');    // API密钥
+        $apiKey      = (string)input('post.apiKey', '', 'text');    // API密钥
         $timeout     = (int)input('post.timeout', 30000, 'intval');  // 超时时间（毫秒）
         $enabled     = (bool)input('post.enabled', true, 'bool');    // 是否启用
         $tools       = (string)input('post.tools', '', 'text');      // 允许的工具列表（JSON数组）
@@ -175,14 +175,14 @@ class McpServer extends Admin
     public function edit()
     {
         $id          = (string)input('post.id', '', 'text');         // MCP Server ID
-        $displayName = (string)input('post.display_name', '', 'text'); // 显示名称
+        $displayName = (string)input('post.displayName', '', 'text'); // 显示名称
         $description = (string)input('post.description', '', 'text'); // 描述
         $transport   = (string)input('post.transport', '', 'text');  // 传输协议
         $url         = (string)input('post.url', '', 'text');        // HTTP/SSE端点地址
         $command     = (string)input('post.command', '', 'text');    // stdio命令
         $args        = (string)input('post.args', '', 'text');       // stdio参数（JSON数组）
         $env         = (string)input('post.env', '', 'text');        // 环境变量（JSON对象）
-        $apiKey      = input('post.api_key', null);                   // API密钥（传null清空）
+        $apiKey      = input('post.apiKey', null);                   // API密钥（传null清空）
         $timeout     = (int)input('post.timeout', 0, 'intval');      // 超时时间（毫秒）
         $enabled     = input('post.enabled', null, 'bool');          // 是否启用
         $tools       = (string)input('post.tools', '', 'text');      // 允许的工具列表（JSON数组）
@@ -293,13 +293,13 @@ class McpServer extends Admin
      */
     public function discoverTools()
     {
-        $serverId  = (string)input('post.server_id', '', 'text');    // MCP Server ID（可选）
+        $serverId  = (string)input('post.serverId', '', 'text');    // MCP Server ID（可选）
         $transport = (string)input('post.transport', 'http', 'text'); // 传输协议
         $url       = (string)input('post.url', '', 'text');          // HTTP/SSE端点地址
         $command   = (string)input('post.command', '', 'text');      // stdio命令
         $args      = (string)input('post.args', '', 'text');         // stdio参数（JSON数组）
         $env       = (string)input('post.env', '', 'text');          // 环境变量（JSON对象）
-        $apiKey    = (string)input('post.api_key', '', 'text');      // API密钥
+        $apiKey    = (string)input('post.apiKey', '', 'text');      // API密钥
         $timeout   = (int)input('post.timeout', 30000, 'intval');    // 超时时间（毫秒）
 
         $data = [
@@ -362,14 +362,14 @@ class McpServer extends Admin
      */
     public function testConnection()
     {
-        $serverId  = (string)input('post.server_id', '', 'text');    // MCP Server ID（可选）
+        $serverId  = (string)input('post.serverId', '', 'text');    // MCP Server ID（可选）
         $transport = (string)input('post.transport', 'http', 'text'); // 传输协议
         $url       = (string)input('post.url', '', 'text');          // HTTP/SSE端点地址
         $command   = (string)input('post.command', '', 'text');      // stdio命令
         $args      = (string)input('post.args', '', 'text');         // stdio参数（JSON数组）
         $env       = (string)input('post.env', '', 'text');          // 环境变量（JSON对象）
-        $apiKey    = (string)input('post.api_key', '', 'text');      // API密钥
-        $toolName  = (string)input('post.tool_name', '', 'text');    // 工具名称（可选）
+        $apiKey    = (string)input('post.apiKey', '', 'text');      // API密钥
+        $toolName  = (string)input('post.toolName', '', 'text');    // 工具名称（可选）
         $params    = (string)input('post.params', '', 'text');       // 工具参数（JSON对象）
         $timeout   = (int)input('post.timeout', 30000, 'intval');    // 超时时间（毫秒）
 

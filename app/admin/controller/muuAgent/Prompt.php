@@ -91,13 +91,13 @@ class Prompt extends Admin
         $category    = (string)input('post.category', '', 'text');    // 模板分类
         $content     = (string)input('post.content', '', 'text');     // 模板内容（提示词文本）
         $variables   = input('post.variables', '', 'text');           // 模板变量（JSON 字符串）
-        $isDefault   = (bool)input('post.is_default', false, 'bool'); // 是否默认模板
+        $isDefault   = (bool)input('post.isDefault', false, 'bool'); // 是否默认模板
         $status      = (bool)input('post.status', true, 'bool');      // 状态
         $description = (string)input('post.description', '', 'text'); // 模板描述
         $tags        = (string)input('post.tags', '', 'text');        // 标签（JSON 字符串）
         $metadata    = (string)input('post.metadata', '', 'text');    // 元数据（JSON 字符串）
-        $isPublic    = (bool)input('post.is_public', false, 'bool');  // 是否公开
-        $createdBy   = (string)input('post.created_by', '', 'text');  // 创建者
+        $isPublic    = (bool)input('post.isPublic', false, 'bool');  // 是否公开
+        $createdBy   = (string)input('post.createdBy', '', 'text');  // 创建者
 
         if (empty($name)) {
             return $this->error('模板名称不能为空');
@@ -165,12 +165,12 @@ class Prompt extends Admin
         $category    = (string)input('post.category', '', 'text');    // 模板分类
         $content     = (string)input('post.content', '', 'text');     // 模板内容
         $variables   = input('post.variables', '', 'text');           // 模板变量（JSON 字符串）
-        $isDefault   = (bool)input('post.is_default', null, 'bool');  // 是否默认模板
+        $isDefault   = (bool)input('post.isDefault', null, 'bool');  // 是否默认模板
         $status      = (bool)input('post.status', null, 'bool');      // 状态
         $description = (string)input('post.description', '', 'text'); // 模板描述
         $tags        = (string)input('post.tags', '', 'text');        // 标签（JSON 字符串）
         $metadata    = (string)input('post.metadata', '', 'text');    // 元数据（JSON 字符串）
-        $isPublic    = (bool)input('post.is_public', null, 'bool');   // 是否公开
+        $isPublic    = (bool)input('post.isPublic', null, 'bool');   // 是否公开
 
         if (empty($code)) {
             return $this->error('模板代码不能为空');

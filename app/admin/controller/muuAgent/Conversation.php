@@ -100,8 +100,8 @@ class Conversation extends Admin
      */
     public function create()
     {
-        $conversationType = (string)input('post.conversation_type', 'agent', 'text'); // 会话类型
-        $targetId         = (string)input('post.target_id', '', 'text');             // 目标 ID（智能体ID/模型标识/知识库ID）
+        $conversationType = (string)input('post.conversationType', 'agent', 'text'); // 会话类型
+        $targetId         = (string)input('post.targetId', '', 'text');             // 目标 ID（智能体ID/模型标识/知识库ID）
         $title            = (string)input('post.title', '', 'text');                 // 会话标题
         $uid              = (string)input('post.uid', '', 'text');                   // 用户唯一标识
 
