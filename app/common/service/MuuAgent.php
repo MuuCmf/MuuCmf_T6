@@ -198,6 +198,14 @@ class MuuAgent
         $body = $data;
 
         if ($method === 'GET' && !empty($data)) {
+            // PHP http_build_query 会把布尔 true/false 编码为 '1'/'0'，
+            // 而中台 Query DTO 普遍用 @Transform 将 'true'/'false' 字符串转为布尔，
+            // 故 GET 参数中的布尔值需先归一化为 'true'/'false' 字符串，避免中台校验失败。
+            array_walk_recursive($data, function (&$value) {
+                if (is_bool($value)) {
+                    $value = $value ? 'true' : 'false';
+                }
+            });
             $url .= '?' . http_build_query($data);
             $body = [];
         } elseif ($method !== 'GET' && !empty($data)) {

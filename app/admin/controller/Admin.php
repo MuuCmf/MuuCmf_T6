@@ -201,6 +201,35 @@ class Admin extends Base
     }
 
     /**
+     * 解析布尔输入值
+     *
+     * 兼容前端可能传来的 'true'/'false'/'1'/'0'/'on'/'off' 及原生布尔。
+     * 注意：不使用 ThinkPHP 的 'bool' 字符串过滤器——filter_id('bool') 在 PHP 中返回 false，
+     * 会触发 filter_var() 类型错误（Argument #2 must be of type int, bool given）。
+     *
+     * @param mixed $value 原始输入值
+     * @param bool|null $default 值为空/无法解析时的默认值（null 表示"未传"）
+     * @return bool|null
+     */
+    protected function parseBool($value, $default = null): ?bool
+    {
+        if ($value === null || $value === '') {
+            return $default;
+        }
+        if (is_bool($value)) {
+            return $value;
+        }
+        $lower = strtolower((string)$value);
+        if (in_array($lower, ['1', 'true', 'on', 'yes'], true)) {
+            return true;
+        }
+        if (in_array($lower, ['0', 'false', 'off', 'no'], true)) {
+            return false;
+        }
+        return $default;
+    }
+
+    /**
      * 权限检测
      * @param string $rule 检测的规则
      * @param string $mode check模式

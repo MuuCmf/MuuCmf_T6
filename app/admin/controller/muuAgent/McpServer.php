@@ -98,7 +98,7 @@ class McpServer extends Admin
         $env         = (string)input('post.env', '', 'text');        // 环境变量（JSON对象）
         $apiKey      = (string)input('post.apiKey', '', 'text');    // API密钥
         $timeout     = (int)input('post.timeout', 30000, 'intval');  // 超时时间（毫秒）
-        $enabled     = (bool)input('post.enabled', true, 'bool');    // 是否启用
+        $enabled     = $this->parseBool(input('post.enabled'), true); // 是否启用
         $tools       = (string)input('post.tools', '', 'text');      // 允许的工具列表（JSON数组）
         $metadata    = (string)input('post.metadata', '', 'text');   // 扩展元数据（JSON对象）
 
@@ -184,7 +184,7 @@ class McpServer extends Admin
         $env         = (string)input('post.env', '', 'text');        // 环境变量（JSON对象）
         $apiKey      = input('post.apiKey', null);                   // API密钥（传null清空）
         $timeout     = (int)input('post.timeout', 0, 'intval');      // 超时时间（毫秒）
-        $enabled     = input('post.enabled', null, 'bool');          // 是否启用
+        $enabled     = $this->parseBool(input('post.enabled')); // 是否启用
         $tools       = (string)input('post.tools', '', 'text');      // 允许的工具列表（JSON数组）
         $metadata    = (string)input('post.metadata', '', 'text');   // 扩展元数据（JSON对象）
 

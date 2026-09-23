@@ -100,7 +100,7 @@ class Agent extends Admin
         $skills      = (string)input('post.skills', '', 'text');      // 技能列表（JSON数组）
         $mcpServers  = (string)input('post.mcpServers', '', 'text'); // MCP 服务器列表（JSON数组）
         $maxSteps    = (int)input('post.maxSteps', 5, 'intval');     // 最大步骤数
-        $status      = (bool)input('post.status', true, 'bool');      // 状态
+        $status      = $this->parseBool(input('post.status'), true); // 状态
         $sort        = (int)input('post.sort', 0, 'intval');          // 排序
         $modelTemplateCode = (string)input('post.modelTemplateCode', '', 'text'); // 模型模板代码
         $customModelParams = (string)input('post.customModelParams', '', 'text'); // 自定义模型参数（JSON）
@@ -109,7 +109,7 @@ class Agent extends Admin
         $knowledgeBases = (string)input('post.knowledgeBases', '', 'text'); // 知识库列表（JSON数组）
         $kbRetrievalConfig = (string)input('post.kbRetrievalConfig', '', 'text'); // 知识库检索配置（JSON）
         $allowedBuiltinTools = (string)input('post.allowedBuiltinTools', '', 'text'); // 允许的内置工具列表（JSON数组）
-        $isPublic    = (bool)input('post.isPublic', false, 'bool');  // 是否公开
+        $isPublic    = $this->parseBool(input('post.isPublic'), false); // 是否公开
         $callableByAgents = input('post.callableByAgents', null); // 可被调用的智能体白名单（JSON数组字符串；null=不限制，'[]'=禁止）
 
         if (empty($name)) {
@@ -194,7 +194,7 @@ class Agent extends Admin
         $skills       = (string)input('post.skills', '', 'text');     // 技能列表（JSON数组）
         $mcpServers   = (string)input('post.mcpServers', '', 'text'); // MCP 服务器列表（JSON数组）
         $maxSteps     = input('post.maxSteps', null);         // 最大步骤数（0 表示不限制）
-        $status       = (bool)input('post.status', null, 'bool');     // 状态
+        $status       = $this->parseBool(input('post.status')); // 状态
         $sort         = (int)input('post.sort', 0, 'intval');         // 排序
         $modelTemplateCode = (string)input('post.modelTemplateCode', '', 'text'); // 模型模板代码
         $customModelParams = (string)input('post.customModelParams', '', 'text'); // 自定义模型参数（JSON）
@@ -203,7 +203,7 @@ class Agent extends Admin
         $knowledgeBases = (string)input('post.knowledgeBases', '', 'text'); // 知识库列表（JSON数组）
         $kbRetrievalConfig = (string)input('post.kbRetrievalConfig', '', 'text'); // 知识库检索配置（JSON）
         $allowedBuiltinTools = (string)input('post.allowedBuiltinTools', '', 'text'); // 允许的内置工具列表（JSON数组）
-        $isPublic     = (bool)input('post.isPublic', null, 'bool');  // 是否公开
+        $isPublic     = $this->parseBool(input('post.isPublic')); // 是否公开
         $callableByAgents = input('post.callableByAgents', null); // 可被调用的智能体白名单（JSON数组字符串；null=不限制，'[]'=禁止）
 
         if (empty($id)) {

@@ -150,7 +150,7 @@ class Kb extends Admin
         $topN             = (int)input('post.topN', 0, 'intval');           // 返回数量
         $retrievalMethod  = (string)input('post.retrievalMethod', '', 'text'); // 检索方法
         $description      = (string)input('post.description', '', 'text');   // 知识库描述
-        $status           = (bool)input('post.status', null, 'bool');        // 状态
+        $status           = $this->parseBool(input('post.status')); // 状态
         $uid              = (string)input('post.uid', '', 'text');           // 用户 ID
 
         if (empty($kbId)) {

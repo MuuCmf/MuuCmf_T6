@@ -98,8 +98,8 @@ class Skill extends Admin
     public function import()
     {
         $file      = request()->file('file');                        // 上传文件（.zip）
-        $isPublic  = (bool)input('post.is_public', false, 'bool');   // 是否公开
-        $overwrite = (bool)input('post.overwrite', false, 'bool');   // 是否覆盖
+        $isPublic  = $this->parseBool(input('post.is_public'), false); // 是否公开
+        $overwrite = $this->parseBool(input('post.overwrite'), false); // 是否覆盖
 
         if (empty($file)) {
             return $this->error('请上传技能文件');
