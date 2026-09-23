@@ -95,22 +95,22 @@ class Agent extends Admin
     {
         $name        = (string)input('post.name', '', 'text');        // 智能体名称
         $code        = (string)input('post.code', '', 'text');        // 智能体代码
-        $systemPrompt = (string)input('post.system_prompt', '', 'text'); // 系统提示词
+        $systemPrompt = (string)input('post.systemPrompt', '', 'text'); // 系统提示词
         $description = (string)input('post.description', '', 'text'); // 智能体描述
         $skills      = (string)input('post.skills', '', 'text');      // 技能列表（JSON数组）
-        $mcpServers  = (string)input('post.mcp_servers', '', 'text'); // MCP 服务器列表（JSON数组）
-        $maxSteps    = (int)input('post.max_steps', 5, 'intval');     // 最大步骤数
+        $mcpServers  = (string)input('post.mcpServers', '', 'text'); // MCP 服务器列表（JSON数组）
+        $maxSteps    = (int)input('post.maxSteps', 5, 'intval');     // 最大步骤数
         $status      = (bool)input('post.status', true, 'bool');      // 状态
         $sort        = (int)input('post.sort', 0, 'intval');          // 排序
-        $modelTemplateCode = (string)input('post.model_template_code', '', 'text'); // 模型模板代码
-        $customModelParams = (string)input('post.custom_model_params', '', 'text'); // 自定义模型参数（JSON）
-        $reasoningMode = (string)input('post.reasoning_mode', 'NONE', 'text'); // 推理模式
-        $reasoningPrompt = (string)input('post.reasoning_prompt', '', 'text'); // 推理提示词
-        $knowledgeBases = (string)input('post.knowledge_bases', '', 'text'); // 知识库列表（JSON数组）
-        $kbRetrievalConfig = (string)input('post.kb_retrieval_config', '', 'text'); // 知识库检索配置（JSON）
-        $allowedBuiltinTools = (string)input('post.allowed_builtin_tools', '', 'text'); // 允许的内置工具列表（JSON数组）
-        $isPublic    = (bool)input('post.is_public', false, 'bool');  // 是否公开
-        $callableByAgents = input('post.callable_by_agents', null); // 可被调用的智能体白名单（JSON数组字符串；null=不限制，'[]'=禁止）
+        $modelTemplateCode = (string)input('post.modelTemplateCode', '', 'text'); // 模型模板代码
+        $customModelParams = (string)input('post.customModelParams', '', 'text'); // 自定义模型参数（JSON）
+        $reasoningMode = (string)input('post.reasoningMode', 'NONE', 'text'); // 推理模式
+        $reasoningPrompt = (string)input('post.reasoningPrompt', '', 'text'); // 推理提示词
+        $knowledgeBases = (string)input('post.knowledgeBases', '', 'text'); // 知识库列表（JSON数组）
+        $kbRetrievalConfig = (string)input('post.kbRetrievalConfig', '', 'text'); // 知识库检索配置（JSON）
+        $allowedBuiltinTools = (string)input('post.allowedBuiltinTools', '', 'text'); // 允许的内置工具列表（JSON数组）
+        $isPublic    = (bool)input('post.isPublic', false, 'bool');  // 是否公开
+        $callableByAgents = input('post.callableByAgents', null); // 可被调用的智能体白名单（JSON数组字符串；null=不限制，'[]'=禁止）
 
         if (empty($name)) {
             return $this->error('智能体名称不能为空');
@@ -190,21 +190,21 @@ class Agent extends Admin
         $name         = (string)input('post.name', '', 'text');       // 智能体名称
         $code         = (string)input('post.code', '', 'text');       // 智能体代码
         $description  = (string)input('post.description', '', 'text'); // 智能体描述
-        $systemPrompt = (string)input('post.system_prompt', '', 'text'); // 系统提示词
+        $systemPrompt = (string)input('post.systemPrompt', '', 'text'); // 系统提示词
         $skills       = (string)input('post.skills', '', 'text');     // 技能列表（JSON数组）
-        $mcpServers   = (string)input('post.mcp_servers', '', 'text'); // MCP 服务器列表（JSON数组）
-        $maxSteps     = input('post.max_steps', null);         // 最大步骤数（0 表示不限制）
+        $mcpServers   = (string)input('post.mcpServers', '', 'text'); // MCP 服务器列表（JSON数组）
+        $maxSteps     = input('post.maxSteps', null);         // 最大步骤数（0 表示不限制）
         $status       = (bool)input('post.status', null, 'bool');     // 状态
         $sort         = (int)input('post.sort', 0, 'intval');         // 排序
-        $modelTemplateCode = (string)input('post.model_template_code', '', 'text'); // 模型模板代码
-        $customModelParams = (string)input('post.custom_model_params', '', 'text'); // 自定义模型参数（JSON）
-        $reasoningMode = (string)input('post.reasoning_mode', '', 'text'); // 推理模式
-        $reasoningPrompt = (string)input('post.reasoning_prompt', '', 'text'); // 推理提示词
-        $knowledgeBases = (string)input('post.knowledge_bases', '', 'text'); // 知识库列表（JSON数组）
-        $kbRetrievalConfig = (string)input('post.kb_retrieval_config', '', 'text'); // 知识库检索配置（JSON）
-        $allowedBuiltinTools = (string)input('post.allowed_builtin_tools', '', 'text'); // 允许的内置工具列表（JSON数组）
-        $isPublic     = (bool)input('post.is_public', null, 'bool');  // 是否公开
-        $callableByAgents = input('post.callable_by_agents', null); // 可被调用的智能体白名单（JSON数组字符串；null=不限制，'[]'=禁止）
+        $modelTemplateCode = (string)input('post.modelTemplateCode', '', 'text'); // 模型模板代码
+        $customModelParams = (string)input('post.customModelParams', '', 'text'); // 自定义模型参数（JSON）
+        $reasoningMode = (string)input('post.reasoningMode', '', 'text'); // 推理模式
+        $reasoningPrompt = (string)input('post.reasoningPrompt', '', 'text'); // 推理提示词
+        $knowledgeBases = (string)input('post.knowledgeBases', '', 'text'); // 知识库列表（JSON数组）
+        $kbRetrievalConfig = (string)input('post.kbRetrievalConfig', '', 'text'); // 知识库检索配置（JSON）
+        $allowedBuiltinTools = (string)input('post.allowedBuiltinTools', '', 'text'); // 允许的内置工具列表（JSON数组）
+        $isPublic     = (bool)input('post.isPublic', null, 'bool');  // 是否公开
+        $callableByAgents = input('post.callableByAgents', null); // 可被调用的智能体白名单（JSON数组字符串；null=不限制，'[]'=禁止）
 
         if (empty($id)) {
             return $this->error('智能体 ID 不能为空');
