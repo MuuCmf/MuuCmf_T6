@@ -89,7 +89,7 @@ class Kb extends Admin
         $chunkOverlap     = (int)input('post.chunkOverlap', 50, 'intval');   // 分块重叠
         $similarityThresh = (float)input('post.similarityThresh', 0.7, 'float'); // 相似度阈值
         $topN             = (int)input('post.topN', 5, 'intval');            // 返回数量
-        $retrievalMethod  = (string)input('post.retrievalMethod', 'hybrid', 'text'); // 检索方法
+        $retrievalMethod  = (string)input('post.retrievalMethod', 'vector', 'text'); // 检索方法（中台仅支持 vector/bm25）
         $description      = (string)input('post.description', '', 'text');    // 知识库描述
         $uid              = (string)input('post.uid', '', 'text');            // 用户 ID
 
@@ -98,6 +98,16 @@ class Kb extends Admin
         }
         if (empty($kbCode)) {
             return $this->error('知识库代码不能为空');
+        }
+
+        // 中台 CreateKbDto 枚举仅支持 vector/bm25，非法值直接拦截并给出明确提示
+        if (!in_array($retrievalMethod, ['vector', 'bm25'], true)) {
+            return $this->error('检索方法仅支持 vector（向量检索）或 bm25（关键词检索）');
+        }
+
+        // 中台 DTO 要求 uid 必填；前端未传时兜底为当前登录管理员 ID
+        if (empty($uid)) {
+            $uid = (string)get_uid();
         }
 
         $data = [
@@ -109,13 +119,11 @@ class Kb extends Admin
             'similarityThresh' => $similarityThresh,
             'topN'             => $topN,
             'retrievalMethod'  => $retrievalMethod,
+            'uid'              => $uid,
         ];
 
         if (!empty($description)) {
             $data['description'] = $description;
-        }
-        if (!empty($uid)) {
-            $data['uid'] = $uid;
         }
 
         try {
@@ -149,7 +157,17 @@ class Kb extends Admin
             return $this->error('知识库 ID 不能为空');
         }
 
-        $data = ['kbId' => $kbId];
+        // 中台 UpdateKbDto 枚举仅支持 vector/bm25，传了非法值直接拦截
+        if (!empty($retrievalMethod) && !in_array($retrievalMethod, ['vector', 'bm25'], true)) {
+            return $this->error('检索方法仅支持 vector（向量检索）或 bm25（关键词检索）');
+        }
+
+        // 中台 DTO 要求 uid 必填；前端未传时兜底为当前登录管理员 ID
+        if (empty($uid)) {
+            $uid = (string)get_uid();
+        }
+
+        $data = ['kbId' => $kbId, 'uid' => $uid];
 
         if (!empty($kbName)) {
             $data['kbName'] = $kbName;
@@ -178,9 +196,6 @@ class Kb extends Admin
         if (isset($status)) {
             $data['status'] = $status;
         }
-        if (!empty($uid)) {
-            $data['uid'] = $uid;
-        }
 
         try {
             $result = $this->muuAgent->callAdmin('PUT', '/api/admin/kb', $data);
@@ -204,10 +219,12 @@ class Kb extends Admin
             return $this->error('知识库 ID 不能为空');
         }
 
-        $data = ['kbId' => $kbId];
-        if (!empty($uid)) {
-            $data['uid'] = $uid;
+        // 中台 DeleteKbDto 要求 uid 必填；前端未传时兜底为当前登录管理员 ID
+        if (empty($uid)) {
+            $uid = (string)get_uid();
         }
+
+        $data = ['kbId' => $kbId, 'uid' => $uid];
 
         try {
             $result = $this->muuAgent->callAdmin('DELETE', '/admin/kb/' . $kbId, $data);
@@ -231,11 +248,13 @@ class Kb extends Admin
         if (empty($kbId)) {
             return $this->error('知识库 ID 不能为空');
         }
-        if (empty($uid)) {
-            return $this->error('用户 ID 不能为空');
-        }
         if (empty($file)) {
             return $this->error('请选择要上传的文件');
+        }
+
+        // 中台 UploadDocumentDto 要求 uid 必填；前端未传时兜底为当前登录管理员 ID
+        if (empty($uid)) {
+            $uid = (string)get_uid();
         }
 
         // 将文件转为 Base64
@@ -275,11 +294,13 @@ class Kb extends Admin
         if (empty($kbId)) {
             return $this->error('知识库 ID 不能为空');
         }
-        if (empty($uid)) {
-            return $this->error('用户 ID 不能为空');
-        }
         if (empty($files) || !is_array($files)) {
             return $this->error('请选择要上传的文件');
+        }
+
+        // 中台 UploadDocumentDto 要求 uid 必填；前端未传时兜底为当前登录管理员 ID
+        if (empty($uid)) {
+            $uid = (string)get_uid();
         }
 
         $documents = [];
@@ -360,11 +381,13 @@ class Kb extends Admin
         if (empty($kbId)) {
             return $this->error('知识库 ID 不能为空');
         }
-        if (empty($uid)) {
-            return $this->error('用户 ID 不能为空');
-        }
         if (empty($docId)) {
             return $this->error('文档 ID 不能为空');
+        }
+
+        // 中台 DeleteDocumentDto 要求 uid 必填；前端未传时兜底为当前登录管理员 ID
+        if (empty($uid)) {
+            $uid = (string)get_uid();
         }
 
         $data = [
