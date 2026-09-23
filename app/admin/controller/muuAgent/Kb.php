@@ -157,6 +157,16 @@ class Kb extends Admin
             return $this->error('知识库 ID 不能为空');
         }
 
+        // 公共知识库（app_code 为 null）为全局共享资源，禁止通过 php_server 编辑
+        try {
+            $detail = $this->muuAgent->callAdmin('GET', '/admin/kb/' . $kbId);
+        } catch (\RuntimeException $e) {
+            return $this->error($e->getMessage());
+        }
+        if (empty($detail['appCode'])) {
+            return $this->error('公共知识库（appCode 为 null）禁止编辑，请在中台管理后台操作');
+        }
+
         // 中台 UpdateKbDto 枚举仅支持 vector/bm25，传了非法值直接拦截
         if (!empty($retrievalMethod) && !in_array($retrievalMethod, ['vector', 'bm25'], true)) {
             return $this->error('检索方法仅支持 vector（向量检索）或 bm25（关键词检索）');
@@ -217,6 +227,16 @@ class Kb extends Admin
 
         if (empty($kbId)) {
             return $this->error('知识库 ID 不能为空');
+        }
+
+        // 公共知识库（app_code 为 null）禁止删除
+        try {
+            $detail = $this->muuAgent->callAdmin('GET', '/admin/kb/' . $kbId);
+        } catch (\RuntimeException $e) {
+            return $this->error($e->getMessage());
+        }
+        if (empty($detail['appCode'])) {
+            return $this->error('公共知识库（appCode 为 null）禁止删除，请在中台管理后台操作');
         }
 
         // 中台 DeleteKbDto 要求 uid 必填；前端未传时兜底为当前登录管理员 ID
@@ -383,6 +403,16 @@ class Kb extends Admin
         }
         if (empty($docId)) {
             return $this->error('文档 ID 不能为空');
+        }
+
+        // 公共知识库（app_code 为 null）禁止删除文档
+        try {
+            $detail = $this->muuAgent->callAdmin('GET', '/admin/kb/' . $kbId);
+        } catch (\RuntimeException $e) {
+            return $this->error($e->getMessage());
+        }
+        if (empty($detail['appCode'])) {
+            return $this->error('公共知识库（appCode 为 null）禁止删除文档，请在中台管理后台操作');
         }
 
         // 中台 DeleteDocumentDto 要求 uid 必填；前端未传时兜底为当前登录管理员 ID

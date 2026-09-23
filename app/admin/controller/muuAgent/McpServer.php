@@ -192,6 +192,16 @@ class McpServer extends Admin
             return $this->error('MCP Server ID 不能为空');
         }
 
+        // 公共 MCP Server（app_code 为 null）为全局共享资源，禁止通过 php_server 编辑
+        try {
+            $detail = $this->muuAgent->callAdmin('GET', '/api/admin/mcp-server/' . $id);
+        } catch (\RuntimeException $e) {
+            return $this->error($e->getMessage());
+        }
+        if (empty($detail['appCode'])) {
+            return $this->error('公共 MCP Server（appCode 为 null）禁止编辑，请在中台管理后台操作');
+        }
+
         $data = [];
 
         // 更新参数（可选）
@@ -251,6 +261,16 @@ class McpServer extends Admin
 
         if (empty($id)) {
             return $this->error('MCP Server ID 不能为空');
+        }
+
+        // 公共 MCP Server（app_code 为 null）禁止删除
+        try {
+            $detail = $this->muuAgent->callAdmin('GET', '/api/admin/mcp-server/' . $id);
+        } catch (\RuntimeException $e) {
+            return $this->error($e->getMessage());
+        }
+        if (empty($detail['appCode'])) {
+            return $this->error('公共 MCP Server（appCode 为 null）禁止删除，请在中台管理后台操作');
         }
 
         try {

@@ -210,6 +210,16 @@ class Agent extends Admin
             return $this->error('智能体 ID 不能为空');
         }
 
+        // 公共智能体（app_code 为 null，未归属任何应用）为全局共享资源，禁止通过 php_server 编辑
+        try {
+            $detail = $this->muuAgent->callAdmin('GET', '/admin/agent/' . $id);
+        } catch (\RuntimeException $e) {
+            return $this->error($e->getMessage());
+        }
+        if (empty($detail['appCode'])) {
+            return $this->error('公共智能体（appCode 为 null）禁止编辑，请在中台管理后台操作');
+        }
+
         $data = [];
 
         // 更新参数（可选）
@@ -290,6 +300,16 @@ class Agent extends Admin
             return $this->error('智能体 ID 不能为空');
         }
 
+        // 公共智能体（app_code 为 null）为全局共享资源，禁止删除
+        try {
+            $detail = $this->muuAgent->callAdmin('GET', '/admin/agent/' . $id);
+        } catch (\RuntimeException $e) {
+            return $this->error($e->getMessage());
+        }
+        if (empty($detail['appCode'])) {
+            return $this->error('公共智能体（appCode 为 null）禁止删除，请在中台管理后台操作');
+        }
+
         try {
             $result = $this->muuAgent->callAdmin('DELETE', '/admin/agent/' . $id);
             return $this->success('删除成功', $result);
@@ -309,6 +329,16 @@ class Agent extends Admin
 
         if (empty($id)) {
             return $this->error('智能体 ID 不能为空');
+        }
+
+        // 发布=修改状态，公共智能体（app_code 为 null）禁止发布
+        try {
+            $detail = $this->muuAgent->callAdmin('GET', '/admin/agent/' . $id);
+        } catch (\RuntimeException $e) {
+            return $this->error($e->getMessage());
+        }
+        if (empty($detail['appCode'])) {
+            return $this->error('公共智能体（appCode 为 null）禁止发布，请在中台管理后台操作');
         }
 
         try {

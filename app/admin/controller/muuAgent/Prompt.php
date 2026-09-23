@@ -176,6 +176,16 @@ class Prompt extends Admin
             return $this->error('模板代码不能为空');
         }
 
+        // 公共提示词模板（app_code 为 null）为全局共享资源，禁止通过 php_server 编辑
+        try {
+            $detail = $this->muuAgent->callAdmin('GET', '/admin/prompt-template/code/' . $code);
+        } catch (\RuntimeException $e) {
+            return $this->error($e->getMessage());
+        }
+        if (empty($detail['appCode'])) {
+            return $this->error('公共提示词模板（appCode 为 null）禁止编辑，请在中台管理后台操作');
+        }
+
         $data = [];
 
         if (!empty($name)) {
@@ -228,6 +238,16 @@ class Prompt extends Admin
 
         if (empty($id)) {
             return $this->error('提示词模板 ID 不能为空');
+        }
+
+        // 公共提示词模板（app_code 为 null）禁止删除
+        try {
+            $detail = $this->muuAgent->callAdmin('GET', '/admin/prompt-template/' . $id);
+        } catch (\RuntimeException $e) {
+            return $this->error($e->getMessage());
+        }
+        if (empty($detail['appCode'])) {
+            return $this->error('公共提示词模板（appCode 为 null）禁止删除，请在中台管理后台操作');
         }
 
         try {
