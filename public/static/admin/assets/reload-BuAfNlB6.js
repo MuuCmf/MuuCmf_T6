@@ -1,0 +1,1 @@
+import{Zt as r,dn as e}from"./element-plus-CUBLty2E.js";import{r as t}from"./index-BdL3mTja.js";var n=t({},[["render",function(t,n){return e(),r("div")}]]);export{n as default};

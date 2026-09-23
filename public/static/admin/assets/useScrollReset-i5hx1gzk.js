@@ -1,0 +1,1 @@
+import{En as l,sn as e}from"./element-plus-CUBLty2E.js";function o(){const o=l(null);return{scrollContainerRef:o,resetScrollTop:()=>{e(()=>{o.value&&(o.value.scrollTop=0)})}}}export{o as t};
