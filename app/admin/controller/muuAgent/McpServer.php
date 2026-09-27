@@ -30,20 +30,22 @@ class McpServer extends Admin
      */
     public function list()
     {
-        $page        = (int)input('get.page', 1, 'intval');           // 页码，从1开始
-        $pageSize    = (int)input('get.page_size', 10, 'intval');     // 每页条数
-        $enabled     = (string)input('get.enabled', '', 'text');      // 是否启用筛选
+        $page         = (int)input('get.page', 1, 'intval');           // 页码，从1开始
+        $pageSize     = (int)input('get.page_size', 10, 'intval');     // 每页条数
+        $enabled      = input('get.enabled', '');                      // 是否启用筛选（''/true/false/'true'/'false'/'1'/'0'）
         $healthStatus = (string)input('get.health_status', '', 'text'); // 健康状态筛选
-        $transport   = (string)input('get.transport', '', 'text');    // 传输协议筛选
+        $transport    = (string)input('get.transport', '', 'text');    // 传输协议筛选
 
         $data = [
             'page'     => $page,
             'pageSize' => $pageSize,
-            'appCode'  => $this->muuAgent->getAppCode(), // 从扩展配置自动获取
+            // 注意：管理端接口不需要传递 appCode，它通过 OAuth Token 自动识别应用；
+            // 若按扩展配置 appCode 过滤，中台会硬过滤（仅返回该 appCode 数据），公共/其它资源不可见
         ];
 
-        if (!empty($enabled)) {
-            $data['enabled'] = $enabled === 'true' || $enabled === '1';
+        // enabled 支持布尔 true/false 与字符串 'true'/'false'/'1'/'0'，避免 false 被 (string) 转空串而丢失筛选
+        if ($enabled !== '' && $enabled !== null) {
+            $data['enabled'] = $enabled === true || $enabled === 'true' || $enabled === '1';
         }
         if (!empty($healthStatus)) {
             $data['healthStatus'] = $healthStatus;

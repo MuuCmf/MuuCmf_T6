@@ -43,7 +43,8 @@ class Skill extends Admin
             'pageSize'  => $pageSize,
             'sortBy'    => $sortBy,
             'sortOrder' => $sortOrder,
-            'appCode'   => $this->muuAgent->getAppCode(), // 从扩展配置自动获取
+            // 注意：管理端接口不需要传递 appCode，它通过 OAuth Token 自动识别应用（与 Agent.php 范式一致）；
+            // 中台 standard/list 的 appCode 过滤语义为「专属+公共」，传扩展配置 appCode 会漏掉其它应用的技能
         ];
 
         try {

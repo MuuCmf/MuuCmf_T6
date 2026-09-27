@@ -39,7 +39,7 @@ class ModelTemplate extends Admin
         $data = [
             'page'     => $page,
             'pageSize' => $pageSize,
-            'appCode'  => $this->muuAgent->getAppCode(), // 从扩展配置自动获取
+            // 注意：管理端接口不需要传递 appCode，它通过 OAuth Token 自动识别应用（与 Agent.php 范式一致）
         ];
 
         if (!empty($modelType)) {
