@@ -173,36 +173,22 @@ class Skill extends Admin
     }
 
     /**
-     * 清除指定技能的缓存
+     * 清除技能缓存（整合接口：未传 name 时清除所有技能缓存，传 name 时清除指定技能缓存）
      *
      * @return mixed 返回清除结果
      */
     public function clearCache()
     {
-        $name = (string)input('post.name', '', 'text');  // 技能名称
-
-        if (empty($name)) {
-            return $this->error('技能名称不能为空');
-        }
+        $name = (string)input('post.name', '', 'text');  // 技能名称，为空时清除所有技能缓存
 
         try {
+            if (empty($name)) {
+                $result = $this->muuAgent->callAdmin('DELETE', '/api/admin/skill/cache');
+                return $this->success('所有技能缓存已清除', $result);
+            }
+
             $result = $this->muuAgent->callAdmin('DELETE', '/api/admin/skill/cache/' . $name);
             return $this->success('技能 "' . $name . '" 的缓存已清除', $result);
-        } catch (\RuntimeException $e) {
-            return $this->error($e->getMessage());
-        }
-    }
-
-    /**
-     * 清除所有技能缓存
-     *
-     * @return mixed 返回清除结果
-     */
-    public function clearAllCache()
-    {
-        try {
-            $result = $this->muuAgent->callAdmin('DELETE', '/api/admin/skill/cache');
-            return $this->success('所有技能缓存已清除', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
         }

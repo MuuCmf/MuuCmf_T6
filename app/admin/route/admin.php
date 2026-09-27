@@ -460,7 +460,6 @@ Route::group('muu_agent', function () {
     Route::post('skill/validate', 'admin/muuAgent.Skill/validate');
     Route::post('skill/refresh', 'admin/muuAgent.Skill/refresh');
     Route::post('skill/clear_cache', 'admin/muuAgent.Skill/clearCache');
-    Route::post('skill/clear_all_cache', 'admin/muuAgent.Skill/clearAllCache');
     Route::post('skill/sync', 'admin/muuAgent.Skill/sync');
     Route::get('skill/stats', 'admin/muuAgent.Skill/stats');
 });
