@@ -50,13 +50,13 @@ class Evaluate
                 $evaluate_data = [];
                 foreach ($lists as $item) {
                     if ($item['evaluate'] == 0) {
-                        $products = json_decode($item['products'], true);
                         $evaluate_data[] = [
                             'shopid' => $shopid,
                             'app' => $item['app'],
                             'uid' => $item['uid'],
                             'type' => $item['order_info_type'],
-                            'type_id' => $products['id'],
+                            // 评价对象以订单表 order_info_id 为准，避免 products JSON 结构差异导致 type_id 为空
+                            'type_id' => intval($item['order_info_id']),
                             'order_no' => $item['order_no'],
                             'content' => '系统默认好评',
                             'images' => '',

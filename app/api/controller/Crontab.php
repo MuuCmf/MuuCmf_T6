@@ -3,28 +3,24 @@
 namespace app\api\controller;
 
 use app\common\controller\Api;
-use app\common\model\Orders as OrdersModel;
-use app\common\model\Evaluate as EvaluateModel;
+use app\common\crontab\Orders as OrdersTask;
+use app\common\crontab\Evaluate as EvaluateTask;
+use app\minishop\crontab\Receive as ReceiveTask;
+use app\common\model\CrontabLog;
 use think\Exception;
-use think\facade\Db;
 
 /**
- * 订单自动取消和自动评价
+ * 订单自动取消/自动评价/自动确认收货
  * 
  * 1.自动取消超时未支付订单
  * 2.自动评价超过7天未评价的已完成订单
- * 通过URL方式调用
+ * 3.自动确认收货（minishop 订单超过7天未确认）
+ * 通过URL方式调用，需携带 system.CRON_SECRET 配置的密钥
+ * 
+ * 实现统一委托给 crontab 任务类（与 CLI 调度器共用同一逻辑与日志）
  */
 class Crontab extends Api
 {
-    private OrdersModel $OrdersModel; //订单模型
-
-    public function __construct()
-    {
-        parent::__construct();
-        $this->OrdersModel = new OrdersModel();
-    }
-
     /**
      * 定时任务密钥校验
      * 仅允许携带正确 secret 的调用方（如系统定时任务/内网调度）执行批量写操作
@@ -44,13 +40,23 @@ class Crontab extends Api
     }
 
     /**
+     * 任务标识映射（用于 URL 调用时写入日志的 cid）
+     * 与 crontab 表默认任务 id 保持一致；也可通过参数 cid 覆盖
+     *
+     * @param string $default
+     * @return int
+     */
+    protected function taskId($default)
+    {
+        return intval(input('cid', $default, 'intval'));
+    }
+
+    /**
      * 自动取消超时未支付订单
-     * 
      * 查询24小时前创建且未支付的订单,将其状态更新为已取消
      * 每次处理最多100条订单记录,使用事务确保数据一致性
-     * 
-     * @return json 处理结果
-     * @throws Exception 订单更新失败时抛出异常
+     *
+     * @return \think\Response
      */
     public function ordersCancel()
     {
@@ -60,42 +66,13 @@ class Crontab extends Api
                 'msg' => '定时任务密钥校验失败',
             ]);
         }
-        $shopid = $this->shopid;
-        Db::startTrans();
         try {
-            //查询需要完成的订单
-            $map = [
-                ['status', '=', 1],
-                ['paid', '=', 0],
-                ['shopid', '=', $shopid],
-                ['create_time', 'between', [0, time() - (24 * 60 * 60)]],
-            ];
-            $lists = $this->OrdersModel
-                ->field('id,order_no,uid,products,status,create_time')
-                ->where($map)
-                ->limit(100) //并发限制
-                ->select()
-                ->toArray();
-
-            if (!empty($lists)) {
-                //更改订单状态
-                $ids = array_column($lists, 'id');
-                $data = [
-                    'status'    =>  0, //已取消
-                    'update_time' => time(),
-                ];
-                $result = $this->OrdersModel->where('id', 'in', $ids)->update($data);
-                if ($result === false) throw new Exception('订单更新失败');
-            }
-
-            Db::commit();
-
+            $result = (new OrdersTask())->handle(intval($this->shopid), $this->taskId(5));
             return json([
-                'code' => 200,
-                'msg' => 'success',
+                'code' => $result ? 200 : 0,
+                'msg' => $result ? 'success' : '处理失败',
             ]);
-        } catch (\Exception $e) {
-            Db::rollback();
+        } catch (\Throwable $e) {
             return json([
                 'code' => 0,
                 'msg' => $e->getMessage(),
@@ -106,10 +83,8 @@ class Crontab extends Api
     /**
      * 订单自动评价
      * 处理超过7天未评价的已完成订单,自动添加默认好评
-     * 
-     * @return json 返回处理结果
-     *              成功返回 code:200, msg:success
-     *              失败返回 code:0, msg:错误信息
+     *
+     * @return \think\Response
      */
     public function ordersEvaluate()
     {
@@ -119,70 +94,71 @@ class Crontab extends Api
                 'msg' => '定时任务密钥校验失败',
             ]);
         }
-        $shopid = $this->shopid;
-        Db::startTrans();
         try {
-            //查询需要完成的订单
-            $map = [
-                ['status', '=', 4],
-                ['paid', '=', 1],
-                ['shopid', '=', $shopid],
-                ['evaluate', '=', 0],
-                ['update_time', 'between', [0, time() - (7 * 24 * 60 * 60)]],
-            ];
-            $lists = $this->OrdersModel
-                ->field('id,shopid,app,order_no,paid,uid,order_info_type,order_info_id,products,evaluate,status,update_time')
-                ->where($map)
-                ->limit(100) //并发限制
-                ->select()
-                ->toArray();
+            $result = (new EvaluateTask())->handle(intval($this->shopid), $this->taskId(3));
+            return json([
+                'code' => $result ? 200 : 0,
+                'msg' => $result ? 'success' : '处理失败',
+            ]);
+        } catch (\Throwable $e) {
+            return json([
+                'code' => 0,
+                'msg' => $e->getMessage(),
+            ]);
+        }
+    }
 
-            if (!empty($lists)) {
-                //写入评价
-                $evaluate_data = [];
-                foreach ($lists as $item) {
-                    if ($item['evaluate'] == 0) {
-                        $products = json_decode($item['products'], true);
-                        $evaluate_data[] = [
-                            'shopid' => $shopid,
-                            'app' => $item['app'],
-                            'uid' => $item['uid'],
-                            'type' => $item['order_info_type'],
-                            'type_id' => $products['id'],
-                            'order_no' => $item['order_no'],
-                            'content' => '系统默认好评',
-                            'images' => '',
-                            'value' => 5.00,
-                            'status' => 1,
-                            'create_time' => time(),
-                            'update_time' => time(),
-                        ];
-                    }
-                }
+    /**
+     * 订单自动确认收货
+     * 处理 minishop 超过7天未确认收货的订单,自动完成收货进入待评价
+     *
+     * @return \think\Response
+     */
+    public function ordersReceive()
+    {
+        if (!$this->checkCronSecret()) {
+            return json([
+                'code' => 0,
+                'msg' => '定时任务密钥校验失败',
+            ]);
+        }
+        try {
+            $result = (new ReceiveTask())->handle(intval($this->shopid), $this->taskId(1));
+            return json([
+                'code' => $result ? 200 : 0,
+                'msg' => $result ? 'success' : '处理失败',
+            ]);
+        } catch (\Throwable $e) {
+            return json([
+                'code' => 0,
+                'msg' => $e->getMessage(),
+            ]);
+        }
+    }
 
-                //写入评价
-                $evaluate_result = (new EvaluateModel())->insertAll($evaluate_data);
-                if ($evaluate_result === false) throw new Exception('评价失败');
-                
-                //更改订单状态
-                $ids = array_column($lists, 'id');
-                $data = [
-                    'status'    =>  5, //已评价
-                    'evaluate' => 1,
-                    'update_time' => time(),
-                ];
-                $result = $this->OrdersModel->where('id', 'in', $ids)->update($data);
-                if ($result === false) throw new Exception('订单更新失败');
-            }
-
-            Db::commit();
-
+    /**
+     * 日志轮转：清理指定天数前的任务执行日志
+     * 建议配置为每日/每周调用一次，例如 /api/crontab/clearLogs?secret=xxx&days=180
+     *
+     * @return \think\Response
+     */
+    public function clearLogs()
+    {
+        if (!$this->checkCronSecret()) {
+            return json([
+                'code' => 0,
+                'msg' => '定时任务密钥校验失败',
+            ]);
+        }
+        $days = intval(input('days', 180));
+        try {
+            $deleted = CrontabLog::rotateLogs($days);
             return json([
                 'code' => 200,
                 'msg' => 'success',
+                'data' => ['deleted' => $deleted],
             ]);
-        } catch (\Exception $e) {
-            Db::rollback();
+        } catch (\Throwable $e) {
             return json([
                 'code' => 0,
                 'msg' => $e->getMessage(),

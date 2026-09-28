@@ -10,11 +10,15 @@ use think\console\Output;
 use Workerman\Lib\Timer;
 use Workerman\Worker;
 use app\common\model\Crontab as CrontabModel;
+use app\common\model\CrontabLog;
 
 class Crontab extends Command
 {
     protected $interval;
     protected $CrontabModel; //计划任务模型
+
+    /** 任务执行类最小间隔（秒），防止 0/负值导致 Timer 高频风暴 */
+    const MIN_INTERVAL = 60;
 
     public function __construct()
     {
@@ -58,6 +62,68 @@ class Crontab extends Command
     }
 
     /**
+     * 校验任务执行类是否合法
+     * 仅允许 app\{模块}\crontab\{类名} 命名空间下真实存在的类，防止数据库 execute 字段被污染导致任意类实例化
+     *
+     * @param string $execute
+     * @return bool
+     */
+    protected function isValidTaskClass($execute)
+    {
+        $execute = (string)$execute;
+        if (!preg_match('/^app\\\\[a-zA-Z0-9_]+\\\\crontab\\\\[A-Za-z0-9_]+$/', $execute)) {
+            return false;
+        }
+        return class_exists($execute);
+    }
+
+    /**
+     * 安全执行任务：异常不中断调度循环，结果记入任务日志
+     *
+     * @param array $task
+     * @return void
+     */
+    protected function runTask(array $task)
+    {
+        $shopid = intval($task['shopid'] ?? 0);
+        $task_id = intval($task['id'] ?? 0);
+        $execute = (string)($task['execute'] ?? '');
+
+        // 执行类校验（命名空间白名单 + 类存在性）
+        if (!$this->isValidTaskClass($execute)) {
+            CrontabLog::addLog([
+                'shopid' => $shopid,
+                'cid'    => $task_id,
+                'description' => '任务执行类不合法或不存在: ' . substr($execute, 0, 120),
+                'status' => 0,
+            ]);
+            return;
+        }
+
+        try {
+            $handler = new $execute();
+            if (!method_exists($handler, 'handle')) {
+                CrontabLog::addLog([
+                    'shopid' => $shopid,
+                    'cid'    => $task_id,
+                    'description' => '任务类缺少 handle 方法: ' . substr($execute, 0, 120),
+                    'status' => 0,
+                ]);
+                return;
+            }
+            $handler->handle($shopid, $task_id);
+        } catch (\Throwable $e) {
+            // 任务异常不允许拖垮整个调度循环
+            CrontabLog::addLog([
+                'shopid' => $shopid,
+                'cid'    => $task_id,
+                'description' => '任务执行异常: ' . mb_substr($e->getMessage(), 0, 200),
+                'status' => 0,
+            ]);
+        }
+    }
+
+    /**
      * @title 开启定时任务
      */
     public function start()
@@ -68,15 +134,26 @@ class Crontab extends Command
         ];
         $task_list = $this->CrontabModel->where($map)->field('id,shopid,execute,cycle,day,hour,minute')->select()->toArray();
         foreach ($task_list as $index => $task) {
+            //任务执行类合法性前置校验：不合法直接跳过，避免 fatal error 拖垮调度器
+            if (!$this->isValidTaskClass($task['execute'])) {
+                CrontabLog::addLog([
+                    'shopid' => intval($task['shopid']),
+                    'cid'    => intval($task['id']),
+                    'description' => '任务执行类不合法或不存在，已跳过: ' . substr((string)$task['execute'], 0, 120),
+                    'status' => 0,
+                ]);
+                continue;
+            }
             //格式化天
-            $d = $task['day'];
+            $d = max(0, intval($task['day']));
             //格式化小时
-            $h = $task['hour'];
+            $h = max(0, min(23, intval($task['hour'])));
             //格式化分钟
-            $i = $task['minute'];
+            $i = max(0, min(59, intval($task['minute'])));
 
             switch ($task['cycle']) {
                 case 'month': //每月执行
+                    $d = max(1, min(31, $d));
                     $rule = "{$i} {$h} {$d} * *";
                     break;
                 case 'day': //每天执行
@@ -98,11 +175,13 @@ class Crontab extends Command
                             $time_interval = $i * 60;
                             break;
                         default:
-                            $time_interval = 60;
+                            $time_interval = self::MIN_INTERVAL;
                             break;
                     }
+                    //间隔下限保护：防止 0/负间隔导致 Timer 高频死循环
+                    $time_interval = max(self::MIN_INTERVAL, $time_interval);
                     Timer::add($time_interval, function () use ($task) {
-                        (new $task['execute'])->handle($task['shopid'], $task['id']); //处理任务
+                        $this->runTask($task); //处理任务（带校验与异常容错）
                     });
                     $rule = false;
                     break;
@@ -111,7 +190,7 @@ class Crontab extends Command
             if ($rule) {
                 //加载任务
                 new \Workerman\Crontab\Crontab($rule, function () use ($task) {
-                    (new $task['execute'])->handle($task['shopid'], $task['id']); //处理任务
+                    $this->runTask($task); //处理任务（带校验与异常容错）
                 });
             }
         }

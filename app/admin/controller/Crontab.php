@@ -48,6 +48,21 @@ class Crontab extends Admin
     }
 
     /**
+     * 校验任务执行类：仅允许 app\{模块}\crontab\{类名} 下真实存在的类
+     *
+     * @param string $execute
+     * @return bool
+     */
+    protected function checkExecute($execute)
+    {
+        $execute = (string)$execute;
+        if (!preg_match('/^app\\\\[a-zA-Z0-9_]+\\\\crontab\\\\[A-Za-z0-9_]+$/', $execute)) {
+            return false;
+        }
+        return class_exists($execute);
+    }
+
+    /**
      * 编辑任务
      */
     public function edit()
@@ -66,6 +81,25 @@ class Crontab extends Admin
                 'minute'    =>  $params['minute'],
                 'status'    =>  $params['status']
             ];
+            // 基础校验：标题必填
+            if (empty($data['title'])) {
+                return $this->error('任务标题不能为空');
+            }
+            // 执行类校验：防止 execute 被写成任意类名
+            if (!$this->checkExecute($data['execute'])) {
+                return $this->error('任务执行类不存在或命名空间不合法');
+            }
+            // 周期枚举校验
+            $cycles = ['hour', 'day', 'week', 'month', 'minute-n', 'hour-n', 'day-n'];
+            if (!in_array($data['cycle'], $cycles, true)) {
+                return $this->error('任务周期不合法');
+            }
+            // 数值范围校验（intval + 范围钳制）
+            $data['day'] = max(0, min(31, intval($data['day'])));
+            $data['hour'] = max(0, min(23, intval($data['hour'])));
+            $data['minute'] = max(0, min(59, intval($data['minute'])));
+            $data['status'] = in_array(intval($data['status']), [-1, 0, 1], true) ? intval($data['status']) : 1;
+
             $result = $this->CrontabModel->edit($data);
             if ($result) {
                 return $this->success('设置成功', '', url('list'));
@@ -112,6 +146,10 @@ class Crontab extends Admin
     {
         $ids = input('ids');
         !is_array($ids) && $ids = explode(',', (string)$ids);
+        $ids = array_map('intval', (array)$ids);
+        if (empty($ids)) {
+            return $this->error('参数错误');
+        }
         $status = input('status', 0, 'intval');
         $title = '更新';
         if ($status == 0) {
@@ -125,7 +163,10 @@ class Crontab extends Admin
         }
         $data['status'] = $status;
 
-        $res = $this->CrontabModel->where('id', 'in', $ids)->update($data);
+        // 归属校验：仅允许操作本店（含平台 shopid=0）任务，防止多店管理员越权
+        $res = $this->CrontabModel->where('id', 'in', $ids)
+            ->where('shopid', $this->shopid)
+            ->update($data);
         if ($res) {
             return $this->success($title . '成功');
         } else {
