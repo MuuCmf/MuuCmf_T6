@@ -413,7 +413,40 @@ class File extends Api
     public function attachment()
     {
         $data = input('post.');
-        $data['uid'] = get_uid();
+        $uid = get_uid();
+
+        // 字段白名单：仅允许业务必要字段，禁止覆盖 shopid 等关键字段
+        $allowed_fields = ['filename', 'type', 'driver', 'size', 'ext', 'mime', 'file_id', 'duration', 'md5', 'sha1', 'status'];
+        $data = array_intersect_key($data, array_flip($allowed_fields));
+        $data['uid'] = $uid;
+
+        // attachment（存储路径/云点播URL）允许写入但需校验格式，防止路径穿越与任意文件读取
+        $attachment = trim((string)input('post.attachment', '', 'trim'));
+        if ($attachment !== '') {
+            $attachment = str_replace('\\', '/', $attachment);
+            if (strpos($attachment, '://') !== false) {
+                // 完整 URL 仅允许 http/https（云点播等场景）
+                if (!preg_match('/^https?:\/\//i', $attachment)) {
+                    return $this->error('attachment 参数不合法');
+                }
+            } else {
+                // 相对路径：拒绝绝对路径与路径穿越
+                if (strpos($attachment, '..') !== false || substr($attachment, 0, 1) === '/') {
+                    return $this->error('attachment 参数不合法');
+                }
+            }
+            $data['attachment'] = $attachment;
+        }
+
+        // 更新已有记录时校验归属，防止越权修改他人附件记录
+        $id = intval(input('post.id', 0, 'intval'));
+        if ($id > 0) {
+            $old = $this->Attachment->where('id', $id)->find();
+            if (!$old || $old['uid'] != $uid) {
+                return $this->error('无权操作该附件');
+            }
+            $data['id'] = $id;
+        }
 
         $res = $this->Attachment->edit($data);
         if ($res) {

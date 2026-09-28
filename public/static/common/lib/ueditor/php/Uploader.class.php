@@ -178,15 +178,34 @@ class Uploader
             $this->stateInfo = $this->getStateInfo("ERROR_HTTP_LINK");
             return;
         }
+        //仅允许 http/https 协议
+        $scheme = strtolower((string)parse_url($imgUrl, PHP_URL_SCHEME));
+        if (!in_array($scheme, array('http', 'https'))) {
+            $this->stateInfo = $this->getStateInfo("ERROR_HTTP_LINK");
+            return;
+        }
+        //SSRF 防护：禁止访问内网/保留地址
+        $host = parse_url($imgUrl, PHP_URL_HOST);
+        if (empty($host) || $this->isInternalHost($host)) {
+            $this->stateInfo = $this->getStateInfo("ERROR_HTTP_LINK");
+            return;
+        }
         //获取请求头并检测死链
         $heads = get_headers($imgUrl);
         if (!(stristr($heads[0], "200") && stristr($heads[0], "OK"))) {
             $this->stateInfo = $this->getStateInfo("ERROR_DEAD_LINK");
             return;
         }
-        //格式验证(扩展名验证和Content-Type验证)
+        //格式验证(扩展名验证和Content-Type验证)：必须同时满足扩展名白名单且Content-Type为图片
         $fileType = strtolower(strrchr($imgUrl, '.'));
-        if (!in_array($fileType, $this->config['allowFiles']) || stristr($heads['Content-Type'], "image")) {
+        $contentType = '';
+        foreach ($heads as $k => $v) {
+            if (is_string($k) && strtolower($k) == 'content-type') {
+                $contentType = $v;
+                break;
+            }
+        }
+        if (!in_array($fileType, $this->config['allowFiles']) || !stristr($contentType, "image")) {
             $this->stateInfo = $this->getStateInfo("ERROR_HTTP_CONTENTTYPE");
             return;
         }
@@ -195,12 +214,18 @@ class Uploader
         ob_start();
         $context = stream_context_create(
             array('http' => array(
-                'follow_location' => false // don't follow redirects
+                'follow_location' => false, // don't follow redirects
+                'timeout' => 10
             ))
         );
         readfile($imgUrl, false, $context);
         $img = ob_get_contents();
         ob_end_clean();
+        //校验拉取内容确为图片，防止非图片内容落盘
+        if (empty($img) || @getimagesizefromstring($img) === false) {
+            $this->stateInfo = $this->getStateInfo("ERROR_HTTP_CONTENTTYPE");
+            return;
+        }
         preg_match("/[\/]([^\/]*)[\.]?[^\.\/]*$/", $imgUrl, $m);
 
         $this->oriName = $m ? $m[1]:"";
@@ -243,6 +268,73 @@ class Uploader
     private function getStateInfo($errCode)
     {
         return !$this->stateMap[$errCode] ? $this->stateMap["ERROR_UNKNOWN"] : $this->stateMap[$errCode];
+    }
+
+    /**
+     * SSRF 防护：判断主机是否为内网/保留地址
+     * @param string $host
+     * @return bool true 表示内网/保留地址（应拒绝访问）
+     */
+    private function isInternalHost($host)
+    {
+        $host = strtolower(trim((string)$host));
+        // 去除端口：IPv6 字面量（含 2 个及以上冒号）不剥离，避免误伤 ::8888 这类地址
+        if (substr_count($host, ':') < 2) {
+            $host = preg_replace('/:\d+$/', '', $host);
+        }
+        // 本地主机名
+        if ($host === 'localhost' || $host === 'localhost.localdomain') {
+            return true;
+        }
+        // 解析域名（防止 DNS rebinding，用 gethostbyname 取单个 A 记录判断）
+        $ip = gethostbyname($host);
+        if ($ip === $host) {
+            // 无法解析且非 IP，直接拒绝
+            if (filter_var($host, FILTER_VALIDATE_IP) === false) {
+                return true;
+            }
+            $ip = $host;
+        }
+        // IPv6 保留地址
+        if (strpos($ip, ':') !== false) {
+            $ip = trim($ip, '[]');
+            if ($ip === '::' || $ip === '::1' || preg_match('/^fe[89ab]/', $ip) || preg_match('/^f[cd]/', $ip)) {
+                return true;
+            }
+            return false;
+        }
+        // IPv4 内网/保留段
+        $parts = explode('.', $ip);
+        if (count($parts) != 4) {
+            return true;
+        }
+        $a = intval($parts[0]);
+        $b = intval($parts[1]);
+        // 0.0.0.0/8, 10.0.0.0/8, 127.0.0.0/8
+        if ($a == 0 || $a == 10 || $a == 127) {
+            return true;
+        }
+        // 100.64.0.0/10 (CGN共享地址段)
+        if ($a == 100 && $b >= 64 && $b <= 127) {
+            return true;
+        }
+        // 172.16.0.0/12
+        if ($a == 172 && $b >= 16 && $b <= 31) {
+            return true;
+        }
+        // 192.168.0.0/16
+        if ($a == 192 && $b == 168) {
+            return true;
+        }
+        // 169.254.0.0/16 (链路本地)
+        if ($a == 169 && $b == 254) {
+            return true;
+        }
+        // 224.0.0.0/4 (组播/保留)
+        if ($a >= 224) {
+            return true;
+        }
+        return false;
     }
 
     /**

@@ -512,16 +512,12 @@ class WechatPayment extends PayService
     }
 
     /**
-     * 生成随机字符串
+     * 生成随机字符串（使用加密安全随机数）
      */
     protected function generateNonceStr($length = 32)
     {
-        $chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-        $str = '';
-        for ($i = 0; $i < $length; $i++) {
-            $str .= $chars[mt_rand(0, strlen($chars) - 1)];
-        }
-        return $str;
+        $length = max(1, intval($length));
+        return substr(bin2hex(random_bytes(intval(ceil($length / 2)))), 0, $length);
     }
 
     /**
@@ -646,9 +642,45 @@ class WechatPayment extends PayService
     protected function notifyV2($params)
     {
         if ($params['return_code'] == 'SUCCESS' && $params['result_code'] == 'SUCCESS') {
+            // v2 回调签名校验，防止伪造支付成功通知
+            if (!$this->verifyV2Sign($params)) {
+                Log::write('v2 回调签名校验失败: ' . ($params['out_trade_no'] ?? ''));
+                return false;
+            }
             return $params['out_trade_no'];
         }
         return false;
+    }
+
+    /**
+     * v2 回调签名校验（支持 MD5 / HMAC-SHA256）
+     * @param array $params 回调参数（含 sign）
+     * @return bool
+     */
+    protected function verifyV2Sign($params)
+    {
+        $key = isset($this->config['key']) ? (string)$this->config['key'] : '';
+        if (empty($key) || empty($params['sign'])) {
+            return false;
+        }
+        $sign = (string)$params['sign'];
+        $signType = isset($params['sign_type']) ? strtoupper((string)$params['sign_type']) : 'MD5';
+        unset($params['sign']);
+        ksort($params);
+        $string = '';
+        foreach ($params as $k => $v) {
+            if ($v === '' || $v === null) {
+                continue;
+            }
+            $string .= $k . '=' . $v . '&';
+        }
+        $string .= 'key=' . $key;
+        if ($signType == 'HMAC-SHA256') {
+            $calc = strtoupper(hash_hmac('sha256', $string, $key));
+        } else {
+            $calc = strtoupper(md5($string));
+        }
+        return hash_equals($calc, strtoupper($sign));
     }
 
     /**

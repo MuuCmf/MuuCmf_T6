@@ -86,7 +86,12 @@ class Orders extends Base
                 $data = $appOrdersLogic->vipFormatData($data);
             }
         }else{
-            $order_namespace = "app\\{$data['app']}\\logic\\Orders";
+            // 应用名白名单校验，防止实例化任意类
+            $app_name = isset($data['app']) ? (string)$data['app'] : '';
+            if (!preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $app_name)) {
+                return $data;
+            }
+            $order_namespace = "app\\{$app_name}\\logic\\Orders";
             if (class_exists($order_namespace)) {
                 $appOrdersLogic = new $order_namespace;
                 $data = $appOrdersLogic->formatData($data);

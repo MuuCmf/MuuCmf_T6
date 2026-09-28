@@ -308,7 +308,6 @@ class DouyinMp
             curl_setopt($curl, CURLOPT_HTTPHEADER, $header);
         }
         list($content, $status) = [curl_exec($curl), curl_getinfo($curl), curl_close($curl)];
-        var_dump($content);
         return (intval($status["http_code"]) === 200) ? $content : false;
     }
 

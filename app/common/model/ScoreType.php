@@ -56,7 +56,9 @@ class ScoreType extends Model
     {
         $db_prefix = config('database.connections.mysql.prefix');
         $id = $this->insertGetId($data);
-        $query = "alter table `{$db_prefix}member` ADD  `score" . $id . "` INT(11) NOT NULL DEFAULT '0' COMMENT  '" . $data['title'] . "'";
+        // 转义单引号，防止 SQL 注入（ALTER TABLE 无法参数绑定）
+        $title = str_replace("'", "''", isset($data['title']) ? (string)$data['title'] : '');
+        $query = "alter table `{$db_prefix}member` ADD  `score" . $id . "` INT(11) NOT NULL DEFAULT '0' COMMENT  '" . $title . "'";
 
         Db::execute($query);
 
@@ -76,6 +78,7 @@ class ScoreType extends Model
             ['id','>', 4]
         ])->delete();
         foreach ($ids as $v) {
+            $v = intval($v);
             if ($v > 4) {
                 $query = "alter table `{$db_prefix}member` drop column score" . $v;
                 try {
@@ -97,7 +100,10 @@ class ScoreType extends Model
     {
         $db_prefix = config('database.connections.mysql.prefix');
         $res = $this->update($data);
-        $query = "alter table `{$db_prefix}member` CHANGE `score" . $data['id'] . "` `score" . $data['id'] . "` INT(11) NOT NULL DEFAULT '0' COMMENT '" . $data['title'] . "'";
+        $id = intval($data['id']);
+        // 转义单引号，防止 SQL 注入（ALTER TABLE 无法参数绑定）
+        $title = str_replace("'", "''", isset($data['title']) ? (string)$data['title'] : '');
+        $query = "alter table `{$db_prefix}member` CHANGE `score{$id}` `score{$id}` INT(11) NOT NULL DEFAULT '0' COMMENT '" . $title . "'";
         Db::execute($query);
         return $res;
     }
@@ -111,6 +117,7 @@ class ScoreType extends Model
      */
     public function getUserScore($uid, $type)
     {
+        $type = intval($type);
         $score = Db::name('member')->where(['uid' => $uid])->value('score' . $type);
         return $score;
     }
@@ -125,6 +132,8 @@ class ScoreType extends Model
     public function setUserScore($uids, $score, $type, $action = 'inc',$action_model ='',$record_id=0,$remark='')
     {
         $model = Db::name('member');
+        // 类型字段仅允许数字，防止字段名拼接注入
+        $type = intval($type);
         switch ($action) {
             case 'inc':
                 $score = abs($score);

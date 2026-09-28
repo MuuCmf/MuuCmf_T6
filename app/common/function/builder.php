@@ -180,7 +180,7 @@ if (!function_exists('lists_plus')) {
                 $data[$key]['alias'] = $alias_set[$data[$key]['module']];
             }
 
-            $mid = Db::name('action_log')->field("max(create_time),remark")->where('action_id=' . $data[$key]['id'])->select();
+            $mid = Db::name('action_log')->field("max(create_time),remark")->where('action_id', $data[$key]['id'])->select();
             $mid_s = $mid[0]['remark'];
             if (isset($mid_s) && strpos($mid_s, lang('_INTEGRAL_')) !== false) {
                 $data[$key]['vary'] = $mid_s;

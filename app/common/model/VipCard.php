@@ -28,10 +28,32 @@ class VipCard extends Base
     }
 
     /**
+     * 校验应用名与商品类型名
+     * 仅允许字母数字下划线，防止 SQL 注入与动态类名注入
+     * @param string $app 应用名称
+     * @param string $product_type 商品类型
+     * @return bool
+     */
+    private function checkAppName(string $app, string $product_type = ''): bool
+    {
+        if (!preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $app)) {
+            return false;
+        }
+        if ($product_type !== '' && !preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $product_type)) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
      * 获取商品可用会员卡列表
      */
     public function getProductAbleCardsList(int $shopid, string $app, int $product_id, string $product_type)
     {
+        // 应用名/类型名白名单校验，防止 SQL 注入与类名注入
+        if (!$this->checkAppName($app, $product_type)) {
+            return null;
+        }
         // 获取应用所有启用中会员卡
         $map[] = ['shopid', '=', $shopid];
         $map[] = ['status', '=', 1];
@@ -48,6 +70,10 @@ class VipCard extends Base
         //获取商品数据
         $file_name = ucfirst($app) . ucfirst($product_type);
         $namespace = "app\\{$app}\\model\\{$file_name}";
+        // 类存在性校验后再实例化，防止实例化任意类
+        if (!class_exists($namespace)) {
+            return null;
+        }
         $productModel = new $namespace;
         $product_data = $productModel->where('id', $product_id)->find();
 
@@ -91,12 +117,17 @@ class VipCard extends Base
      */
     public function getUserAbleCard(int $shopid, string $app, int $uid, int $product_id, string $product_type)
     {
+        // 应用名/类型名白名单校验，防止 SQL 注入与类名注入
+        if (!$this->checkAppName($app, $product_type)) {
+            return null;
+        }
         //获取用户未到期的所有会员卡
         $vipModel = new Vip();
-        $where = "v.`shopid`={$shopid} and vc.`app` like '%{$app}%' and v.`uid`={$uid} and (v.`end_time` > " . time() . " or v.`end_time`=0) and v.`status`=1 and vc.`status`=1";
+        $where = "v.`shopid`=:shopid and vc.`app` like :app and v.`uid`=:uid and (v.`end_time` > :now or v.`end_time`=0) and v.`status`=1 and vc.`status`=1";
+        $bind = ['shopid' => $shopid, 'app' => '%' . $app . '%', 'uid' => $uid, 'now' => time()];
         $vip_list = $vipModel->alias('v')
         ->join('vip_card vc', 'vc.id = v.card_id')
-        ->whereRaw($where)
+        ->whereRaw($where, $bind)
         ->field('v.*, vc.id vip_card_id, vc.app vip_card_app, vc.status vip_card_status')
         ->select();
 
@@ -117,6 +148,10 @@ class VipCard extends Base
         //获取商品数据
         $file_name = ucfirst($app) . ucfirst($product_type);
         $namespace = "app\\{$app}\\model\\{$file_name}";
+        // 类存在性校验后再实例化，防止实例化任意类
+        if (!class_exists($namespace)) {
+            return null;
+        }
         $productModel = new $namespace;
         $product_data = $productModel->where('id', $product_id)->find();
         if (empty($product_data)) {
@@ -186,12 +221,17 @@ class VipCard extends Base
      */
     public function getUserAbleOptimalCard(int $shopid, string $app, int $uid, int $product_id, string $product_type)
     {
+        // 应用名/类型名白名单校验，防止 SQL 注入与类名注入
+        if (!$this->checkAppName($app, $product_type)) {
+            return null;
+        }
         //获取用户未到期的所有会员卡
         $vipModel = new Vip();
-        $where = "v.`shopid`={$shopid} and vc.`app` like '%{$app}%' and v.`uid`={$uid} and (v.`end_time` > " . time() . " or v.`end_time`=0) and v.`status`=1 and vc.`status`=1";
+        $where = "v.`shopid`=:shopid and vc.`app` like :app and v.`uid`=:uid and (v.`end_time` > :now or v.`end_time`=0) and v.`status`=1 and vc.`status`=1";
+        $bind = ['shopid' => $shopid, 'app' => '%' . $app . '%', 'uid' => $uid, 'now' => time()];
         $vip_card_list = $vipModel->alias('v')
         ->join('vip_card vc', 'vc.id = v.card_id')
-        ->whereRaw($where)
+        ->whereRaw($where, $bind)
         ->field('v.uid vip_uid,v.card_id vip_card_id,v.end_time vip_end_time,v.status vip_status, vc.*')
         ->select();
 
@@ -214,6 +254,10 @@ class VipCard extends Base
         //获取商品数据
         $file_name = ucfirst($app) . ucfirst($product_type);
         $namespace = "app\\{$app}\\model\\{$file_name}";
+        // 类存在性校验后再实例化，防止实例化任意类
+        if (!class_exists($namespace)) {
+            return null;
+        }
         $productModel = new $namespace;
         $product_data = $productModel->where('id', $product_id)->find();
         if (empty($product_data)) {

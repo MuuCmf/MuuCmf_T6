@@ -138,7 +138,16 @@ class Base
         if (!isset($data['app']) || empty($data['app'])) {
             throw new Exception('未支持的模块');
         }
-        $class = "app\\{$data['app']}\\logic\\{$logic_name}";
+        // 模块名/逻辑名白名单校验，防止实例化任意类
+        $app_name = (string)$data['app'];
+        $logic_name = (string)$logic_name;
+        if (!preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $app_name) || !preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $logic_name)) {
+            throw new Exception('非法的模块或逻辑名');
+        }
+        $class = "app\\{$app_name}\\logic\\{$logic_name}";
+        if (!class_exists($class)) {
+            throw new Exception('模块逻辑不存在');
+        }
         $data = (new $class)->formatData($data);
         return $data;
     }

@@ -98,7 +98,8 @@ class AuthGroup extends Base
             ->alias('a')
             ->field('uid,group_id,title,description,rules')
             ->join($prefix . self::AUTH_GROUP . ' g', 'a.group_id=g.id')
-            ->where("a.uid='$uid' and g.status='1'")
+            ->where('a.uid', $uid)
+            ->where('g.status', '1')
             ->select();
 
         $groups[$uid] = $user_groups ? $user_groups : array();
@@ -127,7 +128,9 @@ class AuthGroup extends Base
         $prefix = config('database.connections.mysql.prefix');
         $result = Db::table($prefix . self::AUTH_GROUP_ACCESS . ' g')
             ->join($prefix . self::AUTH_EXTEND . ' c on g.group_id=c.group_id')
-            ->where("g.uid='$uid' and c.type='$type' and !isnull(extend_id)")
+            ->where('g.uid', $uid)
+            ->where('c.type', $type)
+            ->whereNotNull('extend_id')
             ->column('extend_id');
         if ($uid == get_uid() && $session) {
             session($session, $result);

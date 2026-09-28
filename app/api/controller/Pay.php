@@ -61,7 +61,15 @@ class Pay extends Api
                     $this->OrderLogic = new $order_namespace;
                     $order_data = $this->OrderLogic->vipFormatData($order_data);
                 } else {
-                    $order_namespace = "app\\{$order_data['app']}\\logic\\Orders";
+                    // 应用名白名单校验，防止订单 app 字段被污染导致实例化任意类
+                    $app_name = isset($order_data['app']) ? (string)$order_data['app'] : '';
+                    if (!preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $app_name)) {
+                        throw new Exception('订单应用标识不合法');
+                    }
+                    $order_namespace = "app\\{$app_name}\\logic\\Orders";
+                    if (!class_exists($order_namespace)) {
+                        throw new Exception('订单应用逻辑不存在');
+                    }
                     $this->OrderLogic = new $order_namespace;
                     $order_data = $this->OrderLogic->formatData($order_data);
                 }
@@ -234,6 +242,27 @@ class Pay extends Api
     public function refund()
     {
         if (request()->isAjax()) {
+            // 越权防护：校验退款订单归属当前登录用户，防止操作他人订单
+            $uid = get_uid();
+            $order_no = isset($this->params['order_no']) ? (string)$this->params['order_no'] : '';
+            $order_id = isset($this->params['id']) ? intval($this->params['id']) : 0;
+            $query = $this->OrderModel->newQuery();
+            if ($order_no !== '') {
+                $query->where('order_no', $order_no);
+            } elseif ($order_id > 0) {
+                $query->where('id', $order_id);
+            } else {
+                return $this->error('参数错误');
+            }
+            $refund_order = $query->find();
+            if (!$refund_order || $refund_order['uid'] != $uid) {
+                return $this->error('无权操作该订单');
+            }
+            // 以数据库订单为准，避免调用方伪造 shopid/app 等参数
+            $this->params['order_no'] = $refund_order['order_no'];
+            $this->params['shopid'] = $refund_order['shopid'];
+            $this->params['app'] = $refund_order['app'];
+
             //开启事务
             Db::startTrans();
             try {
@@ -465,7 +494,18 @@ class Pay extends Api
         if ($order_info['order_info_type'] == 'vipcard') {
             $order_namespace = "app\\common\\service\\VipOrders";
         } else {
-            $order_namespace = "app\\{$order_info['app']}\\service\\Orders";
+            // 应用名白名单校验，防止订单 app 字段被污染导致实例化任意类
+            $app_name = isset($order_info['app']) ? (string)$order_info['app'] : '';
+            if (!preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $app_name)) {
+                Log::write('支付回调订单 app 字段非法: ' . $app_name . ' order_no=' . $order_no);
+                return false;
+            }
+            $order_namespace = "app\\{$app_name}\\service\\Orders";
+        }
+        // 类存在性校验后再实例化
+        if (!class_exists($order_namespace)) {
+            Log::write('支付回调订单服务类不存在: ' . $order_namespace . ' order_no=' . $order_no);
+            return false;
         }
         $OrderService = new $order_namespace;
         $result = $OrderService->paySuccess($order_info);
