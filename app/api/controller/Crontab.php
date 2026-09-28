@@ -26,6 +26,24 @@ class Crontab extends Api
     }
 
     /**
+     * 定时任务密钥校验
+     * 仅允许携带正确 secret 的调用方（如系统定时任务/内网调度）执行批量写操作
+     *
+     * @return bool
+     */
+    protected function checkCronSecret()
+    {
+        // 密钥来自系统配置 system.CRON_SECRET（后端配置界面可设置）
+        $secret = (string)config('system.CRON_SECRET', '');
+        $input = (string)input('secret', '', 'trim');
+        // 未配置密钥时直接拒绝，防止接口裸奔
+        if ($secret === '' || $input === '') {
+            return false;
+        }
+        return hash_equals($secret, $input);
+    }
+
+    /**
      * 自动取消超时未支付订单
      * 
      * 查询24小时前创建且未支付的订单,将其状态更新为已取消
@@ -36,6 +54,12 @@ class Crontab extends Api
      */
     public function ordersCancel()
     {
+        if (!$this->checkCronSecret()) {
+            return json([
+                'code' => 0,
+                'msg' => '定时任务密钥校验失败',
+            ]);
+        }
         $shopid = $this->shopid;
         Db::startTrans();
         try {
@@ -89,6 +113,12 @@ class Crontab extends Api
      */
     public function ordersEvaluate()
     {
+        if (!$this->checkCronSecret()) {
+            return json([
+                'code' => 0,
+                'msg' => '定时任务密钥校验失败',
+            ]);
+        }
         $shopid = $this->shopid;
         Db::startTrans();
         try {

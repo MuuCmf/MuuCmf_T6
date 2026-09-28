@@ -67,6 +67,10 @@ class WechatWork extends Api
     public function oauth()
     {
         $target_url = input('param.target_url', request()->domain());
+        // 协议白名单：仅允许 http/https，防止 javascript:/data: 等协议注入
+        if (!preg_match('#^https?://#i', (string)$target_url)) {
+            $target_url = request()->domain();
+        }
         $target_url = explode('#', $target_url);
         $oauth_data = [
             'target_url' => urlencode($target_url[0])
@@ -119,8 +123,15 @@ class WechatWork extends Api
         $token = JWTAuth::builder(['uid' => $user['uid']]);
         $token = 'Bearer ' . $token;
         //跳回原网页
-        $target_url = input('param.target_url');
-        $spa_param = input('param.spa_param');
+        $target_url = input('param.target_url', '');
+        $spa_param = input('param.spa_param', '');
+        // 协议白名单：仅允许 http/https，其余回落本站首页
+        if ($target_url !== '' && !preg_match('#^https?://#i', (string)$target_url)) {
+            $target_url = request()->domain();
+        }
+        // JS 字符串转义（单引号/反斜杠），防止反射型 XSS 注入 script 上下文
+        $target_url = str_replace(['\\', "'"], ['\\\\', "\\'"], (string)$target_url);
+        $spa_param = str_replace(['\\', "'"], ['\\\\', "\\'"], (string)$spa_param);
 
         $script = "window.location.href='{$target_url}#{$spa_param}'";
         echo save_local_storage('user_token', $token, $script);

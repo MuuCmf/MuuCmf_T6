@@ -10,7 +10,7 @@ class Keywords extends Api
     protected KeywordsModel $KeywordsModel;
     protected KeywordsLogic $KeywordsLogic;
     protected $middleware = [
-        'app\\common\\middleware\\CheckAuth' => ['only' => 'history']
+        'app\\common\\middleware\\CheckAuth' => ['except' => 'hot']
     ];
     public function __construct()
     {

@@ -48,6 +48,17 @@ class Authentication extends Api
                 'status' => 1
             ];
 
+            // 归属校验：编辑已有认证记录时必须属于当前用户，防止 IDOR 覆盖他人实名认证资料
+            if (!empty($id)) {
+                $owned = $this->AuthenticationModel->where([
+                    ['id', '=', $id],
+                    ['uid', '=', $uid],
+                ])->find();
+                if (!$owned) {
+                    return $this->error('无权操作该认证记录');
+                }
+            }
+
             // 数据验证
             try {
                 validate(AuthenticationValidate::class)->check($data);

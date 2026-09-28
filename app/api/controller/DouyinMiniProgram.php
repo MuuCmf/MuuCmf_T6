@@ -149,8 +149,13 @@ class DouyinMiniProgram extends Api
      */
     public function createQrcode()
     {
-        //小程序路径
+        //小程序路径（仅允许页面路径字符，长度限制防止滥用第三方接口）
         $path = input('path');
+        $path = preg_replace('/[^a-zA-Z0-9_\-\/\.]/', '', (string)$path);
+        $path = substr($path, 0, 200);
+        if ($path === '') {
+            return $this->error('参数错误');
+        }
 
         $result = MiniProgramServer::createQRCode($path);
         Header("Content-type: image/jpeg");//直接输出显示jpg格式图片

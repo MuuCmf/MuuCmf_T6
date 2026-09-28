@@ -211,8 +211,21 @@ class WechatOfficialAccount extends Api
         if (request()->isPost()) {
             $openid = input('post.openid');
             $scene_key = input('post.scene_key');
+
+            // 扫码会话绑定校验：提交的 openid 必须与 scene_key 对应的扫码用户一致，
+            // 防止攻击者伪造他人 openid 冒用登录
+            $qrcode_login = (new QrcodeLogin())->where('scene_key', $scene_key)->find();
+            if (!$qrcode_login) {
+                return $this->error('二维码已失效，请重新扫码');
+            }
+            $scan_metadata = json_decode($qrcode_login['metadata'], true);
+            $trusted_openid = $scan_metadata['openid'] ?? '';
+            if ($trusted_openid === '' || $trusted_openid !== $openid) {
+                return $this->error('扫码信息不匹配，请重新扫码');
+            }
+
             $map = [
-                ['openid', '=', $openid],
+                ['openid', '=', $trusted_openid],
                 ['type', '=', 'weixin_h5'],
                 ['shopid', '=', $this->shopid]
             ];
@@ -230,13 +243,12 @@ class WechatOfficialAccount extends Api
                 MemberSync::where($map)->delete();
             }
 
-            //初次扫码注册
+            //初次扫码注册（使用已通过绑定校验的扫码信息，openid 为微信回调写入的可信值）
             if (empty($uid)) {
-                $oauth_info = (new QrcodeLogin())->where('scene_key', $scene_key)->value('metadata');
+                $oauth_info = $scan_metadata;
                 if (!$oauth_info) {
                     return $this->error('没有授权信息');
                 }
-                $oauth_info = json_decode($oauth_info, true);
                 //开放平台ID
                 $unionid = '';
                 if (isset($oauth_info['unionid'])) {
@@ -282,7 +294,13 @@ class WechatOfficialAccount extends Api
         ]);
         if (!empty($data)) {
             $data = json_decode($data['metadata'], true);
-            return $this->success('success', $data);
+            // 信息脱敏：仅返回前端展示所需的昵称/头像，不暴露 openid/unionid 等敏感标识
+            $safe = [
+                'nickname' => $data['nickname'] ?? '',
+                'headimgurl' => $data['headimgurl'] ?? '',
+                'sex' => $data['sex'] ?? 0,
+            ];
+            return $this->success('success', $safe);
         }
         return $this->error('没有查询到相关数据');
     }
@@ -293,6 +311,10 @@ class WechatOfficialAccount extends Api
     public function oauth()
     {
         $target_url = input('param.target_url', request()->domain());
+        // 协议白名单：仅允许 http/https，防止 javascript:/data: 等协议注入
+        if (!preg_match('#^https?://#i', (string)$target_url)) {
+            $target_url = request()->domain();
+        }
         $target_url = explode('#', (string)$target_url);
         $oauth_data = [
             'target_url' => urlencode($target_url[0])
@@ -330,8 +352,15 @@ class WechatOfficialAccount extends Api
         $token = JWTAuth::builder(['uid' => $user['uid']]);
         $token = 'Bearer ' . $token;
         //跳回原网页
-        $target_url = input('param.target_url');
-        $spa_param = input('param.spa_param');
+        $target_url = input('param.target_url', '');
+        $spa_param = input('param.spa_param', '');
+        // 协议白名单：仅允许 http/https，其余回落本站首页
+        if ($target_url !== '' && !preg_match('#^https?://#i', (string)$target_url)) {
+            $target_url = request()->domain();
+        }
+        // JS 字符串转义（单引号/反斜杠），防止反射型 XSS 注入 script 上下文
+        $target_url = str_replace(['\\', "'"], ['\\\\', "\\'"], (string)$target_url);
+        $spa_param = str_replace(['\\', "'"], ['\\\\', "\\'"], (string)$spa_param);
 
         $script = "window.location.href='{$target_url}#{$spa_param}'";
         echo save_local_storage('user_token', $token, $script);

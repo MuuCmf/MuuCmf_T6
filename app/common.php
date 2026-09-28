@@ -617,3 +617,77 @@ if (!function_exists('get_upgrade_status')) {
         return false;
     }
 }
+
+if (!function_exists('is_internal_host')) {
+    /**
+     * 判断主机名是否为内网/保留地址（SSRF 防护）
+     * 覆盖 IPv4 保留段、IPv6 保留段、localhost、无法解析的主机及数字编码 IP
+     * @param string $host
+     * @return bool true=内网/不可信，false=公网可信
+     */
+    function is_internal_host($host)
+    {
+        $host = strtolower(trim((string)$host));
+        // 去除端口：IPv6 字面量（含 2 个及以上冒号）不剥离，避免误伤 ::8888 这类地址
+        if (substr_count($host, ':') < 2) {
+            $host = preg_replace('/:\d+$/', '', $host);
+        }
+        // 本地主机名
+        if ($host === 'localhost' || $host === 'localhost.localdomain') {
+            return true;
+        }
+        // 解析域名（gethostbyname 取单个 A 记录，缓解 DNS rebinding）
+        $ip = gethostbyname($host);
+        if ($ip === $host) {
+            // 无法解析且非 IP（含 127.1 / 2130706433 / 0x7f000001 等数字编码），直接拒绝
+            if (filter_var($host, FILTER_VALIDATE_IP) === false) {
+                return true;
+            }
+            $ip = $host;
+        }
+        // IPv6 保留地址
+        if (strpos($ip, ':') !== false) {
+            $ip = trim($ip, '[]');
+            // IPv4-mapped IPv6（::ffff:a.b.c.d）映射到 IPv4 地址，递归走 IPv4 内网检查
+            if (preg_match('/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i', $ip, $m4)) {
+                return is_internal_host($m4[1]);
+            }
+            if ($ip === '::' || $ip === '::1' || preg_match('/^fe[89ab]/', $ip) || preg_match('/^f[cd]/', $ip)) {
+                return true;
+            }
+            return false;
+        }
+        // IPv4 内网/保留段
+        $parts = explode('.', $ip);
+        if (count($parts) != 4) {
+            return true;
+        }
+        $a = intval($parts[0]);
+        $b = intval($parts[1]);
+        // 0.0.0.0/8, 10.0.0.0/8, 127.0.0.0/8
+        if ($a == 0 || $a == 10 || $a == 127) {
+            return true;
+        }
+        // 100.64.0.0/10 (CGN共享地址段)
+        if ($a == 100 && $b >= 64 && $b <= 127) {
+            return true;
+        }
+        // 172.16.0.0/12
+        if ($a == 172 && $b >= 16 && $b <= 31) {
+            return true;
+        }
+        // 192.168.0.0/16
+        if ($a == 192 && $b == 168) {
+            return true;
+        }
+        // 169.254.0.0/16 (链路本地)
+        if ($a == 169 && $b == 254) {
+            return true;
+        }
+        // 224.0.0.0/4 (组播/保留)
+        if ($a >= 224) {
+            return true;
+        }
+        return false;
+    }
+}

@@ -61,8 +61,18 @@ class Address extends Api
      */
     public function detail()
     {
-        $id = input('get.id', 0);
-        $data = $this->AddressModel->getDataById($id);
+        $uid = get_uid();
+        $id = input('get.id', 0, 'intval');
+        // 归属校验：仅允许读取自己的地址，防止 IDOR 泄漏他人姓名/电话等隐私
+        $data = $this->AddressModel->where([
+            ['id', '=', $id],
+            ['uid', '=', $uid],
+            ['shopid', '=', $this->shopid],
+            ['status', '=', 1],
+        ])->find();
+        if (!$data) {
+            return $this->error('地址不存在');
+        }
         $data = $this->AddressLogic->formatData($data);
         return $this->success('获取成功！', $data);
     }
@@ -119,6 +129,17 @@ class Address extends Api
                 return $this->error($e->getError());
             }
 
+            // 归属校验：编辑已有地址时必须属于当前用户，防止覆盖他人地址记录
+            if (!empty($data['id'])) {
+                $owned = $this->AddressModel->where([
+                    ['id', '=', $data['id']],
+                    ['uid', '=', $uid],
+                ])->find();
+                if (!$owned) {
+                    return $this->error('非法操作，无法编辑该地址');
+                }
+            }
+
             //写入数据
             $res = $this->AddressModel->edit($data);
             if ($res) {
@@ -148,7 +169,16 @@ class Address extends Api
     public function setDefault()
     {
         $uid = get_uid();
-        $id  = input('get.id');
+        $id  = input('get.id', 0, 'intval');
+        // 归属校验：仅允许设置自己的地址为默认
+        $owned = $this->AddressModel->where([
+            ['id', '=', $id],
+            ['uid', '=', $uid],
+            ['shopid', '=', $this->shopid],
+        ])->find();
+        if (!$owned) {
+            return $this->error('非法操作，无法设置该地址');
+        }
         $this->AddressModel->where([
             ['uid', '=', $uid],
             ['shopid', '=', $this->shopid]
@@ -158,6 +188,7 @@ class Address extends Api
         ]);
         $res = $this->AddressModel->where([
             ['id', '=', $id],
+            ['uid', '=', $uid],
             ['shopid', '=', $this->shopid]
         ])->update([
             'update_time' => time(),
@@ -177,10 +208,12 @@ class Address extends Api
     {
         $id = input('id', 0, 'intval');
         $uid = get_uid();
-        $res = $this->AddressModel->edit([
-            'id' => $id,
-            'uid' => $uid,
-            'status' => -1
+        // 归属校验：仅允许删除自己的地址（按 id+uid 条件更新，不覆盖他人记录的 uid 字段）
+        $res = $this->AddressModel->where([
+            ['id', '=', $id],
+            ['uid', '=', $uid],
+        ])->update([
+            'status' => -1,
         ]);
         if ($res) {
             return $this->success('删除成功！');

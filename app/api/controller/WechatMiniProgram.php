@@ -144,11 +144,15 @@ class WechatMiniProgram extends Api
      */
     public function unlimitQrcode()
     {
-        //小程序路径
+        //小程序路径（仅允许页面路径字符，长度限制防止滥用第三方接口）
         $path = input('param.path');
+        $path = preg_replace('/[^a-zA-Z0-9_\-\/\.]/', '', (string)$path);
+        $path = substr($path, 0, 200);
         //二维码url参数
         $scene = input('param.scene', '');
-        $width = input('param.width', '500');
+        $scene = substr($scene, 0, 64);
+        $width = intval(input('param.width', '500'));
+        $width = min(1280, max(280, $width));
         $option = [
             'page' => $path,
             'width' => $width

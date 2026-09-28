@@ -83,6 +83,10 @@ class Pay extends Api
                 //支付回调
                 if (isset($this->params['notify_url'])) {
                     $notify_url = $this->params['notify_url'];
+                    // 回调地址协议白名单：仅允许 http/https，防止注入非 HTTP 协议
+                    if (!preg_match('#^https?://#i', (string)$notify_url)) {
+                        throw new Exception('回调地址不合法');
+                    }
                 } else {
                     $notify_url = request()->domain() . "/api/pay/callback";
                     $notify_url .= "/channel/{$order_data['channel']}";

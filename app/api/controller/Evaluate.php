@@ -58,8 +58,6 @@ class Evaluate extends Api
     public function edit()
     {
         $order_no = input('order_no');
-        $type = input('type', '', 'text');
-        $type_id = input('type_id', 0, 'intval');
         $content = input('content', '', 'text');
         $images = input('images', '', 'text');
         $value = input('value');
@@ -70,6 +68,19 @@ class Evaluate extends Api
         }
         //获取订单数据
         $order_data = $this->OrdersModel->getDataByOrderNo($order_no);
+        if (!$order_data) {
+            return $this->error('订单不存在');
+        }
+        // 订单归属校验：仅允许订单本人评价，防止越权刷评价
+        if ($order_data['uid'] != $uid) {
+            return $this->error('非法操作，无法评价该订单');
+        }
+        // 评价对象以订单数据为准（服务端取值），防止攻击者指定任意 type/type_id 刷评价
+        $type = $order_data['order_info_type'];
+        $type_id = intval($order_data['order_info_id']);
+        // 评分范围限制 1-5
+        $value = intval($value);
+        $value = min(5, max(1, $value));
         //检测是否已评论
         $evaluate_map = [];
         $evaluate_map[] = ['uid', '=', $uid];
@@ -95,7 +106,7 @@ class Evaluate extends Api
             'app' => $order_data['app'],
             'uid' => $uid,
             'type' => $type,
-            'type_id' => intval($type_id),
+            'type_id' => $type_id,
             'order_no' => $order_no,
             'content' => html_entity_decode($content),
             'images' => json_encode($images),

@@ -113,6 +113,11 @@ class Evaluate extends Base
 
         $order_type = $params['order_type'] ?? 'desc';
         $order_field = $params['order_field'] ?? 'id';
+        // 排序字段/方向白名单，防止 order by SQL 注入
+        $allowed_fields = ['id', 'create_time', 'update_time'];
+        $allowed_types = ['asc', 'desc'];
+        $order_field = in_array($order_field, $allowed_fields) ? $order_field : 'id';
+        $order_type = in_array($order_type, $allowed_types) ? $order_type : 'desc';
         $order = 'e.' . $order_field . ' ' . $order_type;
 
         // 获取分页列表
