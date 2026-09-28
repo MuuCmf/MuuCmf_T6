@@ -5,16 +5,13 @@ namespace app\api\controller;
 use app\common\controller\Api;
 use app\common\crontab\Orders as OrdersTask;
 use app\common\crontab\Evaluate as EvaluateTask;
-use app\minishop\crontab\Receive as ReceiveTask;
 use app\common\model\CrontabLog;
-use think\Exception;
 
 /**
- * 订单自动取消/自动评价/自动确认收货
+ * 订单自动取消/自动评价
  * 
  * 1.自动取消超时未支付订单
  * 2.自动评价超过7天未评价的已完成订单
- * 3.自动确认收货（minishop 订单超过7天未确认）
  * 通过URL方式调用，需携带 system.CRON_SECRET 配置的密钥
  * 
  * 实现统一委托给 crontab 任务类（与 CLI 调度器共用同一逻辑与日志）
@@ -96,34 +93,6 @@ class Crontab extends Api
         }
         try {
             $result = (new EvaluateTask())->handle(intval($this->shopid), $this->taskId(3));
-            return json([
-                'code' => $result ? 200 : 0,
-                'msg' => $result ? 'success' : '处理失败',
-            ]);
-        } catch (\Throwable $e) {
-            return json([
-                'code' => 0,
-                'msg' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    /**
-     * 订单自动确认收货
-     * 处理 minishop 超过7天未确认收货的订单,自动完成收货进入待评价
-     *
-     * @return \think\Response
-     */
-    public function ordersReceive()
-    {
-        if (!$this->checkCronSecret()) {
-            return json([
-                'code' => 0,
-                'msg' => '定时任务密钥校验失败',
-            ]);
-        }
-        try {
-            $result = (new ReceiveTask())->handle(intval($this->shopid), $this->taskId(1));
             return json([
                 'code' => $result ? 200 : 0,
                 'msg' => $result ? 'success' : '处理失败',
