@@ -295,6 +295,13 @@ Route::group('seo', function () {
     Route::post('status', 'admin/Seo/status');
 });
 
+Route::group('sitemap', function () {
+    // Sitemap 状态（站点域名、文件信息、应用提供者）
+    Route::get('index', 'admin/Sitemap/index');
+    // 手动生成/更新 sitemap.xml
+    Route::post('generate', 'admin/Sitemap/generate');
+});
+
 Route::group('tominiprogram', function () {
     // 跳转小程序列表
     Route::get('list', 'admin/Tominiprogram/list');

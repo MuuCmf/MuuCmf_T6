@@ -399,3 +399,13 @@ INSERT INTO `muucmf_menu` (`id`, `title`, `pid`, `sort`, `url`, `hide`, `type`, 
 ('30DC271B-AFF8-467F-5A1D-B54B7D0C52A3', 'MuuAgent', '167253B8-B360-E5C8-3F94-F0502E971DAF', 10, 'admin/extend/muuagent', 0, 0, 'MuuAgent配置项', '第三方扩展', 0, 'microchip', 'admin');
 
 ALTER TABLE `muucmf_articles_category` ADD `description` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '简短描述' AFTER `title`;
+
+INSERT INTO `muucmf_config` (`id`, `name`, `type`, `title`, `group`, `extra`, `remark`, `create_time`, `update_time`, `status`, `value`, `sort`) VALUES
+(10157, 'WEB_SITE_URL', 'string', '站点域名', 1, '', '用于需要绝对地址的场景，需含 http:// 或 https://，如 https://www.example.com（定时任务下无请求域名时使用）', 1759104000, 1759104000, 1, '', 0);
+
+INSERT INTO `muucmf_menu` (`id`, `title`, `pid`, `sort`, `url`, `hide`, `type`, `tip`, `group`, `is_dev`, `icon`, `module`) VALUES
+('E1F2A3B4-C5D6-4E7F-8A9B-0C1D2E3F4A5B', 'Sitemap生成', 'A4650B98-DAD4-8194-030C-1B2AB4F35CBA', 64, 'admin/sitemap/index', 0, 0, '', 'PC管理', 0, 'sitemap', 'admin'),
+('F2A3B4C5-D6E7-4F8A-9B0C-1D2E3F4A5B6C', '手动生成Sitemap', 'E1F2A3B4-C5D6-4E7F-8A9B-0C1D2E3F4A5B', 0, 'admin/sitemap/generate', 1, 0, '', '', 0, '', 'admin');
+
+INSERT INTO `muucmf_crontab` (`id`, `shopid`, `title`, `description`, `execute`, `cycle`, `day`, `hour`, `minute`, `status`, `create_time`, `update_time`) VALUES
+(6, 0, 'Sitemap自动生成', '汇总框架核心页面与已安装应用页面生成 public/sitemap.xml，并同步 robots.txt 的 Sitemap 声明', 'app\\common\\crontab\\Sitemap', 'day', 0, 3, 30, 1, 1759104000, 1759104000);

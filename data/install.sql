@@ -458,7 +458,8 @@ INSERT INTO `muucmf_config` (`id`, `name`, `type`, `title`, `group`, `extra`, `r
 (10152, 'COPYRIGHT_WEBSITE', 'string', '主体官网', 6, '', '版权主体的官方网站地址', 0, 0, 1, 'https://www.muucmf.cn', 0),
 (10153, 'USER_MOBILE_BIND', 'radio', '手机号绑定开关', 3, '1:开启\r\n0:关闭', '手机号绑定开关', 0, 1658731662, 1, '1', 4),
 (10154, 'SITE_ACCESS_TYPE', 'select', '站点访问类型', 4, '0:开放访问,1:登录访问', '是否强制用户访问站点任何页面都需要登录', 1724115948, 1724115948, 1, '0', 5),
-(10156, 'USER_PRIVACY', 'editor', '用户隐私条款', 3, '', '用户隐私条款', 1754539145, 1754539145, 1, '用户隐私条款', 999);
+(10156, 'USER_PRIVACY', 'editor', '用户隐私条款', 3, '', '用户隐私条款', 1754539145, 1754539145, 1, '用户隐私条款', 999),
+(10157, 'WEB_SITE_URL', 'string', '站点域名', 1, '', '用于需要绝对地址的场景，需含 http:// 或 https://，如 https://www.example.com（定时任务下无请求域名时使用）', 1759104000, 1759104000, 1, '', 0);
 
 -- --------------------------------------------------------
 
@@ -508,7 +509,8 @@ CREATE TABLE IF NOT EXISTS `muucmf_crontab` (
 INSERT INTO `muucmf_crontab` (`id`, `shopid`, `title`, `description`, `execute`, `cycle`, `day`, `hour`, `minute`, `status`, `create_time`, `update_time`) VALUES
 (1, 0, '云小店订单自动确认收货', '订单收货确认用户未处理，系统默认7天后自动处理', 'app\\minishop\\crontab\\Receive', 'minute-n', 1, 1, 1, 1, 1645689347, 1645782464),
 (2, 0, '订单自动评价', '订单收货后用户未评价，系统默认7天后自动好评', 'app\\common\\crontab\\Evaluate', 'minute-n', 1, 1, 1, 1, 1645782483, 1645782483),
-(5, 0, '订单24小时自动取消', '订单下单后24小时内未支付，系统自动取消', 'app\\common\\crontab\\Orders', 'hour-n', 1, 1, 1, 1, 1745882710, 1745882794);
+(5, 0, '订单24小时自动取消', '订单下单后24小时内未支付，系统自动取消', 'app\\common\\crontab\\Orders', 'hour-n', 1, 1, 1, 1, 1745882710, 1745882794),
+(6, 0, 'Sitemap自动生成', '汇总框架核心页面与已安装应用页面生成 public/sitemap.xml，并同步 robots.txt 的 Sitemap 声明', 'app\\common\\crontab\\Sitemap', 'day', 0, 3, 30, 1, 1759104000, 1759104000);
 
 -- --------------------------------------------------------
 
@@ -1098,7 +1100,9 @@ INSERT INTO `muucmf_menu` (`id`, `title`, `pid`, `sort`, `url`, `hide`, `type`, 
 ('B2920D70-1301-4758-89C0-5CA6B9E73C44', '删除附件', 'F06C84A8-2A34-902F-2A88-A25925465036', 0, 'admin/Attachment/del', 0, 0, '', '', 0, '', 'admin'),
 ('F06C84A8-2A34-902F-2A88-A25925465036', '附件列表', '167253B8-B360-E5C8-3F94-F0502E971DAF', 50, 'admin/Attachment/list', 0, 0, '', '附件管理', 0, 'th-large', 'admin'),
 ('BDE6A6B2-3EA1-BD31-A9D4-44B442156839', '上传用户头像', 'DA4333DF-D814-819B-D657-401FE5153AB4', 0, 'admin/Member/avatar', 0, 0, '', '', 0, '', 'admin'),
-('30DC271B-AFF8-467F-5A1D-B54B7D0C52A3', 'MuuAgent', '167253B8-B360-E5C8-3F94-F0502E971DAF', 10, 'admin/extend/muuagent', 0, 0, 'MuuAgent配置项', '第三方扩展', 0, 'microchip', 'admin');
+('30DC271B-AFF8-467F-5A1D-B54B7D0C52A3', 'MuuAgent', '167253B8-B360-E5C8-3F94-F0502E971DAF', 10, 'admin/extend/muuagent', 0, 0, 'MuuAgent配置项', '第三方扩展', 0, 'microchip', 'admin'),
+('E1F2A3B4-C5D6-4E7F-8A9B-0C1D2E3F4A5B', 'Sitemap生成', 'A4650B98-DAD4-8194-030C-1B2AB4F35CBA', 64, 'admin/sitemap/index', 0, 0, '', 'PC管理', 0, 'sitemap', 'admin'),
+('F2A3B4C5-D6E7-4F8A-9B0C-1D2E3F4A5B6C', '手动生成Sitemap', 'E1F2A3B4-C5D6-4E7F-8A9B-0C1D2E3F4A5B', 0, 'admin/sitemap/generate', 1, 0, '', '', 0, '', 'admin');
 
 -- --------------------------------------------------------
 
