@@ -1,0 +1,1 @@
+import{Ut as r,kt as e}from"./element-plus-DFMSX-a1.js";import{r as t}from"./index-DjR0tHhz.js";var s=t({},[["render",function(t,s){return r(),e("div")}]]);export{s as default};
