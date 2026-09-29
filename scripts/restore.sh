@@ -3,7 +3,8 @@
 set -e
 
 DEPLOY_ENV=${1:-production}
-DEPLOY_DIR="/var/www/${DEPLOY_ENV}.muucmf.cc"
+# 允许通过环境变量覆盖部署根目录（CI 与脚本目录命名不一致时使用）
+DEPLOY_DIR=${DEPLOY_DIR:-/var/www/${DEPLOY_ENV}.muucmf.cc}
 BACKUP_FILE=${2:-""}
 
 echo "========================================="
@@ -59,21 +60,22 @@ if [ -f "${RESTORE_DIR}/db_backup.sql" ]; then
     echo "Database restored"
 fi
 
-echo "[3/3] Restoring uploads..."
-if [ -d "${RESTORE_DIR}/uploads" ]; then
-    rm -rf "${DEPLOY_DIR}/current/public/uploads"
-    cp -r "${RESTORE_DIR}/uploads" "${DEPLOY_DIR}/current/public/"
-    echo "Uploads restored"
+echo "[3/3] Restoring attachments..."
+if [ -d "${RESTORE_DIR}/attachment" ]; then
+    rm -rf "${DEPLOY_DIR}/current/public/attachment"
+    cp -r "${RESTORE_DIR}/attachment" "${DEPLOY_DIR}/current/public/"
+    echo "Attachments restored"
 fi
 
-echo "Clearing cache..."
+echo "Notifying queue workers to restart..."
 cd "${DEPLOY_DIR}/current"
-php think cache:clear || true
+# 不使用 cache:clear：TP6 未内置该命令，且 redis 驱动的 clear() 等价 flushDB，
+# 会连带清空 session 与队列重启信号。
 php think queue:restart || true
 
 echo "Setting permissions..."
 chmod -R 755 "${DEPLOY_DIR}/current/runtime"
-chmod -R 755 "${DEPLOY_DIR}/current/public/uploads"
+chmod -R 755 "${DEPLOY_DIR}/current/public/attachment"
 chown -R www-data:www-data "$DEPLOY_DIR"
 
 rm -rf "$TEMP_DIR"

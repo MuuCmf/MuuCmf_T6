@@ -2,6 +2,11 @@
 
 本文档提供了 MuuCmf T6 项目的完整 CI/CD 配置说明。
 
+> **文档范围**：本文件只讲 CI 流水线与 `scripts/*.sh` 运维脚本的用法。
+> - 产品介绍与快速开始 → [`README.md`](./README.md)
+> - 前端资源构建 → [`WEBPACK_QUICKSTART.md`](./WEBPACK_QUICKSTART.md)、[`WEBPACK_MODULE_GUIDE.md`](./WEBPACK_MODULE_GUIDE.md)
+> - Docker 部署安装与后台在线升级的完整方案 → [`../Docker部署安装与升级方案.md`](../Docker部署安装与升级方案.md)
+
 ## 目录
 
 - [GitHub Actions](#github-actions)
@@ -154,6 +159,17 @@ chmod +x scripts/*.sh
 ./scripts/deploy.sh production /path/to/package.tar.gz
 ```
 
+> **部署前准备**：`deploy.sh` 需要一个共享的应用配置 `${DEPLOY_DIR}/.env`
+> （默认 `/var/www/<env>.muucmf.cc/.env`）。它放在部署根目录、不在 release 内，
+> 这样每次切换 `current` 软链都不会丢配置；包内若含 `.env.<env>` 则优先使用包内的。
+> 部署目录命名与默认值不一致时，用环境变量覆盖：`DEPLOY_DIR=/var/www/xxx ./scripts/deploy.sh ...`。
+>
+> GitLab CI 的 `deploy:*` / `rollback:production` 任务会把 `scripts/*.sh` 上传到服务器后
+> 调用这些脚本，不再内联部署逻辑（避免 CI 与脚本两套实现漂移）。
+>
+> `health-check.sh` 在**服务器上**执行：探站点根（项目未定义 `/health` 路由），
+> 并从当前版本的 `.env` 读取连接信息检查 DB/Redis；CI 侧只额外做一次外部 URL 可达性探测。
+
 ### 回滚脚本使用
 
 ```bash
@@ -205,36 +221,38 @@ chmod +x scripts/*.sh
 ### 生产环境启动
 
 ```bash
-# 复制环境变量
-cp .env.docker .env
+# 1. 应用配置（会以单文件挂载进容器，应用读的就是它）
+cp .env.production.example .env
+vim .env    # 必改数据库密码；确认 [DATABASE] HOSTNAME=mysql、[REDIS] HOST=redis
 
-# 修改 .env 中的配置
-vim .env
+# 2. 编排配置（compose 变量插值的来源，数据库账号需与上一步保持一致）
+vim .env.docker
 
-# 启动所有服务
-docker-compose up -d
-
-# 启动特定服务
-docker-compose up -d app nginx mysql redis
+# 3. 启动所有服务（注意必须带 --env-file）
+docker compose --env-file .env.docker up -d
 
 # 查看日志
-docker-compose logs -f app
+docker compose --env-file .env.docker logs -f app
 
 # 停止所有服务
-docker-compose down
+docker compose --env-file .env.docker down
 
 # 停止并删除数据卷
-docker-compose down -v
+docker compose --env-file .env.docker down -v
 ```
+
+> **注意**：不要执行 `cp .env.docker .env`。`.env.docker` 是 `KEY=VALUE` 平铺格式，
+> 而应用需要的 `.env` 是 `[DATABASE]`/`[REDIS]` 段格式，覆盖后应用会读不到数据库配置。
+> 两个文件的职责与格式区别见下方[环境变量配置](#环境变量配置)。
 
 ### 开发环境启动
 
 ```bash
-# 启动开发环境
-docker-compose -f docker-compose.dev.yml up -d
+# 启动开发环境（dev 编排没有插值变量，无需 --env-file）
+docker compose -f docker-compose.dev.yml up -d
 
 # 查看日志
-docker-compose -f docker-compose.dev.yml logs -f app
+docker compose -f docker-compose.dev.yml logs -f app
 
 # 访问应用
 # http://localhost:8080
@@ -242,6 +260,9 @@ docker-compose -f docker-compose.dev.yml logs -f app
 # 访问 MailHog (邮件测试)
 # http://localhost:8025
 ```
+
+> 开发环境为整目录挂载（`./:/var/www/html`），需要先把 `.env` 的
+> `[DATABASE] HOSTNAME` 改为 `mysql`、`[REDIS] HOST` 改为 `redis`。
 
 ### Docker 镜像构建
 
@@ -258,76 +279,88 @@ docker push registry.example.com/muucmf-t6:${CI_COMMIT_SHA}
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
-| app | 9000 | PHP-FPM 应用 |
-| worker | 9000 | 队列工作进程 |
-| nginx | 80/443 | Web 服务器 |
-| mysql | 3306 | 数据库 |
-| redis | 6379 | 缓存 |
-| phpmyadmin | 8080 | 数据库管理工具 |
-| redis-commander | 8081 | Redis 管理工具 |
+| app | 9000（仅容器网络内） | PHP-FPM 应用 |
+| worker | 不暴露端口 | 队列进程 + crontab 调度器（由 supervisor 托管） |
+| nginx | 80/443 | Web 服务器（宿主端口由 `.env.docker` 的 `NGINX_PORT` / `NGINX_SSL_PORT` 决定） |
+| mysql | 3306 | 数据库（宿主端口 `MYSQL_PORT`） |
+| redis | 6379 | 缓存（宿主端口 `REDIS_HOST_PORT`） |
+| phpmyadmin | 8080 | 数据库管理工具（`tools` profile，需手动启用） |
+| redis-commander | 8081 | Redis 管理工具（`tools` profile，需手动启用） |
 
 ---
 
 ## 环境变量配置
 
-### 应用环境变量
+项目使用**两个职责不同**的配置文件，请勿混用：
 
-在 `.env` 文件中配置：
+| 文件 | 作用 | 格式 | 是否入库 |
+|------|------|------|----------|
+| `.env` | 应用运行时配置（连库、连 Redis、缓存驱动等） | INI 段格式（`[DATABASE]`、`[REDIS]` …） | 否（被 `.gitignore` 忽略） |
+| `.env.docker` | 容器编排变量（端口映射、MySQL 容器初始化账号） | `KEY=VALUE` 平铺 | 是 |
+
+> **为什么不能只用一个 `.env`**：ThinkPHP 的 `Env` 只解析 INI 段格式的 `.env`；
+> 而 `docker compose` 的变量插值需要 `KEY=VALUE` 平铺格式，且它默认就会去读根目录的 `.env`。
+> 两者格式互不兼容，所以 compose 侧固定使用 `--env-file .env.docker`。
+> 这也是「容器环境变量改了却不生效」的根因——应用根本不读容器 env。
+
+### 应用配置（.env）
+
+由模板生成：
 
 ```bash
-# 应用配置
-APP_ENV=production
-APP_DEBUG=false
-
-# 数据库配置
-DB_HOST=mysql
-DB_PORT=3306
-DB_DATABASE=muucmf
-DB_USERNAME=muucmf
-DB_PASSWORD=your_password
-
-# Redis 配置
-REDIS_HOST=redis
-REDIS_PORT=6379
-REDIS_PASSWORD=
-
-# 队列配置
-QUEUE_DRIVER=redis
+cp .env.production.example .env
 ```
 
-### Docker 环境变量
+容器内访问数据库 / Redis 必须使用**服务名**，不能用 `127.0.0.1`（那是容器自身）：
 
-在 `.env.docker` 文件中配置：
+```ini
+[APP]
+
+[DATABASE]
+TYPE = mysql
+HOSTNAME = mysql
+DATABASE = muucmf
+USERNAME = muucmf
+PASSWORD = change_this_password
+HOSTPORT = 3306
+CHARSET = utf8
+
+[CACHE]
+DRIVER = redis
+
+[REDIS]
+HOST = redis
+PORT = 6379
+password =
+select = 0
+```
+
+### 编排配置（.env.docker）
 
 ```bash
-# Docker 配置
-APP_ENV=production
-APP_DEBUG=false
-
-# 数据库配置
-DB_HOST=mysql
-DB_PORT=3306
+# MySQL 容器初始化（仅在数据卷「首次创建」时生效）
 DB_DATABASE=muucmf
 DB_USERNAME=muucmf
 DB_PASSWORD=change_this_password
-
-# Redis 配置
-REDIS_HOST=redis
-REDIS_PORT=6379
-REDIS_PASSWORD=
-
-# Nginx 配置
-NGINX_PORT=80
-NGINX_SSL_PORT=443
-
-# MySQL 配置
-MYSQL_PORT=3306
 MYSQL_ROOT_PASSWORD=change_this_root_password
 
-# 工具配置
+# 宿主发布端口（容器内端口固定）
+MYSQL_PORT=3306
+NGINX_PORT=80
+NGINX_SSL_PORT=443
+REDIS_HOST_PORT=6379
 PHPMYADMIN_PORT=8080
 REDIS_COMMANDER_PORT=8081
+
+# 与宿主 UID/GID 对齐，容器内 www-data 才能写入宿主卷（在线更新/安装的前提）
+# 建议设置：PUID=$(id -u) PGID=$(id -g)
+PUID=
+PGID=
 ```
+
+两个文件的**数据库账号必须一致**：`.env.docker` 的 `DB_*` 用于初始化 MySQL 容器，
+`.env` 的 `[DATABASE]` 用于应用连接。注意 `DB_*` 只在数据卷首次创建时生效，
+后续修改 `.env.docker` 不会改变已有库的账号。
 
 ---
 

@@ -5,6 +5,7 @@ namespace app\admin\controller;
 use app\admin\lib\Cloud;
 use app\admin\lib\Upgrade as UpgradeServer;
 use think\Exception;
+use think\facade\Cache;
 use think\facade\Db;
 use think\facade\View;
 use think\Response;
@@ -190,6 +191,13 @@ class Update extends Admin
                         Db::name('module')->where('name', '=', $this->app_name)->update(['version' => $params['version']]);
                     }
                 }
+
+                //队列 worker 与 crontab 调度器都是常驻进程，升级后需重新加载代码，
+                //否则新模块投递的队列任务仍会走旧代码；此处写入重启信号（等同 php think queue:restart）
+                Cache::set('think:queue:restart', time());
+
+                //入口域名/IP 变更后旧授权码仍会缓存 30 分钟，提前失效避免后续检查更新误报未授权
+                Cache::delete(request()->host() . '_MUUCMF_CLOUD_AUTH');
 
                 //返回
                 return $this->success('更新完成');

@@ -1,37 +1,50 @@
 version: '3.8'
 
+# 启动方式（务必带 --env-file）：
+#   docker compose --env-file .env.docker up -d
+#
+# 为什么必须带 --env-file：
+#   compose 默认从项目根读取名为 .env 的文件做变量插值，而本项目根目录的 .env
+#   是「应用配置」（[DATABASE]/[REDIS] 等 INI 段格式），既不是 compose 需要的
+#   KEY=VALUE 平铺格式，也不能被 compose 覆盖。因此 docker compose 的插值来源
+#   固定为 .env.docker；应用自身的配置则仍由被挂载进容器的宿主 .env 提供。
+#   两者职责不同：.env.docker 只负责容器编排（端口、MySQL 初始化账号），
+#   .env 只负责应用运行时（连库/连 Redis 地址）。两者的数据库账号需保持一致。
+
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        BUILD_DATE: ${BUILD_DATE:-}
-        VCS_REF: ${VCS_REF:-}
+        BUILD_DATE: ${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        VCS_REF: ${VCS_REF:-$(git rev-parse --short HEAD)}
     container_name: muucmf-app
+    # 禁止扩容为多副本：后台在线更新会直接写入代码卷，多副本会互相覆盖同一文件
     restart: unless-stopped
     volumes:
+      # 方案 B：代码与数据全部落在持久卷，后台在线更新与应用安装才能生效
       - ./app:/var/www/html/app
       - ./config:/var/www/html/config
       - ./public:/var/www/html/public
       - ./route:/var/www/html/route
-      - ./vendor:/var/www/html/vendor
       - ./extend:/var/www/html/extend
+      - ./runtime:/var/www/html/runtime
+      # data 必须整体持久化：version.ini、upgrade.sql、install.lock、backup 都在此处
       - ./data:/var/www/html/data
-      - ./data/runtime:/var/www/html/runtime
+      # 单文件挂载，宿主 .env 缺失时 Docker 会创建同名目录，由 entrypoint 拦截报错
       - ./.env:/var/www/html/.env
     environment:
       - APP_ENV=${APP_ENV:-production}
       - APP_DEBUG=${APP_DEBUG:-false}
-      - AUTH_KEY=${AUTH_KEY:-muucmf_auth_key}
-      - database.hostname=mysql
-      - database.hostport=3306
-      - database.database=${DATABASE_DATABASE:-muucmf}
-      - database.username=${DATABASE_USERNAME:-muucmf}
-      - database.password=${DATABASE_PASSWORD:-muucmf_password}
-      - redis.host=redis
-      - redis.port=6379
-      - redis.password=${REDIS_PASSWORD:-}
+      # 与宿主 UID/GID 对齐，保证容器内 www-data 能写宿主卷（在线更新/应用安装的前提）
+      # 建议设置：PUID=$(id -u) PGID=$(id -g)
+      - PUID=${PUID:-}
+      - PGID=${PGID:-}
+      # 不再注入 DB_*/REDIS_*：ThinkPHP 的 Env::get() 只读 .env 的解析结果，
+      # 未命中才回退到 getenv('PHP_' . $name)，因此这里传 DB_HOST 应用永远读不到，
+      # 反而让人误以为「改容器 env 就能改数据库地址」。
+      # 应用连库/连 Redis 的地址一律以宿主 .env 的 [DATABASE]/[REDIS] 为准。
     networks:
       - muucmf-network
     depends_on:
@@ -43,31 +56,34 @@ services:
       context: .
       dockerfile: Dockerfile.worker
       args:
-        BUILD_DATE: ${BUILD_DATE:-}
-        VCS_REF: ${VCS_REF:-}
+        BUILD_DATE: ${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        VCS_REF: ${VCS_REF:-$(git rev-parse --short HEAD)}
     container_name: muucmf-worker
+    # 禁止扩容为多副本：crontab 调度器仅允许单实例，否则定时任务会重复触发
     restart: unless-stopped
     volumes:
+      # 方案 B：代码与数据全部落在持久卷，后台在线更新与应用安装才能生效
       - ./app:/var/www/html/app
       - ./config:/var/www/html/config
       - ./public:/var/www/html/public
       - ./route:/var/www/html/route
-      - ./vendor:/var/www/html/vendor
       - ./extend:/var/www/html/extend
-      - ./data/runtime:/var/www/html/runtime
+      - ./runtime:/var/www/html/runtime
+      # data 必须整体持久化：version.ini、upgrade.sql、install.lock、backup 都在此处
+      - ./data:/var/www/html/data
+      # 单文件挂载，宿主 .env 缺失时 Docker 会创建同名目录，由 entrypoint 拦截报错
       - ./.env:/var/www/html/.env
     environment:
       - APP_ENV=${APP_ENV:-production}
       - APP_DEBUG=${APP_DEBUG:-false}
-      - AUTH_KEY=${AUTH_KEY:-muucmf_auth_key}
-      - database.hostname=mysql
-      - database.hostport=3306
-      - database.database=${DATABASE_DATABASE:-muucmf}
-      - database.username=${DATABASE_USERNAME:-muucmf}
-      - database.password=${DATABASE_PASSWORD:-muucmf_password}
-      - redis.host=redis
-      - redis.port=6379
-      - redis.password=${REDIS_PASSWORD:-}
+      # 与宿主 UID/GID 对齐，保证容器内 www-data 能写宿主卷（在线更新/应用安装的前提）
+      # 建议设置：PUID=$(id -u) PGID=$(id -g)
+      - PUID=${PUID:-}
+      - PGID=${PGID:-}
+      # 不再注入 DB_*/REDIS_*：ThinkPHP 的 Env::get() 只读 .env 的解析结果，
+      # 未命中才回退到 getenv('PHP_' . $name)，因此这里传 DB_HOST 应用永远读不到，
+      # 反而让人误以为「改容器 env 就能改数据库地址」。
+      # 应用连库/连 Redis 的地址一律以宿主 .env 的 [DATABASE]/[REDIS] 为准。
     networks:
       - muucmf-network
     depends_on:
@@ -86,32 +102,32 @@ services:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
       - ./docker/nginx/ssl:/etc/nginx/ssl:ro
-      - ./runtime/logs/nginx:/var/log/nginx
+      - ./data/logs/nginx:/var/log/nginx
     networks:
       - muucmf-network
     depends_on:
       - app
 
   mysql:
-    image: mysql:5.7
+    image: mysql:8.0
     container_name: muucmf-mysql
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3306:3306"
+      - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql-data:/var/lib/mysql
       - ./docker/mysql/my.cnf:/etc/mysql/conf.d/my.cnf:ro
       - ./data/backup:/backup
     environment:
-      - MYSQL_ROOT_PASSWORD=muucmf_password
-      - MYSQL_DATABASE=muucmf
-      - MYSQL_USER=muucmf
-      - MYSQL_PASSWORD=muucmf_password
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-root_password}
+      - MYSQL_DATABASE=${DB_DATABASE:-muucmf}
+      - MYSQL_USER=${DB_USERNAME:-muucmf}
+      - MYSQL_PASSWORD=${DB_PASSWORD:-muucmf_password}
     command: --default-authentication-plugin=mysql_native_password
     networks:
       - muucmf-network
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pmuucmf_password"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -121,7 +137,8 @@ services:
     container_name: muucmf-redis
     restart: unless-stopped
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      # REDIS_HOST_PORT 为宿主发布端口；容器内固定 6379（.env.docker 中不再重复定义 REDIS_PORT）
+      - "${REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
       - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
@@ -143,8 +160,8 @@ services:
     environment:
       - PMA_HOST=mysql
       - PMA_PORT=3306
-      - PMA_USER=${DATABASE_USERNAME:-muucmf}
-      - PMA_PASSWORD=${DATABASE_PASSWORD:-muucmf_password}
+      - PMA_USER=${DB_USERNAME:-muucmf}
+      - PMA_PASSWORD=${DB_PASSWORD:-muucmf_password}
       - UPLOAD_LIMIT=100M
     networks:
       - muucmf-network
@@ -177,11 +194,3 @@ volumes:
     driver: local
   redis-data:
     driver: local
-
-
-
-
-
-
-
-

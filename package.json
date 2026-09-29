@@ -14,8 +14,6 @@
     "build:common": "webpack --mode production --env module=common",
     "dev:ucenter": "webpack --mode development --env module=ucenter",
     "build:ucenter": "webpack --mode production --env module=ucenter",
-    "dev:channel": "webpack --mode development --env module=channel",
-    "build:channel": "webpack --mode production --env module=channel",
     "dev:articles": "webpack --mode development --env module=articles",
     "build:articles": "webpack --mode production --env module=articles",
     "watch": "webpack --mode development --watch",

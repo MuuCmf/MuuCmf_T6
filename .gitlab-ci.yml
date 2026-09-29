@@ -53,7 +53,6 @@ test:php-8.0:
   script:
     - php -v
     - composer --version
-    - php think migrate:run || true
     - vendor/bin/phpunit --coverage-clover=coverage.xml || true
   coverage: '/^\s*Lines:\s*\d+.\d+\%/'
   artifacts:
@@ -159,7 +158,7 @@ build:package:
       --exclude='data/backup' \
       --exclude='data/logs' \
       --exclude='data/runtime' \
-      --exclude='public/uploads' \
+      --exclude='public/attachment' \
       . deploy/
     - cd deploy
     - tar -czf ../muucmf-t6-${CI_COMMIT_SHA}.tar.gz .
@@ -204,7 +203,7 @@ deploy:staging:
     name: staging
     url: https://staging.muucmf.cc
   before_script:
-    - apk add --no-cache openssh-client rsync
+    - apk add --no-cache openssh-client
     - eval $(ssh-agent -s)
     - echo "$STAGING_SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
     - mkdir -p ~/.ssh
@@ -212,31 +211,21 @@ deploy:staging:
     - ssh-keyscan $STAGING_HOST >> ~/.ssh/known_hosts
     - chmod 644 ~/.ssh/known_hosts
   script:
+    # 部署包 + 运维脚本上传到服务器，之后全部调用服务器上的 scripts/*.sh，
+    # 避免 CI 内联流程与脚本出现两套实现（此前的 migrate:run / cache:clear /
+    # public/uploads 就是脚本已修正、CI 未同步的重复逻辑）
+    - ssh $STAGING_USER@$STAGING_HOST "mkdir -p /tmp/muucmf-scripts"
     - scp muucmf-t6-${CI_COMMIT_SHA}.tar.gz $STAGING_USER@$STAGING_HOST:/tmp/
+    - scp scripts/*.sh $STAGING_USER@$STAGING_HOST:/tmp/muucmf-scripts/
     - |
       ssh $STAGING_USER@$STAGING_HOST "
-        cd /var/www/staging.muucmf.cc
-        mkdir -p releases
-        mv /tmp/muucmf-t6-${CI_COMMIT_SHA}.tar.gz releases/
-        cd releases
-        tar -xzf muucmf-t6-${CI_COMMIT_SHA}.tar.gz
-        rm muucmf-t6-${CI_COMMIT_SHA}.tar.gz
-        
-        cd /var/www/staging.muucmf.cc
-        ln -snf releases/${CI_COMMIT_SHA} current
-        
-        cd current
-        cp .env.staging .env
-        composer install --no-dev --optimize-autoloader
-        php think migrate:run --force
-        php think cache:clear
-        php think queue:restart
-        
-        chmod -R 755 runtime public/uploads
-        chown -R www-data:www-data /var/www/staging.muucmf.cc
+        chmod +x /tmp/muucmf-scripts/*.sh
+        DEPLOY_ENV=staging /tmp/muucmf-scripts/deploy.sh staging /tmp/muucmf-t6-${CI_COMMIT_SHA}.tar.gz
+        DEPLOY_ENV=staging /tmp/muucmf-scripts/health-check.sh staging
       "
+    # runner 侧再做一次外部可达性检查（项目未定义 /health 路由，故探站点根）
     - sleep 10
-    - curl -f https://staging.muucmf.cc/health || exit 1
+    - curl -f -s -o /dev/null https://staging.muucmf.cc/ || exit 1
   dependencies:
     - build:package
   only:
@@ -251,7 +240,7 @@ deploy:production:
     name: production
     url: https://www.muucmf.cc
   before_script:
-    - apk add --no-cache openssh-client rsync mysql-client
+    - apk add --no-cache openssh-client
     - eval $(ssh-agent -s)
     - echo "$PRODUCTION_SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
     - mkdir -p ~/.ssh
@@ -259,40 +248,21 @@ deploy:production:
     - ssh-keyscan $PRODUCTION_HOST >> ~/.ssh/known_hosts
     - chmod 644 ~/.ssh/known_hosts
   script:
-    - |
-      ssh $PRODUCTION_USER@$PRODUCTION_HOST "
-        cd /var/www/www.muucmf.cc
-        BACKUP_DIR=\"backups/\$(date +%Y%m%d_%H%M%S)\"
-        mkdir -p \$BACKUP_DIR
-        cp -r current \$BACKUP_DIR/
-        mysqldump -u${DB_USER} -p${DB_PASSWORD} muucmf > \$BACKUP_DIR/db_backup.sql
-        echo \"Backup created at \$BACKUP_DIR\"
-      "
+    # 部署包 + 运维脚本上传到服务器，之后全部调用服务器上的 scripts/*.sh
+    - ssh $PRODUCTION_USER@$PRODUCTION_HOST "mkdir -p /tmp/muucmf-scripts"
     - scp muucmf-t6-${CI_COMMIT_SHA}.tar.gz $PRODUCTION_USER@$PRODUCTION_HOST:/tmp/
+    - scp scripts/*.sh $PRODUCTION_USER@$PRODUCTION_HOST:/tmp/muucmf-scripts/
     - |
       ssh $PRODUCTION_USER@$PRODUCTION_HOST "
-        cd /var/www/www.muucmf.cc
-        mkdir -p releases
-        mv /tmp/muucmf-t6-${CI_COMMIT_SHA}.tar.gz releases/
-        cd releases
-        tar -xzf muucmf-t6-${CI_COMMIT_SHA}.tar.gz
-        rm muucmf-t6-${CI_COMMIT_SHA}.tar.gz
-        
-        cd /var/www/www.muucmf.cc
-        ln -snf releases/${CI_COMMIT_SHA} current
-        
-        cd current
-        cp .env.production .env
-        composer install --no-dev --optimize-autoloader
-        php think migrate:run --force
-        php think cache:clear
-        php think queue:restart
-        
-        chmod -R 755 runtime public/uploads
-        chown -R www-data:www-data /var/www/www.muucmf.cc
+        chmod +x /tmp/muucmf-scripts/*.sh
+        # 部署前先备份（文件 + 数据库 + 附件），统一由服务器侧 backup.sh 处理
+        DEPLOY_ENV=production /tmp/muucmf-scripts/backup.sh production \"$DB_USER\" \"$DB_PASSWORD\" muucmf
+        DEPLOY_ENV=production /tmp/muucmf-scripts/deploy.sh production /tmp/muucmf-t6-${CI_COMMIT_SHA}.tar.gz
+        DEPLOY_ENV=production /tmp/muucmf-scripts/health-check.sh production
       "
+    # runner 侧再做一次外部可达性检查（项目未定义 /health 路由，故探站点根）
     - sleep 10
-    - curl -f https://www.muucmf.cc/health || exit 1
+    - curl -f -s -o /dev/null https://www.muucmf.cc/ || exit 1
   dependencies:
     - build:package
   only:
@@ -314,20 +284,12 @@ rollback:production:
     - ssh-keyscan $PRODUCTION_HOST >> ~/.ssh/known_hosts
     - chmod 644 ~/.ssh/known_hosts
   script:
+    - ssh $PRODUCTION_USER@$PRODUCTION_HOST "mkdir -p /tmp/muucmf-scripts"
+    - scp scripts/rollback.sh $PRODUCTION_USER@$PRODUCTION_HOST:/tmp/muucmf-scripts/
     - |
       ssh $PRODUCTION_USER@$PRODUCTION_HOST "
-        cd /var/www/www.muucmf.cc
-        PREVIOUS_RELEASE=\$(ls -t releases | head -2 | tail -1)
-        if [ -n \"\$PREVIOUS_RELEASE\" ]; then
-          ln -snf releases/\$PREVIOUS_RELEASE current
-          cd current
-          php think cache:clear
-          php think queue:restart
-          echo \"Rolled back to \$PREVIOUS_RELEASE\"
-        else
-          echo \"No previous release found\"
-          exit 1
-        fi
+        chmod +x /tmp/muucmf-scripts/rollback.sh
+        DEPLOY_ENV=production /tmp/muucmf-scripts/rollback.sh production
       "
   only:
     - main

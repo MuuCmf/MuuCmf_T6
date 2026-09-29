@@ -6,23 +6,21 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        BUILD_DATE: ${BUILD_DATE:-}
-        VCS_REF: ${VCS_REF:-}
+        BUILD_DATE: ${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        VCS_REF: ${VCS_REF:-$(git rev-parse --short HEAD)}
     container_name: muucmf-app-dev
     restart: unless-stopped
     volumes:
+      # 仅开发环境使用整目录挂载：改代码即时生效，方便调试。
+      # 生产环境（docker-compose.yml）改为按目录挂载，避免覆盖镜像内 vendor 等产物。
       - ./:/var/www/html
       - ./docker/php/php-dev.ini:/usr/local/etc/php/conf.d/custom.ini
     environment:
       - APP_ENV=development
       - APP_DEBUG=true
-      - DB_HOST=mysql
-      - DB_PORT=3306
-      - DB_DATABASE=muucmf_dev
-      - DB_USERNAME=muucmf
-      - DB_PASSWORD=muucmf_dev
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      # 不再注入 DB_*/REDIS_*：应用只读 .env，容器环境变量对 ThinkPHP 无效。
+      # 开发前请把 .env 的 [DATABASE] HOSTNAME 设为 mysql、[REDIS] HOST 设为 redis，
+      # 因为 127.0.0.1 在容器内指向容器自身，连不上 mysql/redis 服务。
     networks:
       - muucmf-network
     depends_on:
@@ -37,15 +35,15 @@ services:
       - "8080:80"
     volumes:
       - ./:/var/www/html
-      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      # 使用 dev 专用 nginx 配置（仅 HTTP，不 include conf.d，避免加载生产 SSL 配置）
+      - ./docker/nginx/nginx-dev.conf:/etc/nginx/nginx.conf:ro
     networks:
       - muucmf-network
     depends_on:
       - app
 
   mysql:
-    image: mysql:5.7
+    image: mysql:8.0
     container_name: muucmf-mysql-dev
     restart: unless-stopped
     ports:

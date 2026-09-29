@@ -1,0 +1,6 @@
+# 容器内执行的脚本与构建文件必须使用 LF：
+# CRLF 会让 Linux 下的 shebang 解析失败（/bin/sh^M: not found），
+# 导致 app / worker 容器无法启动。
+*.sh        text eol=lf
+Dockerfile  text eol=lf
+Dockerfile.* text eol=lf

@@ -3,7 +3,8 @@
 set -e
 
 DEPLOY_ENV=${1:-production}
-DEPLOY_DIR="/var/www/${DEPLOY_ENV}.muucmf.cc"
+# 允许通过环境变量覆盖部署根目录（CI 与脚本目录命名不一致时使用）
+DEPLOY_DIR=${DEPLOY_DIR:-/var/www/${DEPLOY_ENV}.muucmf.cc}
 BACKUP_DIR="${DEPLOY_DIR}/backups"
 DB_USER=${2:-root}
 DB_PASS=${3:-""}
@@ -35,10 +36,10 @@ else
 fi
 echo "Database backed up to: ${BACKUP_PATH}/db_backup.sql"
 
-echo "[3/4] Backing up uploads..."
-if [ -d "${DEPLOY_DIR}/current/public/uploads" ]; then
-    cp -r "${DEPLOY_DIR}/current/public/uploads" "${BACKUP_PATH}/"
-    echo "Uploads backed up to: ${BACKUP_PATH}/uploads"
+echo "[3/4] Backing up attachments..."
+if [ -d "${DEPLOY_DIR}/current/public/attachment" ]; then
+    cp -r "${DEPLOY_DIR}/current/public/attachment" "${BACKUP_PATH}/"
+    echo "Attachments backed up to: ${BACKUP_PATH}/attachment"
 fi
 
 echo "[4/4] Compressing backup..."

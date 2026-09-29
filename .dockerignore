@@ -3,9 +3,15 @@
 .env.docker
 .env.local
 
+# Runtime（容器启动时由卷提供）
+runtime/
+
 # Data
-data/*
-!data/.gitkeep
+# 仅排除运行时状态与备份；安装/升级资产（data/*.sql、data/version.ini）需保留在镜像内
+data/backup/
+data/logs/
+data/uploads/
+data/install.lock
 
 # Logs
 *.log
@@ -14,7 +20,3 @@ docker/logs/*
 # SSL
 docker/nginx/ssl/*
 !docker/nginx/ssl/.gitkeep
-
-# Backup
-data/backup/*
-!data/backup/.gitkeep
