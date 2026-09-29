@@ -1,0 +1,1 @@
+import{Cn as l,Wn as e}from"./element-plus-DOJLFo0f.js";function o(){const o=e(null);return{scrollContainerRef:o,resetScrollTop:()=>{l(()=>{o.value&&(o.value.scrollTop=0)})}}}export{o as t};

@@ -1,1 +1,0 @@
-import{On as r,fn as e}from"./element-plus-DrvHOBbs.js";import{r as n}from"./index-BGjG0oFT.js";var s=n({},[["render",function(n,s){return r(),e("div")}]]);export{s as default};

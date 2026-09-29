@@ -1,0 +1,1 @@
+import{On as r,fn as e}from"./element-plus-DOJLFo0f.js";import{r as n}from"./index-K-B_MlcH.js";var s=n({},[["render",function(n,s){return r(),e("div")}]]);export{s as default};

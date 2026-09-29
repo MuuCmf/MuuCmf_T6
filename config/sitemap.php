@@ -23,9 +23,6 @@ return [
 
     // 框架核心页面（静态清单，如需增删直接改这里）
     'core' => [
-        ['loc' => '/', 'changefreq' => 'daily', 'priority' => 1.0],
-        ['loc' => '/appstore/framework', 'changefreq' => 'weekly', 'priority' => 0.8],
-        ['loc' => '/appstore/products/lists', 'changefreq' => 'weekly', 'priority' => 0.8],
-        ['loc' => '/appstore/version', 'changefreq' => 'weekly', 'priority' => 0.6],
+        ['loc' => '/', 'changefreq' => 'daily', 'priority' => 1.0]
     ],
 ];
