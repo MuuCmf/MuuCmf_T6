@@ -117,6 +117,7 @@ class Index extends Common
 
         $this->setTitle($data['title']);
         $this->setDescription($data['description']);
+        $this->setKeywords($data['keywords'] ?? '');
 
         // 输出页面
         return View::fetch();

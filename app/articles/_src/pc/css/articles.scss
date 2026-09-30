@@ -977,12 +977,11 @@ body.Magenta .article-page {
     justify-content: center;
     flex-wrap: wrap;
     gap: 8px;
-    margin-top: 18px;
+    margin: 18px 0;
 
     .tags-label {
         font-size: 13px;
         color: var(--text-3);
-
         .fa {
             margin-right: 3px;
         }
@@ -1000,6 +999,21 @@ body.Magenta .article-page {
             background: var(--t);
             color: #fff;
         }
+    }
+}
+
+/* 文章封面（detail-tags 下方） */
+.detail-cover {
+    max-width: 880px;
+    margin: 18px auto 0;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(18, 25, 38, .04), 0 4px 16px rgba(18, 25, 38, .03);
+
+    img {
+        display: block;
+        width: 100%;
+        height: auto;
     }
 }
 

@@ -97,7 +97,14 @@ class Articles extends Base
             $uid = get_uid();
             
             $id = $data['id'];
+
+            // 关键词拆分（逗号分隔 → 数组，供页面标签展示；keywords 原字符串保留给管理端回填与 meta）
+            $data['keywords_arr'] = !empty($data['keywords'])
+                ? array_values(array_filter(array_map('trim', explode(',', $data['keywords']))))
+                : [];
+
             if(!empty($data['cover'])){
+                $data['has_cover'] = 1;
                 $data = $this->setCoverAttr($data, '4:3');
             }
 

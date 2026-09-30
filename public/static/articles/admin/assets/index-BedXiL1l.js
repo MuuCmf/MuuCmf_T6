@@ -1,0 +1,1 @@
+import{Et as r,Ut as t,kt as e}from"./element-plus-DFMSX-a1.js";import{r as n}from"./index-V4r6eEY2.js";var s=n({},[["render",function(n,s){return t(),e("div",null,[...s[0]||(s[0]=[r("h1",null,"文章列表",-1)])])}]]);export{s as default};

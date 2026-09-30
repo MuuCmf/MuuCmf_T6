@@ -53,12 +53,18 @@
                         </div>
                         {/notempty}
 
-                        {notempty name="$data.keywords"}
+                        {notempty name="$data.keywords_arr"}
                         <div class="detail-tags">
                             <span class="tags-label"><i class="fa fa-tags"></i>标签</span>
-                            {volist name="$data.keywords" id="vo"}
+                            {volist name="$data.keywords_arr" id="vo"}
                             <a class="tag-item" href="{:url('/articles/lists', ['keyword' => $vo])}">{$vo|default=''}</a>
                             {/volist}
+                        </div>
+                        {/notempty}
+
+                        {notempty name="$data['has_cover']"}
+                        <div class="detail-cover">
+                            <img src="{$data.cover_800}" alt="{$data.title|default=''}">
                         </div>
                         {/notempty}
                     </header>
