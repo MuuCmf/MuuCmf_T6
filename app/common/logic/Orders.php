@@ -88,16 +88,48 @@ class Orders extends Base
         }else{
             // 应用名白名单校验，防止实例化任意类
             $app_name = isset($data['app']) ? (string)$data['app'] : '';
-            if (!preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $app_name)) {
-                return $data;
-            }
-            $order_namespace = "app\\{$app_name}\\logic\\Orders";
-            if (class_exists($order_namespace)) {
-                $appOrdersLogic = new $order_namespace;
-                $data = $appOrdersLogic->formatData($data);
+            if (preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $app_name)) {
+                $order_namespace = "app\\{$app_name}\\logic\\Orders";
+                if (class_exists($order_namespace)) {
+                    $appOrdersLogic = new $order_namespace;
+                    $data = $appOrdersLogic->formatData($data);
+                }
             }
         }
-        
+
+        // 统一补齐商品字段，避免应用未提供对应字段时模板读取报错
+        if (isset($data['products'])) {
+            $products = $data['products'];
+            if (is_string($products)) {
+                $products = json_decode($products, true);
+            }
+            if (is_array($products)) {
+                // 补齐封面缩略图
+                if (!isset($products['cover_100'])) {
+                    $cover = isset($products['cover']) ? $products['cover'] : '';
+                    $products['cover_100'] = get_thumb_image($cover, 100, 100);
+                    $products['cover_200'] = get_thumb_image($cover, 200, 200);
+                    $products['cover_300'] = get_thumb_image($cover, 300, 300);
+                    $products['cover_400'] = get_thumb_image($cover, 400, 400);
+                    $products['cover_800'] = get_thumb_image($cover, 800, 800);
+                }
+                // 补齐模板会直接读取的字段
+                $defaults = [
+                    'title' => '',
+                    'description' => '',
+                    'quantity' => 0,
+                    'sku' => '',
+                    'express' => 0,
+                ];
+                foreach ($defaults as $key => $value) {
+                    if (!isset($products[$key])) {
+                        $products[$key] = $value;
+                    }
+                }
+                $data['products'] = $products;
+            }
+        }
+
         return $data;
     }
 
