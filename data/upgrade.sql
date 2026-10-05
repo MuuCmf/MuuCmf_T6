@@ -409,3 +409,22 @@ INSERT INTO `muucmf_menu` (`id`, `title`, `pid`, `sort`, `url`, `hide`, `type`, 
 
 INSERT INTO `muucmf_crontab` (`id`, `shopid`, `title`, `description`, `execute`, `cycle`, `day`, `hour`, `minute`, `status`, `create_time`, `update_time`) VALUES
 (6, 0, 'Sitemap自动生成', '汇总框架核心页面与已安装应用页面生成 public/sitemap.xml，并同步 robots.txt 的 Sitemap 声明', 'app\\common\\crontab\\Sitemap', 'day', 0, 3, 30, 1, 1759104000, 1759104000);
+
+-- 1. 提现管理分组更名为资金管理分组（分组由 group 字段决定）
+UPDATE `muucmf_menu`
+SET `group` = '资金管理'
+WHERE `url` = 'admin/withdraw/list'
+  AND `module` = 'admin'
+  AND `group` = '提现管理';
+
+-- 2. 新增"资金流水管理"菜单（运营顶级菜单 8F5C83E0-3753-C731-4EEF-5D004137B11D 下）
+INSERT INTO `muucmf_menu` (`id`, `title`, `pid`, `sort`, `url`, `hide`, `type`, `tip`, `group`, `is_dev`, `icon`, `module`) VALUES
+('8FBEC7E3-0F92-4558-91D1-5B9071BE2015', '资金流水', '8F5C83E0-3753-C731-4EEF-5D004137B11D', 13, 'admin/capitalflow/list', 0, 0, '', '资金管理', 0, 'exchange-alt', 'admin')
+ON DUPLICATE KEY UPDATE
+  `title` = VALUES(`title`),
+  `pid` = VALUES(`pid`),
+  `sort` = VALUES(`sort`),
+  `url` = VALUES(`url`),
+  `group` = VALUES(`group`),
+  `icon` = VALUES(`icon`),
+  `module` = VALUES(`module`);
