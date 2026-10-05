@@ -397,7 +397,12 @@ Route::group('muu_agent', function () {
     Route::post('agent/create', 'admin/muuAgent.Agent/create');
     Route::post('agent/edit', 'admin/muuAgent.Agent/edit');
     Route::post('agent/del', 'admin/muuAgent.Agent/del');
-    Route::post('agent/publish', 'admin/muuAgent.Agent/publish');
+    // 智能体工具缓存管理
+    Route::get('agent/cache_stats', 'admin/muuAgent.Agent/cacheStats');
+    Route::get('agent/cache_config', 'admin/muuAgent.Agent/cacheConfig');
+    Route::post('agent/cache_clear', 'admin/muuAgent.Agent/cacheClear');
+    Route::post('agent/cache_cleanup', 'admin/muuAgent.Agent/cacheCleanup');
+    Route::get('agent/cache_overview', 'admin/muuAgent.Agent/cacheOverview');
 
     // 模型模板管理
     Route::get('model_template/list', 'admin/muuAgent.ModelTemplate/list');
@@ -427,6 +432,10 @@ Route::group('muu_agent', function () {
     Route::post('prompt/edit', 'admin/muuAgent.Prompt/edit');
     Route::post('prompt/del', 'admin/muuAgent.Prompt/del');
     Route::get('prompt/categories', 'admin/muuAgent.Prompt/categories');
+    Route::post('prompt/render', 'admin/muuAgent.Prompt/render');
+    Route::get('prompt/versions', 'admin/muuAgent.Prompt/versions');
+    Route::post('prompt/rollback', 'admin/muuAgent.Prompt/rollback');
+    Route::post('prompt/set_default', 'admin/muuAgent.Prompt/setDefault');
 
     // 会话管理
     Route::get('conversation/list', 'admin/muuAgent.Conversation/list');

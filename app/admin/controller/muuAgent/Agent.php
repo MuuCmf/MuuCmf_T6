@@ -39,6 +39,8 @@ class Agent extends Admin
         // 参数验证：确保为正整数，无效值使用默认值
         $page = (is_numeric($pageInput) && intval($pageInput) > 0) ? intval($pageInput) : 1;
         $pageSize = (is_numeric($pageSizeInput) && intval($pageSizeInput) > 0) ? intval($pageSizeInput) : 10;
+        // 钳制到中台 DTO 允许范围（QueryAgentDto 校验 pageSize 最大 100）
+        $pageSize = min($pageSize, 100);
 
         $data = [
             'page'     => $page,
@@ -109,7 +111,6 @@ class Agent extends Admin
         $knowledgeBases = (string)input('post.knowledgeBases', '', 'text'); // 知识库列表（JSON数组）
         $kbRetrievalConfig = (string)input('post.kbRetrievalConfig', '', 'text'); // 知识库检索配置（JSON）
         $allowedBuiltinTools = (string)input('post.allowedBuiltinTools', '', 'text'); // 允许的内置工具列表（JSON数组）
-        $isPublic    = $this->parseBool(input('post.isPublic'), false); // 是否公开
         $callableByAgents = input('post.callableByAgents', null); // 可被调用的智能体白名单（JSON数组字符串；null=不限制，'[]'=禁止）
 
         if (empty($name)) {
@@ -163,9 +164,6 @@ class Agent extends Admin
         if (!empty($allowedBuiltinTools)) {
             $data['allowedBuiltinTools'] = $allowedBuiltinTools;
         }
-        if ($isPublic) {
-            $data['isPublic'] = $isPublic;
-        }
         // 白名单：前端显式提交时透传（null=清除白名单恢复不限制；'[]'=禁止被调用）
         if ($callableByAgents !== null) {
             $data['callableByAgents'] = $callableByAgents;
@@ -203,7 +201,6 @@ class Agent extends Admin
         $knowledgeBases = (string)input('post.knowledgeBases', '', 'text'); // 知识库列表（JSON数组）
         $kbRetrievalConfig = (string)input('post.kbRetrievalConfig', '', 'text'); // 知识库检索配置（JSON）
         $allowedBuiltinTools = (string)input('post.allowedBuiltinTools', '', 'text'); // 允许的内置工具列表（JSON数组）
-        $isPublic     = $this->parseBool(input('post.isPublic')); // 是否公开
         $callableByAgents = input('post.callableByAgents', null); // 可被调用的智能体白名单（JSON数组字符串；null=不限制，'[]'=禁止）
 
         if (empty($id)) {
@@ -271,9 +268,6 @@ class Agent extends Admin
         if (!empty($allowedBuiltinTools)) {
             $data['allowedBuiltinTools'] = $allowedBuiltinTools;
         }
-        if (isset($isPublic)) {
-            $data['isPublic'] = $isPublic;
-        }
         // 白名单：前端显式提交时透传（null=清除白名单恢复不限制；'[]'=禁止被调用）
         if ($callableByAgents !== null) {
             $data['callableByAgents'] = $callableByAgents;
@@ -313,38 +307,6 @@ class Agent extends Admin
         try {
             $result = $this->muuAgent->callAdmin('DELETE', '/admin/agent/' . $id);
             return $this->success('删除成功', $result);
-        } catch (\RuntimeException $e) {
-            return $this->error($e->getMessage());
-        }
-    }
-
-    /**
-     * 发布/上线智能体
-     *
-     * @return mixed 返回发布结果
-     */
-    public function publish()
-    {
-        $id = (string)input('post.id', '', 'text');  // 智能体 ID
-
-        if (empty($id)) {
-            return $this->error('智能体 ID 不能为空');
-        }
-
-        // 发布=修改状态，公共智能体（app_code 为 null）禁止发布
-        try {
-            $detail = $this->muuAgent->callAdmin('GET', '/admin/agent/' . $id);
-        } catch (\RuntimeException $e) {
-            return $this->error($e->getMessage());
-        }
-        if (empty($detail['appCode'])) {
-            return $this->error('公共智能体（appCode 为 null）禁止发布，请在中台管理后台操作');
-        }
-
-        try {
-            // 管理端通过更新状态来发布智能体
-            $result = $this->muuAgent->callAdmin('PUT', '/admin/agent/' . $id, ['status' => true]);
-            return $this->success('发布成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
         }

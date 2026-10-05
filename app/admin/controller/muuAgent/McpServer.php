@@ -32,6 +32,8 @@ class McpServer extends Admin
     {
         $page         = (int)input('get.page', 1, 'intval');           // 页码，从1开始
         $pageSize     = (int)input('get.page_size', 10, 'intval');     // 每页条数
+        // 钳制到中台 DTO 允许范围（QueryMcpServerDto 校验 pageSize 最大 100）
+        $pageSize     = min(max($pageSize, 1), 100);
         $enabled      = input('get.enabled', '');                      // 是否启用筛选（''/true/false/'true'/'false'/'1'/'0'）
         $healthStatus = (string)input('get.health_status', '', 'text'); // 健康状态筛选
         $transport    = (string)input('get.transport', '', 'text');    // 传输协议筛选

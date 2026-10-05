@@ -1,0 +1,1 @@
+import{Kn as l,Tn as e}from"./element-plus-BqZs22AS.js";function o(){const o=l(null);return{scrollContainerRef:o,resetScrollTop:()=>{e(()=>{o.value&&(o.value.scrollTop=0)})}}}export{o as t};

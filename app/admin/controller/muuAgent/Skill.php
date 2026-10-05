@@ -99,7 +99,6 @@ class Skill extends Admin
     public function import()
     {
         $file      = request()->file('file');                        // 上传文件（.zip）
-        $isPublic  = $this->parseBool(input('post.is_public'), false); // 是否公开
         $overwrite = $this->parseBool(input('post.overwrite'), false); // 是否覆盖
 
         if (empty($file)) {
@@ -117,9 +116,6 @@ class Skill extends Admin
             'appCode'    => $this->muuAgent->getAppCode(), // 从扩展配置自动获取
         ];
 
-        if ($isPublic) {
-            $data['isPublic'] = $isPublic;
-        }
         if ($overwrite) {
             $data['overwrite'] = $overwrite;
         }

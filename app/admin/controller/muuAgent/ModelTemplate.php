@@ -33,6 +33,8 @@ class ModelTemplate extends Admin
     {
         $page      = (int)input('get.page', 1, 'intval');       // 页码，从1开始
         $pageSize  = (int)input('get.pageSize', 100, 'intval'); // 每页条数（模板量少，默认取全量供下拉选择）
+        // 钳制到中台 DTO 允许范围（QueryModelTemplateDto 校验 pageSize 最大 100）
+        $pageSize  = min(max($pageSize, 1), 100);
         $modelType = (string)input('get.modelType', '', 'text'); // 模型类型筛选，如 llm
         $status    = (string)input('get.status', '', 'text');   // 状态筛选：true/false
 

@@ -31,6 +31,8 @@ class Prompt extends Admin
     {
         $page     = (int)input('get.page', 1, 'intval');        // 页码
         $pageSize = (int)input('get.page_size', 10, 'intval');  // 每页条数
+        // 钳制到中台 DTO 允许范围（QueryPromptTemplateDto 校验 pageSize 最大 100）
+        $pageSize = max(1, min($pageSize, 100));
         $category = (string)input('get.category', '', 'text');  // 分类筛选
         $status   = (string)input('get.status', '', 'text');    // 状态筛选
         $keyword  = (string)input('get.keyword', '', 'text');   // 搜索关键词
@@ -90,13 +92,12 @@ class Prompt extends Admin
         $code        = (string)input('post.code', '', 'text');        // 模板代码
         $category    = (string)input('post.category', '', 'text');    // 模板分类
         $content     = (string)input('post.content', '', 'text');     // 模板内容（提示词文本）
-        $variables   = input('post.variables', '', 'text');           // 模板变量（JSON 字符串）
+        $variables   = request()->post('variables');                  // 模板变量（JSON 字符串/数组，原始读取避免 text 过滤转义引号）
         $isDefault   = $this->parseBool(input('post.isDefault'), false); // 是否默认模板
         $status      = $this->parseBool(input('post.status'), true); // 状态
         $description = (string)input('post.description', '', 'text'); // 模板描述
         $tags        = (string)input('post.tags', '', 'text');        // 标签（JSON 字符串）
         $metadata    = (string)input('post.metadata', '', 'text');    // 元数据（JSON 字符串）
-        $isPublic    = $this->parseBool(input('post.isPublic'), false); // 是否公开
         $createdBy   = (string)input('post.createdBy', '', 'text');  // 创建者
 
         if (empty($name)) {
@@ -121,7 +122,10 @@ class Prompt extends Admin
         ];
 
         if (!empty($variables)) {
-            $data['variables'] = is_string($variables) ? json_decode($variables, true) : $variables;
+            $parsed = is_string($variables) ? json_decode($variables, true) : $variables;
+            if (is_array($parsed)) {
+                $data['variables'] = $parsed;
+            }
         }
         if ($isDefault) {
             $data['isDefault'] = $isDefault;
@@ -137,9 +141,6 @@ class Prompt extends Admin
         }
         if (!empty($metadata)) {
             $data['metadata'] = is_string($metadata) ? json_decode($metadata, true) : $metadata;
-        }
-        if ($isPublic) {
-            $data['isPublic'] = $isPublic;
         }
         if (!empty($createdBy)) {
             $data['createdBy'] = $createdBy;
@@ -164,13 +165,12 @@ class Prompt extends Admin
         $name        = (string)input('post.name', '', 'text');        // 模板名称
         $category    = (string)input('post.category', '', 'text');    // 模板分类
         $content     = (string)input('post.content', '', 'text');     // 模板内容
-        $variables   = input('post.variables', '', 'text');           // 模板变量（JSON 字符串）
+        $variables   = request()->post('variables');                  // 模板变量（JSON 字符串/数组，原始读取避免 text 过滤转义引号）
         $isDefault   = $this->parseBool(input('post.isDefault')); // 是否默认模板
         $status      = $this->parseBool(input('post.status')); // 状态
         $description = (string)input('post.description', '', 'text'); // 模板描述
         $tags        = (string)input('post.tags', '', 'text');        // 标签（JSON 字符串）
         $metadata    = (string)input('post.metadata', '', 'text');    // 元数据（JSON 字符串）
-        $isPublic    = $this->parseBool(input('post.isPublic')); // 是否公开
 
         if (empty($code)) {
             return $this->error('模板代码不能为空');
@@ -198,7 +198,10 @@ class Prompt extends Admin
             $data['content'] = $content;
         }
         if (!empty($variables)) {
-            $data['variables'] = is_string($variables) ? json_decode($variables, true) : $variables;
+            $parsed = is_string($variables) ? json_decode($variables, true) : $variables;
+            if (is_array($parsed)) {
+                $data['variables'] = $parsed;
+            }
         }
         if (isset($isDefault)) {
             $data['isDefault'] = $isDefault;
@@ -214,9 +217,6 @@ class Prompt extends Admin
         }
         if (!empty($metadata)) {
             $data['metadata'] = is_string($metadata) ? json_decode($metadata, true) : $metadata;
-        }
-        if (isset($isPublic)) {
-            $data['isPublic'] = $isPublic;
         }
 
         try {
@@ -265,21 +265,177 @@ class Prompt extends Admin
      */
     public function categories()
     {
-        // 管理端没有专门的分类列表接口,可以通过查询模板列表来获取分类
+        // 管理端没有专门的分类列表接口，通过分页查询模板列表来聚合分类
+        // 注意：中台 QueryPromptTemplateDto 校验 pageSize 最大 100，不能一次拉取过大
+        $categories = [];
+        $page       = 1;
+        $pageSize   = 100; // 中台单页上限
+        $maxPages   = 50;  // 安全上限（最多聚合 5000 条，防止极端数据量下死循环）
+
         try {
-            $result = $this->muuAgent->callAdmin('GET', '/admin/prompt-template', ['pageSize' => 1000]);
-            
-            // 从模板列表中提取分类（callAdmin 已统一解包 envelope，$result 即业务数据 { list, ... }）
-            $categories = [];
-            if (isset($result['list']) && is_array($result['list'])) {
-                foreach ($result['list'] as $template) {
-                    if (isset($template['category']) && !in_array($template['category'], $categories)) {
-                        $categories[] = $template['category'];
+            do {
+                $result = $this->muuAgent->callAdmin('GET', '/admin/prompt-template', [
+                    'page'     => $page,
+                    'pageSize' => $pageSize,
+                ]);
+
+                // callAdmin 已统一解包 envelope，$result 即业务数据 { list, total, page, pageSize }
+                if (isset($result['list']) && is_array($result['list'])) {
+                    foreach ($result['list'] as $template) {
+                        if (isset($template['category']) && !in_array($template['category'], $categories)) {
+                            $categories[] = $template['category'];
+                        }
                     }
                 }
-            }
-            
+
+                $total = isset($result['total']) ? (int)$result['total'] : 0;
+                $page++;
+            } while ($total > 0 && ($page - 1) * $pageSize < $total && $page <= $maxPages);
+
             return $this->success('请求成功', ['categories' => $categories]);
+        } catch (\RuntimeException $e) {
+            return $this->error($e->getMessage());
+        }
+    }
+
+    /**
+     * 渲染提示词模板
+     *
+     * @return mixed 返回渲染结果
+     */
+    public function render()
+    {
+        $code = (string)input('post.code', '', 'text'); // 模板代码
+
+        if (empty($code)) {
+            return $this->error('模板代码不能为空');
+        }
+
+        // 变量值（JSON 对象）：原始读取避免 text 过滤转义引号破坏 JSON；
+        // 中台 RenderPromptTemplateDto.variables 为 @IsObject() 必填对象，空变量必须传 {} 而非 []
+        $variables = request()->post('variables');
+        $data      = ['code' => $code];
+
+        if (is_string($variables) && !empty($variables)) {
+            $decoded = json_decode($variables, true);
+            $variables = is_array($decoded) ? $decoded : new \stdClass();
+        }
+
+        if ($variables instanceof \stdClass) {
+            $data['variables'] = $variables;
+        } elseif (is_array($variables)) {
+            // 空数组会被 json_encode 序列化为 []，中台 DTO 要求对象，需转为 {}
+            $data['variables'] = empty($variables) ? new \stdClass() : $variables;
+        } else {
+            $data['variables'] = new \stdClass();
+        }
+
+        try {
+            $result = $this->muuAgent->callAdmin('POST', '/admin/prompt-template/render', $data);
+            return $this->success('渲染成功', $result);
+        } catch (\RuntimeException $e) {
+            return $this->error($e->getMessage());
+        }
+    }
+
+    /**
+     * 获取模板版本历史
+     *
+     * @return mixed 返回版本历史数据
+     */
+    public function versions()
+    {
+        $id    = (string)input('get.id', '', 'text');   // 模板 ID
+        $limit = (int)input('get.limit', 10, 'intval'); // 版本数量限制
+
+        if (empty($id)) {
+            return $this->error('模板 ID 不能为空');
+        }
+
+        try {
+            $data = [];
+            if ($limit > 0) {
+                $data['limit'] = $limit;
+            }
+
+            $result = $this->muuAgent->callAdmin('GET', '/admin/prompt-template/' . $id . '/versions', $data);
+            return $this->success('请求成功', $result);
+        } catch (\RuntimeException $e) {
+            return $this->error($e->getMessage());
+        }
+    }
+
+    /**
+     * 回滚提示词模板到指定版本
+     *
+     * @return mixed 返回回滚结果
+     */
+    public function rollback()
+    {
+        $id        = (string)input('post.id', '', 'text');         // 模板 ID
+        $version   = (string)input('post.version', '', 'text');    // 目标版本号
+        $changeLog = (string)input('post.changeLog', '', 'text');  // 变更说明
+        $createdBy = (string)input('post.createdBy', '', 'text');  // 创建者
+
+        if (empty($id)) {
+            return $this->error('模板 ID 不能为空');
+        }
+        if (empty($version)) {
+            return $this->error('版本号不能为空');
+        }
+
+        // 公共提示词模板（app_code 为 null）禁止回滚
+        try {
+            $detail = $this->muuAgent->callAdmin('GET', '/admin/prompt-template/' . $id);
+        } catch (\RuntimeException $e) {
+            return $this->error($e->getMessage());
+        }
+        if (empty($detail['appCode'])) {
+            return $this->error('公共提示词模板（appCode 为 null）禁止回滚，请在中台管理后台操作');
+        }
+
+        $data = [];
+        if (!empty($changeLog)) {
+            $data['changeLog'] = $changeLog;
+        }
+        if (!empty($createdBy)) {
+            $data['createdBy'] = $createdBy;
+        }
+
+        try {
+            $result = $this->muuAgent->callAdmin('POST', '/admin/prompt-template/' . $id . '/rollback/' . $version, $data);
+            return $this->success('版本回滚成功', $result);
+        } catch (\RuntimeException $e) {
+            return $this->error($e->getMessage());
+        }
+    }
+
+    /**
+     * 设置默认提示词模板
+     *
+     * @return mixed 返回设置结果
+     */
+    public function setDefault()
+    {
+        $id = (string)input('post.id', '', 'text');  // 模板 ID
+
+        if (empty($id)) {
+            return $this->error('模板 ID 不能为空');
+        }
+
+        // 公共提示词模板（app_code 为 null）禁止设置默认
+        try {
+            $detail = $this->muuAgent->callAdmin('GET', '/admin/prompt-template/' . $id);
+        } catch (\RuntimeException $e) {
+            return $this->error($e->getMessage());
+        }
+        if (empty($detail['appCode'])) {
+            return $this->error('公共提示词模板（appCode 为 null）禁止设置默认，请在中台管理后台操作');
+        }
+
+        try {
+            $result = $this->muuAgent->callAdmin('POST', '/admin/prompt-template/' . $id . '/set-default');
+            return $this->success('设置默认模板成功', $result);
         } catch (\RuntimeException $e) {
             return $this->error($e->getMessage());
         }
