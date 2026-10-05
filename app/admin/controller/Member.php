@@ -7,6 +7,8 @@ use app\common\model\Attachment;
 use app\common\model\Member as MemberModel;
 use app\common\model\AuthGroup;
 use app\common\model\ScoreLog as ScoreLogModel;
+use app\common\model\MemberWallet as MemberWalletModel;
+use app\common\model\CapitalFlow as CapitalFlowModel;
 
 /**
  * 后台用户控制器
@@ -194,6 +196,33 @@ class Member extends Admin
                 }
             }
             /* 积分 end*/
+
+            /*钱包余额 start*/
+            if (isset($data['wallet_balance'])) {
+                // 单位转换：元 -> 分
+                $wallet_balance = intval(round(floatval($data['wallet_balance']) * 100));
+                $MemberWalletModel = new MemberWalletModel();
+                $MemberWalletModel->initWallet($this->shopid, $uid);
+                $wallet = $MemberWalletModel->where(['uid' => $uid, 'shopid' => $this->shopid])->find();
+                if (!empty($wallet) && intval($wallet['balance']) !== $wallet_balance) {
+                    $old_balance = intval($wallet['balance']);
+                    $wallet->balance = $wallet_balance;
+                    $wallet->save();
+                    // 写资金流水
+                    $capitalFlow = new CapitalFlowModel();
+                    $capitalFlow->createFlow([
+                        'shopid'    => $this->shopid,
+                        'app'       => 'admin',
+                        'uid'       => $uid,
+                        'order_no'  => '',
+                        'channel'   => 'balance',
+                        'type'      => $wallet_balance > $old_balance ? 2 : 1,
+                        'price'     => abs($wallet_balance - $old_balance),
+                        'remark'    => get_nickname(is_login()) . '后台调整钱包余额',
+                    ]);
+                }
+            }
+            /*钱包余额 end*/
 
             /*用户组 start*/
             if (isset($data['auth_group']) && !empty($data['auth_group'])) {
