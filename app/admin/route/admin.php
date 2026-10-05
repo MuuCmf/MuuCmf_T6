@@ -381,6 +381,11 @@ Route::group('withdraw', function () {
     Route::post('cancel', 'admin/Withdraw/cancel');
 });
 
+Route::group('capitalflow', function () {
+    // 资金流水列表
+    Route::get('list', 'admin/CapitalFlow/list');
+});
+
 // 智能体管理路由
 Route::group('muu_agent', function () {
     // 基础信息

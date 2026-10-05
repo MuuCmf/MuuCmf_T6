@@ -3,6 +3,7 @@
 namespace app\admin\controller;
 
 use think\facade\View;
+use think\facade\Db;
 use app\common\model\Attachment;
 use app\common\model\Member as MemberModel;
 use app\common\model\AuthGroup;
@@ -170,7 +171,8 @@ class Member extends Admin
             /* 积分 start*/
             $data_score = [];
             foreach ($data as $key => $val) {
-                if (substr($key, 0, 5) == 'score') {
+                // 仅接受 score + 数字 的合法字段名且值为标量，防止字段名注入与数组参数导致异常
+                if (preg_match('/^score\d+$/', (string)$key) && is_scalar($val)) {
                     $data_score[$key] = intval($val);
                 }
             }
@@ -199,27 +201,43 @@ class Member extends Admin
 
             /*钱包余额 start*/
             if (isset($data['wallet_balance'])) {
+                // 仅接受合法非负数字，防止非法值把余额清零或改为负数
+                if (!is_numeric($data['wallet_balance']) || floatval($data['wallet_balance']) < 0) {
+                    return $this->error('钱包余额格式不正确');
+                }
                 // 单位转换：元 -> 分
                 $wallet_balance = intval(round(floatval($data['wallet_balance']) * 100));
+                // 数据库 int 字段上限（分），超出会写入失败或溢出
+                if ($wallet_balance > 2147483647) {
+                    return $this->error('钱包余额超出允许范围');
+                }
                 $MemberWalletModel = new MemberWalletModel();
                 $MemberWalletModel->initWallet($this->shopid, $uid);
                 $wallet = $MemberWalletModel->where(['uid' => $uid, 'shopid' => $this->shopid])->find();
                 if (!empty($wallet) && intval($wallet['balance']) !== $wallet_balance) {
                     $old_balance = intval($wallet['balance']);
-                    $wallet->balance = $wallet_balance;
-                    $wallet->save();
-                    // 写资金流水
-                    $capitalFlow = new CapitalFlowModel();
-                    $capitalFlow->createFlow([
-                        'shopid'    => $this->shopid,
-                        'app'       => 'admin',
-                        'uid'       => $uid,
-                        'order_no'  => '',
-                        'channel'   => 'balance',
-                        'type'      => $wallet_balance > $old_balance ? 2 : 1,
-                        'price'     => abs($wallet_balance - $old_balance),
-                        'remark'    => get_nickname(is_login()) . '后台调整钱包余额',
-                    ]);
+                    // 钱包余额与资金流水在同一事务中写入，避免只改余额未写流水
+                    Db::startTrans();
+                    try {
+                        $wallet->balance = $wallet_balance;
+                        $wallet->save();
+                        // 写资金流水
+                        $capitalFlow = new CapitalFlowModel();
+                        $capitalFlow->createFlow([
+                            'shopid'    => $this->shopid,
+                            'app'       => 'admin',
+                            'uid'       => $uid,
+                            'order_no'  => '',
+                            'channel'   => 'admin',
+                            'type'      => $wallet_balance > $old_balance ? 2 : 1,
+                            'price'     => abs($wallet_balance - $old_balance),
+                            'remark'    => get_nickname(is_login()) . '后台调整钱包余额',
+                        ]);
+                        Db::commit();
+                    } catch (\Throwable $e) {
+                        Db::rollback();
+                        return $this->error('钱包余额保存失败');
+                    }
                 }
             }
             /*钱包余额 end*/

@@ -17,11 +17,11 @@ class CapitalFlow extends Base
     }
     /**
      * 生成流水号
-     * @return [type] [description]
+     * @return string
      */
     public function build_flow_no()
     {
-        return date('Ymd') . substr(implode(NULL, array_map('ord', str_split(substr(uniqid(), 7, 13), 1))), 0, 14);
+        return date('Ymd') . substr(implode('', array_map('ord', str_split(substr(uniqid(), 7, 13), 1))), 0, 14);
     }
 
     public function createFlow($data)
@@ -82,7 +82,8 @@ class CapitalFlow extends Base
         }
 
         if (!empty($data['channel'])) {
-            $data['channel_str'] = Channel::$_channel[$data['channel']];
+            // 渠道未在映射表中时返回空，由调用方回退显示原始渠道
+            $data['channel_str'] = Channel::$_channel[$data['channel']] ?? '';
         }
 
         if (!empty($data['create_time'])) {
