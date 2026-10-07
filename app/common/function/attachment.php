@@ -734,6 +734,9 @@ if (!function_exists('get_thumb_image')) {
      */
     function get_thumb_image($attachment, $width = 100, $height = 'auto', $replace = false)
     {
+        // 请求级内存缓存：同一请求内相同图片路径只查一次 Attachment 表（详情页多尺寸缩略图场景收益显著）
+        static $attach_cache = [];
+
         if(is_int($attachment)){
             $Attachment = new Attachment();
             $picture = $Attachment->where('attachment','=', $attachment)->find();
@@ -756,7 +759,13 @@ if (!function_exists('get_thumb_image')) {
 
             if ($not_http_remote && $not_https_remote) {
                 $Attachment = new Attachment();
-                $picture = $Attachment->where('attachment','=', $attachment)->find();
+                if (array_key_exists($attachment, $attach_cache)) {
+                    $picture = $attach_cache[$attachment];
+                } else {
+                    $picture = $Attachment->where('attachment','=', $attachment)->find();
+                    // 空结果同样缓存，避免对不存在的记录反复查询
+                    $attach_cache[$attachment] = $picture;
+                }
 
                 if (empty($picture)) {
                     return request()->domain() . '/static/common/images/nopic.png';

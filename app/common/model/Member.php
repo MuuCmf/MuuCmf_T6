@@ -369,10 +369,13 @@ class Member extends Base
                     }
                 }
 
-                // 排除不存在的字段
-                $prefix = config('database.connections.mysql.prefix');
-                $columns = Db::query('show COLUMNS FROM ' . $prefix . 'member');
-                $columns = array_column($columns, 'Field');
+                // 排除不存在的字段（请求级缓存：member 表字段在同一请求内不会变化，避免反复 SHOW COLUMNS）
+                static $member_columns_cache = null;
+                if ($member_columns_cache === null) {
+                    $prefix = config('database.connections.mysql.prefix');
+                    $member_columns_cache = array_column(Db::query('show COLUMNS FROM ' . $prefix . 'member'), 'Field');
+                }
+                $columns = $member_columns_cache;
                 foreach ($fields_arr as $k => $v) {
                     if (!in_array($v, $columns)) unset($fields_arr[$k]);
                 }

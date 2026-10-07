@@ -87,15 +87,24 @@ if (!function_exists('query_user')) {
      */
     function query_user($uid = 0, $field_arr = [])
     {
+        // 请求级内存缓存：同一请求内相同 uid+字段组合只查询一次，避免 N+1（如问答列表逐条查询用户信息）
+        static $user_cache = [];
+
         if (empty($field_arr)) {
             $field = "*";
         }
         if (is_array($field_arr)) {
             $field = implode(',', $field_arr);
         }
+        $cache_key = $uid . '_' . $field;
+        if (array_key_exists($cache_key, $user_cache)) {
+            return $user_cache[$cache_key];
+        }
+
         // 获取用户数据
         $memberModel = new Member;
         $auth_user = $memberModel->info($uid, $field);
+        $user_cache[$cache_key] = $auth_user;
 
         return $auth_user;
     }
