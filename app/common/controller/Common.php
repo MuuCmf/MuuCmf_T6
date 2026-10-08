@@ -15,11 +15,30 @@ use app\common\logic\Config as ConfigLogic;
  */
 class Common extends Base
 {
+    /**
+     * 系统配置数据
+     */
     public $muu_config_data;
+    /**
+     * micro模块配置数据
+     */
     public $micro_config_data;
+    /**
+     * 页面标题
+     */
     public $title = '';
+    /**
+     * 页面关键词
+     */
     public $keywords = '';
+    /**
+     * 页面描述
+     */
     public $description = '';
+    /**
+     * 命中的Seo规则，存在时优先于子类的setTitle/setKeywords/setDescription
+     */
+    protected $seo_rule = null;
     
     /**
      * 构造方法
@@ -122,7 +141,7 @@ class Common extends Base
                         return json(['code' => 0, 'data' => 'login', 'msg' => '请先登录']);
                     }
                     if($type == 'html'){
-                        $this->redirect(url('ucenter/common/login'));
+                        throw new \think\exception\HttpResponseException(redirect(url('ucenter/common/login')));
                     }
                 }
             }
@@ -247,6 +266,7 @@ class Common extends Base
         // 查询是否有Seo规则
         $rule = (new SeoRule())->getRule($app, $controller, $action);
         if ($rule) {
+            $this->seo_rule = $rule;
             $this->setTitle($rule['seo_title']);
             $this->setKeywords($rule['seo_keywords']);
             $this->setDescription($rule['seo_description']);
@@ -255,18 +275,30 @@ class Common extends Base
 
     public function setTitle($title)
     {
+        // Seo规则存在时，以规则值为准，忽略子类的设置
+        if (!empty($this->seo_rule['seo_title'])) {
+            $title = $this->seo_rule['seo_title'];
+        }
         $this->title = $title;
         View::assign('title', $this->title);
     }
 
     public function setKeywords($keywords)
     {
+        // Seo规则存在时，以规则值为准，忽略子类的设置
+        if (!empty($this->seo_rule['seo_keywords'])) {
+            $keywords = $this->seo_rule['seo_keywords'];
+        }
         $this->keywords = $keywords;
         View::assign('keywords', $this->keywords);
     }
 
     public function setDescription($description)
     {
+        // Seo规则存在时，以规则值为准，忽略子类的设置
+        if (!empty($this->seo_rule['seo_description'])) {
+            $description = $this->seo_rule['seo_description'];
+        }
         $this->description = $description;
         View::assign('description', $this->description);
     }
