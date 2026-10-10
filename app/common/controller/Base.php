@@ -6,6 +6,7 @@ use think\exception\HttpResponseException;
 use think\facade\Env;
 use think\facade\App;
 use think\Response;
+use think\facade\View;
 use app\common\model\Module;
 use app\common\model\Member;
 
@@ -33,6 +34,8 @@ class Base
         $this->appInstalled();
         //记住登录
         $this->initRemberLogin();
+        //当前应用模块信息（含版本号，供模板 ?v={$module.version|default=''} 静态资源缓存刷新使用）
+        View::assign('module', (new Module())->getModule($this->app_name));
     }
 
     /** 
@@ -43,7 +46,7 @@ class Base
      * @param  mixed $data 返回的数据
      * @param  integer $wait 跳转等待时间
      * @param  array $header 发送的Header信息
-     * @return void
+     * @return Response
      */
     protected function success($msg = '',  $data = '', $url = '', int $wait = 3, array $header = []): Response
     {
@@ -71,6 +74,7 @@ class Base
         }
 
         $type = (request()->isJson() || request()->isAjax()) ? 'json' : 'html';
+        $response = null;
         if ($type == 'html') {
             $response = view(config('app.dispatch_success_tmpl'), $result);
         } else if ($type == 'json') {
@@ -112,6 +116,7 @@ class Base
         }
 
         $type = (request()->isJson() || request()->isAjax()) ? 'json' : 'html';
+        $response = null;
         if ($type == 'html') {
             $response = view(config('app.dispatch_error_tmpl'), $result);
         } else if ($type == 'json') {
