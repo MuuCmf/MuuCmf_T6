@@ -2,26 +2,60 @@
 namespace app\common\service;
 
 use app\common\model\Module;
+use think\facade\Log;
 
 /**
  * 限时折扣门面（common 侧）
  *
  * 结算与价格展示代码统一通过本门面调用折扣引擎，与 business 模块解耦：
  * business 未启用或引擎缺失时返回 null，全链路安全降级为原价。
+ *
+ * 读路径（resolve/resolveBatch）要求 business 模块已安装，未就绪即降级为原价；
+ * 写路径（consume/settle/rollback）为数据补偿操作，仅要求引擎类存在即可执行，
+ * 以免 business「保留数据卸载」后回滚被静默吞掉，导致活动库存与限购记录虚高。
  */
 class Discount
 {
     /**
-     * 引擎类名缓存：命中返回 'app\business\service\Discount'，未就绪为空字符串
+     * 读路径引擎类名缓存：命中返回 'app\business\service\Discount'，未就绪为空字符串
      *
      * @var string|null
      */
     private static $engineClass = null;
 
     /**
-     * 获取可用的折扣引擎类名
+     * 解析折扣引擎类名
      *
-     * 需同时满足「引擎类存在」且「business 模块已安装（数据表就绪）」，任一不满足即返回 null，
+     * @param bool $requireInstalled true=读路径（要求 business 模块已安装）；false=写路径（仅要求引擎类存在）
+     * @return string|null 引擎类名，不可用时返回 null
+     */
+    private static function resolveEngine(bool $requireInstalled): ?string
+    {
+        $engine = 'app\\business\\service\\Discount';
+        if (!class_exists($engine)) {
+            return null;
+        }
+
+        // 写路径为订单生命周期内的数据补偿，只要引擎类存在即放行，
+        // 保证 business 保留数据卸载（is_setup=0、数据表仍在）时回滚/结算仍可落库
+        if (!$requireInstalled) {
+            return $engine;
+        }
+
+        try {
+            $ready = (bool)(new Module())->checkInstalled('business');
+        } catch (\Throwable $e) {
+            // 安装状态查询异常时按未就绪处理，确保 C 端安全降级
+            $ready = false;
+        }
+
+        return $ready ? $engine : null;
+    }
+
+    /**
+     * 获取读路径可用引擎类名（带进程内缓存）
+     *
+     * 需同时满足「引擎类存在」且「business 模块已安装」，任一不满足即返回 null，
      * 由调用方降级为原价，避免模块未安装时查询缺失数据表导致 C 端页面报错。
      *
      * @return string|null 引擎类名，不可用时返回 null
@@ -29,20 +63,22 @@ class Discount
     private static function engine(): ?string
     {
         if (self::$engineClass === null) {
-            $engine = 'app\\business\\service\\Discount';
-            $ready = false;
-            if (class_exists($engine)) {
-                try {
-                    $ready = (bool)(new Module())->checkInstalled('business');
-                } catch (\Throwable $e) {
-                    // 安装状态查询异常时按未就绪处理，确保 C 端安全降级
-                    $ready = false;
-                }
-            }
-            self::$engineClass = $ready ? $engine : '';
+            self::$engineClass = self::resolveEngine(true) ?? '';
         }
 
         return self::$engineClass !== '' ? self::$engineClass : null;
+    }
+
+    /**
+     * 获取写路径可用引擎类名（不缓存）
+     *
+     * 仅要求引擎类存在，供 consume/settle/rollback 等补偿操作使用。
+     *
+     * @return string|null 引擎类名，不可用时返回 null
+     */
+    private static function engineForWrite(): ?string
+    {
+        return self::resolveEngine(false);
     }
 
     /**
@@ -64,7 +100,13 @@ class Discount
             return null;
         }
 
-        return (new $engine())->resolve($shopid, $app, $uid, $infoId, $infoType, $price, $sku);
+        try {
+            return (new $engine())->resolve($shopid, $app, $uid, $infoId, $infoType, $price, $sku);
+        } catch (\Throwable $e) {
+            // 引擎查询异常（如数据表缺失的异常态）时降级为原价，避免 C 端页面报错
+            Log::warning('[discount] resolve 降级为原价：' . $e->getMessage());
+            return null;
+        }
     }
 
     /**
@@ -84,7 +126,13 @@ class Discount
             return [];
         }
 
-        return (new $engine())->resolveBatch($shopid, $app, $infoType, $uid, $contents);
+        try {
+            return (new $engine())->resolveBatch($shopid, $app, $infoType, $uid, $contents);
+        } catch (\Throwable $e) {
+            // 引擎查询异常（如数据表缺失的异常态）时降级为空结果，避免列表页报错
+            Log::warning('[discount] resolveBatch 降级为空结果：' . $e->getMessage());
+            return [];
+        }
     }
 
     /**
@@ -102,12 +150,17 @@ class Discount
      */
     public static function consume(int $shopid, string $app, int $uid, string $orderNo, int $infoId, string $infoType, int $quantity, array $discount): bool
     {
-        $engine = self::engine();
+        $engine = self::engineForWrite();
         if ($engine === null) {
             return false;
         }
 
-        return (new $engine())->consume($shopid, $app, $uid, $orderNo, $infoId, $infoType, $quantity, $discount);
+        try {
+            return (new $engine())->consume($shopid, $app, $uid, $orderNo, $infoId, $infoType, $quantity, $discount);
+        } catch (\Throwable $e) {
+            Log::error('[discount] consume 失败，order_no=' . $orderNo . '：' . $e->getMessage());
+            return false;
+        }
     }
 
     /**
@@ -118,12 +171,17 @@ class Discount
      */
     public static function settle(string $orderNo): bool
     {
-        $engine = self::engine();
+        $engine = self::engineForWrite();
         if ($engine === null) {
             return false;
         }
 
-        return (new $engine())->settle($orderNo);
+        try {
+            return (new $engine())->settle($orderNo);
+        } catch (\Throwable $e) {
+            Log::error('[discount] settle 失败，order_no=' . $orderNo . '：' . $e->getMessage());
+            return false;
+        }
     }
 
     /**
@@ -134,11 +192,16 @@ class Discount
      */
     public static function rollback(string $orderNo): bool
     {
-        $engine = self::engine();
+        $engine = self::engineForWrite();
         if ($engine === null) {
             return false;
         }
 
-        return (new $engine())->rollback($orderNo);
+        try {
+            return (new $engine())->rollback($orderNo);
+        } catch (\Throwable $e) {
+            Log::error('[discount] rollback 失败，order_no=' . $orderNo . '：' . $e->getMessage());
+            return false;
+        }
     }
 }
