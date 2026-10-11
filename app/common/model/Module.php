@@ -300,66 +300,64 @@ class Module extends Base
     /**
      * 卸载模块
      * @param $id 模块ID
-     * @param int $withoutData 0.清理数据 1.不清理数据
+     * @param int $withoutData 0.保留数据 1.删除数据
      * @return bool
      */
     public function uninstall($id, $withoutData = 0)
     {
         $module = $this->find($id);
-        $module = $module->toArray();
-        if (!$module || $module['is_setup'] == 0) {
-            $this->error = '应用不存在或未安装';
+        if (!$module) {
+            $this->error = '应用不存在';
             return false;
         }
-        $this->cleanMenus($module['name']);
-        $this->cleanAuthRules($module['name']);
-        $this->cleanAction($module['name']);
-        $this->cleanActionLimit($module['name']);
-
-        if ($withoutData == 0) {
-            //如果不保留数据
-            $uninstall_file = '';
-            if (file_exists(APP_PATH . $module['name'] . '/info/uninstall.sql')) {
-                $uninstall_file = APP_PATH . $module['name'] . '/info/uninstall.sql';
-            }
-            
-            if (empty($uninstallSql)) {
-                return true;
-            }else{
-                //读取sql语句
-                $uninstallSql = file_get_contents($uninstall_file);
-            }
-
-            $uninstallSql = str_replace("\r", "", $uninstallSql);
-            $uninstallSql = explode(";\n", $uninstallSql);
-
-            //系统配置表前缀
-            $prefix = config('database.connections.mysql.prefix');
-
-            foreach ($uninstallSql as $value) {
-                $value = trim($value);
-                if (empty($value)) continue;
-
-                //获取表名
-                $name = preg_replace("/[\s\S]*DROP TABLE IF EXISTS `(\w+)`[\s\S]*/", "\\1", $value);
-                //获取表前缀
-                $orginal = preg_replace("/[\s\S]*DROP TABLE IF EXISTS `([a-zA-Z]+_)[\s\S]*/", "\\1", $value);
-                //替换表前缀
-                $value = str_replace(" `{$orginal}", " `{$prefix}", $value);
-
-                $res = Db::execute($value);
-            }
-
-            if ($res === false) {
-                $this->error = '清理模块数据失败，错误信息：' . $res['error_code'];
-                return false;
-            }
+        if ($module['is_setup'] == 0) {
+            $this->error = '应用未安装';
+            return false;
         }
+        $module = $module->toArray();
 
-        $module['is_setup'] = 0;
-        $this->where('id', $id)->save($module);
+        Db::startTrans();
+        try {
+            $this->cleanMenus($module['name']);
+            $this->cleanAuthRules($module['name']);
+            $this->cleanAction($module['name']);
+            $this->cleanActionLimit($module['name']);
 
-        return true;
+            if ($withoutData == 1) {
+                //删除数据：执行 uninstall.sql 清理数据表
+                $uninstall_file = APP_PATH . $module['name'] . '/info/uninstall.sql';
+                if (file_exists($uninstall_file)) {
+                    //读取sql语句
+                    $uninstallSql = file_get_contents($uninstall_file);
+                    $uninstallSql = str_replace("\r", "", $uninstallSql);
+                    $uninstallSql = explode(";\n", $uninstallSql);
+
+                    //系统配置表前缀
+                    $prefix = config('database.connections.mysql.prefix');
+
+                    foreach ($uninstallSql as $value) {
+                        $value = trim($value);
+                        if (empty($value)) continue;
+
+                        //获取表名
+                        $name = preg_replace("/[\s\S]*DROP TABLE IF EXISTS `(\w+)`[\s\S]*/", "\\1", $value);
+                        //获取表前缀
+                        $orginal = preg_replace("/[\s\S]*DROP TABLE IF EXISTS `([a-zA-Z]+_)[\s\S]*/", "\\1", $value);
+                        //替换表前缀
+                        $value = str_replace(" `{$orginal}", " `{$prefix}", $value);
+
+                        Db::execute($value);
+                    }
+                }
+            }
+
+            Db::commit();
+            return true;
+        } catch (\Throwable $e) {
+            Db::rollback();
+            $this->error = '卸载模块失败：' . $e->getMessage();
+            return false;
+        }
     }
 
     /**

@@ -5,7 +5,6 @@ namespace app\admin\controller;
 use think\Exception;
 use app\admin\lib\Upgrade as UpgradeServer;
 use app\admin\lib\Cloud as CloudServer;
-use think\facade\Db;
 use app\common\model\Menu as MenuModel;
 use app\common\model\Module as ModuleModel;
 use app\common\model\AuthRule;
@@ -235,21 +234,22 @@ class Module extends Admin
      */
     public function uninstall()
     {
-        $id = input('id', 0, 'intval');
-        $module = $this->ModuleModel->where('id', $id)->find();
-
         if (request()->isPost()) {
-            $aWithoutData = input('withoutData', 1, 'intval'); //是否保留数据
-            $res = $this->ModuleModel->uninstall($id, $aWithoutData);
+            $id = input('id', 0, 'intval');
+            $aWithoutData = input('withoutData', 0, 'intval'); //0.保留数据 1.删除数据
 
-            if ($res == true) {
-                //删除菜单
-                Db::name('menu')->where(['module' => $module['name']])->delete();
-                //删除module表中记录
+            try {
+                $res = $this->ModuleModel->uninstall($id, $aWithoutData);
+            } catch (\Throwable $e) {
+                return $this->error('卸载模块失败：' . $e->getMessage());
+            }
+
+            if ($res === true) {
+                //删除module表中记录（菜单、权限、行为等已由模型卸载时清理）
                 $this->ModuleModel->where(['id' => $id])->delete();
                 return $this->success('卸载模块成功。', '', cookie('__forward__'));
             } else {
-                return $this->error('卸载模块失败。');
+                return $this->error($this->ModuleModel->error ?: '卸载模块失败。');
             }
         }
     }
