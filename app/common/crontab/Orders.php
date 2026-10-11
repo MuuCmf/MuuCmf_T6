@@ -51,6 +51,11 @@ class Orders
                 ];
                 $result = $this->OrdersModel->where('id', 'in', $ids)->update($data);
                 if ($result === false) throw new Exception('订单更新失败');
+
+                //限时折扣：自动取消订单，逐单回滚活动销量与限购计数
+                foreach ($lists as $order) {
+                    \app\common\service\Discount::rollback($order['order_no']);
+                }
             }
 
             Db::commit();

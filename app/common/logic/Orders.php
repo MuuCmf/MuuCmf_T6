@@ -4,6 +4,7 @@ namespace app\common\logic;
 
 use app\common\logic\Channel;
 use app\common\model\Evaluate as EvaluateModel;
+use app\common\service\Discount as DiscountFacade;
 
 class Orders extends Base
 {
@@ -254,5 +255,36 @@ class Orders extends Base
             }
         }
         return $html;
+    }
+
+    /**
+     * 解析限时折扣并按「取更低者、不叠加」返回成交单价
+     *
+     * 各模块在「会员折扣之后、计算 paid_fee 之前」调用：本方法以内容原价为基准解析限时折扣，
+     * 由调用方与会员折扣价取更低者。business 模块缺失时安全降级为原价。
+     *
+     * @param int    $shopid   平台/店铺 ID
+     * @param string $app      所属模块
+     * @param int    $uid      用户 ID
+     * @param int    $infoId   内容 ID
+     * @param string $infoType 内容类型
+     * @param int    $price    内容原价（分）
+     * @param int    $quantity 购买数量（预留，单价解析不使用）
+     * @return array ['price' => 成交单价(分), 'discount' => resolve 结果|null]
+     */
+    public function applyDiscount(int $shopid, string $app, int $uid, int $infoId, string $infoType, int $price, int $quantity = 1): array
+    {
+        $discount = DiscountFacade::resolve($shopid, $app, $uid, $infoId, $infoType, $price);
+        if (empty($discount)) {
+            return ['price' => $price, 'discount' => null];
+        }
+
+        $discountPrice = intval($discount['discount_price']);
+        // 未产生实际优惠时视为未命中
+        if ($discountPrice <= 0 || $discountPrice >= $price) {
+            return ['price' => $price, 'discount' => null];
+        }
+
+        return ['price' => $discountPrice, 'discount' => $discount];
     }
 }

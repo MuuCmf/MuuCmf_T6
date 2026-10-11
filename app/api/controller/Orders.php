@@ -225,6 +225,9 @@ class Orders extends Api
                     throw new Exception('取消订单失败');
                 }
 
+                //限时折扣：取消订单，回滚活动销量与限购计数
+                \app\common\service\Discount::rollback($order['order_no']);
+
                 Db::commit();
 
                 return $this->success('取消订单成功');
