@@ -16,6 +16,21 @@ class CheckAuth extends JWTAuth
     protected $auth;
 
     /**
+     * 仅基于 Session 判断登录态（用于 H5/浏览器端回退）
+     * 注意：不使用 is_login()，因为 is_login() 对 JWT token 仅做 decode（不查黑名单），
+     * 会让被拉黑的 token（用户退出、刷新后的旧 token）绕过鉴权。
+     * @return int
+     */
+    protected function sessionUid()
+    {
+        $user = session('user_auth');
+        if (!empty($user) && session('user_auth_sign') == data_auth_sign($user)) {
+            return $user['uid'];
+        }
+        return 0;
+    }
+
+    /**
      * 刷新token
      * @param $request
      * @param Closure $next
@@ -44,9 +59,9 @@ class CheckAuth extends JWTAuth
                 $uid = $payload['uid'];
             } catch (JWTException $exception) {
                 // 如果捕获到此异常，即代表 refresh 也过期了，用户无法刷新令牌，需要重新登录。
-                // 浏览器端基于session部分判断
-                if(is_login()){
-                    $uid = is_login();
+                // 浏览器端基于session部分判断（注意：不能用 is_login()，其 JWT 解码不查黑名单，会绕过黑名单）
+                if($sessionUid = $this->sessionUid()){
+                    $uid = $sessionUid;
                 }else{
                     if($type == 'json'){
                         return json(['code' => 0, 'data' => 'login', 'msg' => $exception->getMessage()]);
@@ -63,8 +78,8 @@ class CheckAuth extends JWTAuth
         } catch (TokenBlacklistException $exception) { 
             // 捕获黑名单，退出登录或者已经自动刷新，当前token就会被拉黑
             // 浏览器端基于session部分判断
-            if(is_login()){
-                $uid = is_login();
+            if(sessionUid()){
+                $uid = sessionUid();
             }else{
                 if($type == 'json'){
                     return json(['code' => 0, 'data' => 'login', 'msg' => $exception->getMessage()]);
@@ -75,8 +90,8 @@ class CheckAuth extends JWTAuth
             }
         } catch (JWTException $exception) {
             // 如果捕获到此异常，即代表 refresh 也过期了，用户无法刷新令牌，需要重新登录。
-            if(is_login()){
-                $uid = is_login();
+            if(sessionUid()){
+                $uid = sessionUid();
             }else{
                 if($type == 'json'){
                     return json(['code' => 0, 'data' => 'login', 'msg' => $exception->getMessage()]);

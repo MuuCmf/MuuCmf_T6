@@ -112,6 +112,10 @@ class WechatMiniProgram extends Api
         } else {
             // 未登录过，创建用户
             $result = MiniProgramServer::decryptData($oauth['session_key'], $params['iv'], $params['encrypted_data']);
+            // 解密失败（微信返回非法数据/参数不匹配）时返回错误，避免未定义索引与创建残缺用户
+            if (!is_array($result) || !isset($result['openId'], $result['nickName'])) {
+                return $this->error('微信数据解密失败，请重试');
+            }
             $nickname = $result['nickName'];
             if ($nickname == '微信用户') {
                 $nickname = rand_nickname(config('system.USER_NICKNAME_PREFIX'));
@@ -120,8 +124,8 @@ class WechatMiniProgram extends Api
                 'unionid'   => $oauth['unionid'] ?? '',
                 'openid'    => $oauth['openid'],
                 'nickname'  => $nickname,
-                'avatar'    => $result['avatarUrl'],
-                'sex'       => $result['gender'],
+                'avatar'    => $result['avatarUrl'] ?? '',
+                'sex'       => $result['gender'] ?? 0,
                 'shopid'    => $params['shopid'],
                 'oauth_type' => 'weixin_mp'
             ];

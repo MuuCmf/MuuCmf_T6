@@ -216,9 +216,19 @@ class Member extends Api
      */
     public function logout()
     {
-        if (is_login()) {
+        $uid = is_login();
+        if ($uid) {
             $commonMemberModel = new CommonMember;
-            $commonMemberModel->logout(is_login());
+            $commonMemberModel->logout($uid);
+            // 使当前 JWT token 失效（加入黑名单），避免退出后旧 token 仍可被使用
+            try {
+                $token = JWTAuth::getToken();
+                if ($token) {
+                    JWTAuth::invalidate($token);
+                }
+            } catch (\Exception $e) {
+                // token 已失效或不存在，忽略
+            }
             return $this->success('退出成功', '', request()->domain());
         }
 
