@@ -80,6 +80,10 @@ class Orders extends Base
      */
     public function formatData($data)
     {
+        // 统一将模型对象转为数组，确保后续清洗与字段补齐基于数组进行
+        if (is_object($data) && method_exists($data, 'toArray')) {
+            $data = $data->toArray();
+        }
         if($data['app'] == 'vip' || $data['order_info_type'] == 'vipcard'){
             $order_namespace = "app\\common\\logic\\Orders";
             if (class_exists($order_namespace)) {
@@ -146,6 +150,10 @@ class Orders extends Base
                 $value[$k] = $this->cleanUtf8($v);
             }
             return $value;
+        }
+        if (is_object($value)) {
+            $value = method_exists($value, 'toArray') ? $value->toArray() : (array) $value;
+            return $this->cleanUtf8($value);
         }
         if (is_string($value)) {
             if (function_exists('iconv')) {
