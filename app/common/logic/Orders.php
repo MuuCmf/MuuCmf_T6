@@ -131,7 +131,33 @@ class Orders extends Base
             }
         }
 
-        return $data;
+        return $this->cleanUtf8($data);
+    }
+
+    /**
+     * 递归清洗非法 UTF-8 字节，避免订单数据 json_encode 时报 Malformed UTF-8 characters
+     * @param mixed $value
+     * @return mixed
+     */
+    protected function cleanUtf8($value)
+    {
+        if (is_array($value)) {
+            foreach ($value as $k => $v) {
+                $value[$k] = $this->cleanUtf8($v);
+            }
+            return $value;
+        }
+        if (is_string($value)) {
+            if (function_exists('iconv')) {
+                $clean = iconv('UTF-8', 'UTF-8//IGNORE', $value);
+                if ($clean !== false) {
+                    return $clean;
+                }
+            }
+            // iconv 不可用时的兜底：移除 ASCII 控制字符（无法处理多字节非法序列）
+            return preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $value);
+        }
+        return $value;
     }
 
     /**
@@ -204,7 +230,7 @@ class Orders extends Base
             $data['evaluate'] = 0;
         }
 
-        return $data;
+        return $this->cleanUtf8($data);
     }
 
     /**
