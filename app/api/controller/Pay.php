@@ -604,56 +604,54 @@ class Pay extends Api
             }
         }
 
-        // 微信小程序消息
+        // 微信小程序消息（订阅消息，form_id 模板消息已废弃）
         if ($channel == 'weixin_mp') {
             // 获取配置
             $weixin_mp_config = (new \app\common\model\WechatMpConfig())->getWechatMpConfigByShopId($this->shopid);
+            // 优先使用订阅消息模板ID，兼容旧模板消息模板ID
+            $template_id = $weixin_mp_config['tmplmsg']['subscribe']['pay_success']
+                ?? $weixin_mp_config['tmplmsg']['tmplmsg']['pay_success'] ?? '';
             //消息模板是否设置
-            if (empty($weixin_mp_config['tmplmsg']['tmplmsg']['pay_success'])) {
+            if (empty($template_id)) {
                 return false;
             }
 
-            if (!empty($order_info['form_id'])) {
-                $form_id = $order_info['form_id'];
-                $msg_list = [];
-                if (in_array('manager', $weixin_mp_config['tmplmsg']['to']) && !empty($weixin_config['tmplmsg']['manager_uid'])) {
-                    $msg_item['openid'] = get_openid($this->shopid, $weixin_mp_config['tmplmsg']['manager_uid'], $channel);
-                    $msg_item['user_info'] = query_user($order_info['uid']);
-                    $msg_list[] = $msg_item;
-                }
-                if (in_array('user', $weixin_mp_config['tmplmsg']['to'])) {
-                    $msg_item['openid'] = get_openid($this->shopid, $order_info['uid'], $channel);
-                    $msg_item['user_info'] = query_user($order_info['uid']);
-                    $msg_list[] = $msg_item;
-                }
+            $msg_list = [];
+            if (in_array('manager', $weixin_mp_config['tmplmsg']['to']) && !empty($weixin_mp_config['tmplmsg']['manager_uid'])) {
+                $msg_item['openid'] = get_openid($this->shopid, $weixin_mp_config['tmplmsg']['manager_uid'], $channel);
+                $msg_item['user_info'] = query_user($order_info['uid']);
+                $msg_list[] = $msg_item;
+            }
+            if (in_array('user', $weixin_mp_config['tmplmsg']['to'])) {
+                $msg_item['openid'] = get_openid($this->shopid, $order_info['uid'], $channel);
+                $msg_item['user_info'] = query_user($order_info['uid']);
+                $msg_list[] = $msg_item;
+            }
 
-                foreach ($msg_list as $item) {
-                    $msg = [
-                        'touser' => $item['openid'],
-                        'template_id' => $weixin_mp_config['tmplmsg']['tmplmsg']['pay_success'],
-                        'page' => 'micro/pages/index',
-                        'form_id' => $form_id,
-                        'data' => [
-                            'thing1' => [
-                                'value' => $order_info['products']['title'],
-                            ],
-                            'character_string3' => [
-                                'value' => $order_info['order_no'],
-                            ],
-                            'amount4' => [
-                                'value' => sprintf("%.2f", $order_info['paid_fee'] / 100) . '元',
-                            ],
-                            'time7' => [
-                                'value' => $order_info['create_time'],
-                            ],
+            foreach ($msg_list as $item) {
+                $msg = [
+                    'touser' => $item['openid'],
+                    'template_id' => $template_id,
+                    'page' => 'micro/pages/index',
+                    'data' => [
+                        'thing1' => [
+                            'value' => $order_info['products']['title'],
                         ],
-                    ];
-                    $res = @WeixinMiniProgramServer::sendTemplateMsg($msg);
+                        'character_string3' => [
+                            'value' => $order_info['order_no'],
+                        ],
+                        'amount4' => [
+                            'value' => sprintf("%.2f", $order_info['paid_fee'] / 100) . '元',
+                        ],
+                        'time7' => [
+                            'value' => $order_info['create_time'],
+                        ],
+                    ],
+                ];
+                // 订阅消息无需 form_id；需用户在小程序端已授权（requestSubscribeMessage）
+                $res = @WeixinMiniProgramServer::sendSubscribeMsg($msg);
 
-                    return $res;
-                }
-            } else {
-                return false;
+                return $res;
             }
         }
     }

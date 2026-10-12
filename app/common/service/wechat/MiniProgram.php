@@ -88,6 +88,16 @@ class MiniProgram extends Wechat
     }
 
     /**
+     * 发送订阅消息（替代已废弃的 form_id 模板消息）
+     * @param $data
+     * @return mixed
+     */
+    public function sendSubscribeMsg($data)
+    {
+        return $this->app->subscribe_message->send($data);
+    }
+
+    /**
      * @title 获取小程序直播间列表
      * @return mixed
      */

@@ -186,7 +186,7 @@ class VipCard extends Base
             unset($val);
             
             //查询优惠力度最大的会员卡
-            $resule = [];
+            $resule = null;
             if (!empty($vip_list) && count($vip_list) >= 1) {
                 $discount_arr = [];
                 foreach ($vip_list as $key => $val) {
@@ -281,7 +281,7 @@ class VipCard extends Base
                 }else{
                     // 单应用数据处理
                     if (!in_array($product_data['category_id'], $val['category_ids_arr'])) {
-                        unset($card_list[$key]);
+                        unset($vip_card_list[$key]);
                     } else {
                         //根据折扣计算该会员价格
                         $member_price = intval($product_data['price'] * ($val['discount'] / 10));
