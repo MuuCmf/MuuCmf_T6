@@ -78,8 +78,8 @@ class CheckAuth extends JWTAuth
         } catch (TokenBlacklistException $exception) { 
             // 捕获黑名单，退出登录或者已经自动刷新，当前token就会被拉黑
             // 浏览器端基于session部分判断
-            if(sessionUid()){
-                $uid = sessionUid();
+            if($this->sessionUid()){
+                $uid = $this->sessionUid();
             }else{
                 if($type == 'json'){
                     return json(['code' => 0, 'data' => 'login', 'msg' => $exception->getMessage()]);
@@ -90,8 +90,8 @@ class CheckAuth extends JWTAuth
             }
         } catch (JWTException $exception) {
             // 如果捕获到此异常，即代表 refresh 也过期了，用户无法刷新令牌，需要重新登录。
-            if(sessionUid()){
-                $uid = sessionUid();
+            if($this->sessionUid()){
+                $uid = $this->sessionUid();
             }else{
                 if($type == 'json'){
                     return json(['code' => 0, 'data' => 'login', 'msg' => $exception->getMessage()]);
