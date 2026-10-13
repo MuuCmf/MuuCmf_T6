@@ -97,14 +97,20 @@ class Base extends Model
      * @param int    $r     每页条数
      * @return \think\Paginator
      */
-    public function getListByPage($map, $order = 'create_time desc', $field = '*', $r = 20)
+    public function getListByPage($map, $order = 'create_time desc', $field = '*', $r = 20, $except = false)
     {
         $r = max(1, (int)$r);
 
         $query = empty($map) ? $this : $this->buildMapQuery($map);
 
+        // TP6 的 field() 不支持第二个 except 参数，排除字段需用 withoutField()
+        if ($except) {
+            $query = $query->withoutField($field);
+        } else {
+            $query = $query->field($field);
+        }
+
         return $query->order($order)
-            ->field($field)
             ->paginate(['list_rows' => $r, 'query' => request()->param()], false);
     }
 

@@ -44,6 +44,12 @@ class Cloud
      */
     public function needAuthorization($app_name)
     {
+        $cacheKey = request()->host() . '_MUUCMF_CLOUD_AUTH_APP_' . $app_name;
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            return $cached;
+        }
+
         $url = $this->api . 'authorization/app';
         $result = curl_request($url, [
             'app_name'  =>  $app_name,
@@ -53,12 +59,18 @@ class Cloud
         try {
             $result = json_decode($result, true);
             if (is_array($result) && $result['code'] == 0) {
+                // 未授权：缓存 5 分钟（期间持续拦截）
+                Cache::set($cacheKey, $result, 300);
                 return $result;
             }
         } catch (ValidateException $e) {
+            // 云端异常：fail-closed 降级，短缓存 1 分钟避免雪崩
+            Cache::set($cacheKey, false, 60);
             return false;
         }
 
+        // 已授权 / 云端返回非预期（fail-open 放行）：短缓存 1 分钟避免频繁打云端
+        Cache::set($cacheKey, true, 60);
         return true;
     }
 
