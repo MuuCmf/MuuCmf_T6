@@ -172,12 +172,9 @@ class Common extends Base
     {
         $micro_config_data = [];
         $is_install = (new Module())->checkInstalled('micro');
-        if($is_install){
-            $namespace = "\\app\\micro\\model\\MicroConfig";
-            // 判断是否存在该模型
-            if(!class_exists($namespace)){
-                return;
-            }
+        $namespace = "\\app\\micro\\model\\MicroConfig";
+        // micro已安装且模型存在时才读取配置，否则保留空数组，避免模板变量未定义
+        if($is_install && class_exists($namespace)){
             $MicroConfigModel = new $namespace;
             $this->micro_config_data = $micro_config_data = $MicroConfigModel->getConfig($this->shopid);
         }
