@@ -25,7 +25,7 @@ class Pay extends Api
     private $OrderLogic; //订单逻辑
     private CapitalFlow $CapitalFlowModel; //资金流模型
     protected $middleware = [
-        'app\\common\\middleware\\CheckAuth' => ['only' => 'pay,refund'],
+        'app\\common\\middleware\\CheckAuth' => ['only' => 'pay,refund,close,query'],
     ];
 
     function __construct()
@@ -195,6 +195,10 @@ class Pay extends Api
             if (!$order_data) {
                 throw new Exception('订单不存在');
             }
+            // 归属校验：仅订单本人可查询支付状态，防止越权查询他人订单
+            if (intval($order_data['uid']) != get_uid()) {
+                throw new Exception('无权操作该订单');
+            }
 
             // 获取支付参数
             $config = ChannelServer::config($order_data['channel'], $this->shopid);
@@ -225,6 +229,10 @@ class Pay extends Api
                 if (!$order_data) {
                     throw new Exception('订单不存在');
                 }
+                // 归属校验：仅订单本人可关闭支付单，防止越权关闭他人订单
+                if (intval($order_data['uid']) != get_uid()) {
+                    throw new Exception('无权操作该订单');
+                }
 
                 $config = ChannelServer::config($order_data['channel'], $this->shopid);
                 $PayService = PayServer::init($config['appid'], $this->params['pay_channel']);
@@ -246,6 +254,11 @@ class Pay extends Api
     public function refund()
     {
         if (request()->isAjax()) {
+            // 退款状态值白名单（0未申请 1申请中 2退货中 3已退货 4退款完成）
+            $refund_status = intval($this->params['refund'] ?? 0);
+            if (!in_array($refund_status, [0, 1, 2, 3, 4], true)) {
+                return $this->error('非法退款状态');
+            }
             // 越权防护：校验退款订单归属当前登录用户，防止操作他人订单
             $uid = get_uid();
             $order_no = isset($this->params['order_no']) ? (string)$this->params['order_no'] : '';
@@ -267,27 +280,40 @@ class Pay extends Api
             $this->params['shopid'] = $refund_order['shopid'];
             $this->params['app'] = $refund_order['app'];
 
+            // 初始化订单逻辑层（按订单 app 实例化，应用名白名单校验；修复此前 OrderLogic 未初始化导致的 Fatal Error）
+            if (empty($this->OrderLogic)) {
+                $app_name = isset($this->params['app']) ? (string)$this->params['app'] : '';
+                if (!preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $app_name)) {
+                    return $this->error('订单应用标识不合法');
+                }
+                $order_namespace = "app\\{$app_name}\\logic\\Orders";
+                if (!class_exists($order_namespace)) {
+                    return $this->error('订单应用逻辑不存在');
+                }
+                $this->OrderLogic = new $order_namespace;
+            }
+
             //开启事务
             Db::startTrans();
             try {
                 $refund_to = $this->params['refund_to'] ?? 1;
                 //处理订单业务
                 $refund_info = $this->OrderLogic->refund($this->params);
-                //更改订单状态
+                //更改订单状态（保持原 status 不变，退款状态由 refund 字段表达，对齐 appstore 行为）
                 $order_data = [
                     'id' => $refund_info['order_id'],
                     'refund' => $this->params['refund'],
                     'refund_to' => $refund_to,
-                    'status' => 4, //更改已完成
                 ];
 
                 //4为退款流程，其他只更改订单状态
                 if ($this->params['refund'] == 4) {
-                    //是否已有退款记录
+                    //是否已有退款记录（限定 type=2 退款流水，避免误匹配其他类型流水）
                     $map = [
                         ['order_no', '=', $refund_info['order_no']],
                         ['shopid', '=', $this->params['shopid']],
                         ['app', '=', $this->params['app']],
+                        ['type', '=', 2],
                     ];
                     $has_refund = $this->CapitalFlowModel->getDataByMap($map);
                     if ($has_refund) {
@@ -314,11 +340,11 @@ class Pay extends Api
                     if (!$has_refund || $has_refund['status'] == 0) {
                         //退款逻辑
                         if ($refund_to == 0) {
-                            //退款至用户账户
-                            $result = (new MemberWallet())->income($refund_info['uid'], $refund_info['refund_fee'], $refund_info['shopid'], false);
+                            //退款至用户账户（income 参数顺序：shopid, uid, money；修复此前参数错位导致资金入错账户）
+                            $result = (new MemberWallet())->income($this->params['shopid'], $refund_info['uid'], $refund_info['refund_fee'], false);
                         } else {
-                            //退款至付款账户
-                            $config = ChannelServer::config($this->params['channel'], $this->shopid);
+                            //退款至付款账户（使用订单实际渠道，防止渠道参数被用户篡改）
+                            $config = ChannelServer::config($refund_info['channel'], $this->shopid);
                             $PayService = PayServer::init($config['appid'], $this->params['pay_channel']);
                             if (!$PayService || !$PayService->server) {
                                 throw new Exception('支付服务初始化失败');
@@ -333,6 +359,12 @@ class Pay extends Api
                             'update_time' => time(),
                             'status' => 1
                         ]);
+                    }
+
+                    // 各应用业务回滚钩子（如活动撤销核销码、回退销量/积分；无此方法的模块自动跳过）
+                    $app_refund_service = 'app\\' . $this->params['app'] . '\\service\\Orders';
+                    if (class_exists($app_refund_service) && method_exists($app_refund_service, 'refundRollback')) {
+                        (new $app_refund_service)->refundRollback($refund_order);
                     }
 
                     $order_data['refund_no'] =  $refund_info['refund_no'];
@@ -512,7 +544,13 @@ class Pay extends Api
             return false;
         }
         $OrderService = new $order_namespace;
-        $result = $OrderService->paySuccess($order_info);
+        try {
+            $result = $OrderService->paySuccess($order_info);
+        } catch (\Throwable $e) {
+            // 记录异常后继续抛出，保持回调非 200 触发微信重试（paid 已回滚，重试可安全补执行业务）
+            Log::write('支付回调业务处理异常: ' . $e->getMessage() . ' order_no=' . $order_no);
+            throw $e;
+        }
 
         //消息通知
         $this->sendPaySuccessTmplmsg($order_info['channel'], $order_info);
@@ -574,6 +612,7 @@ class Pay extends Api
                 $msg_list[] = $msg_item;
             }
 
+            $res = null;
             foreach ($msg_list as $item) {
                 $msg = [
                     'touser' => $item['openid'],
@@ -594,14 +633,13 @@ class Pay extends Api
                     ],
                 ];
                 $res = @OfficialAccount::sendTemplateMsg($msg);
-                //成功返回数据结构
-                //array: [
-                //     "errcode" => 0
-                //     "errmsg" => "ok"
-                //     "msgid" => 2538082547780780032
-                //]
-                return $res;
+                // 发送失败则中断后续，避免重发错误配置
+                if (empty($res)) {
+                    break;
+                }
             }
+            // 循环结束后统一返回，确保 manager 与 user 多条消息都能发出
+            return $res;
         }
 
         // 微信小程序消息（订阅消息，form_id 模板消息已废弃）
@@ -628,6 +666,7 @@ class Pay extends Api
                 $msg_list[] = $msg_item;
             }
 
+            $res = null;
             foreach ($msg_list as $item) {
                 $msg = [
                     'touser' => $item['openid'],
@@ -650,9 +689,13 @@ class Pay extends Api
                 ];
                 // 订阅消息无需 form_id；需用户在小程序端已授权（requestSubscribeMessage）
                 $res = @WeixinMiniProgramServer::sendSubscribeMsg($msg);
-
-                return $res;
+                // 发送失败则中断后续
+                if (empty($res)) {
+                    break;
+                }
             }
+            // 循环结束后统一返回，确保 manager 与 user 多条消息都能发出
+            return $res;
         }
     }
 
