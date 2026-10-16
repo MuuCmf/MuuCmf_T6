@@ -381,11 +381,16 @@ class Module extends Base
             $info = $info->toArray();
             if (empty($info['icon'])) {
                 //图标所在位置为模块静态目录下（推荐）
-                if (file_exists(PUBLIC_PATH . '/static/' . $name . '/images/icon.png')) {
+                if (defined('PUBLIC_PATH') && file_exists(PUBLIC_PATH . '/static/' . $name . '/images/icon.png')) {
                     $info['icon_100'] = $info['icon_200'] = $info['icon_300'] = $info['icon_400'] = '/static/' . $name . '/images/icon.png';
                 } else {
                     $info['icon_100'] = $info['icon_200'] = $info['icon_300'] = $info['icon_400'] = '/static/admin/images/module_default_icon.png';
                 }
+            } elseif (!defined('PUBLIC_PATH')) {
+                // CLI/计划任务/队列等非 Web 入口：PUBLIC_PATH 未定义，
+                // 缩略图生成（get_thumb_image）与 file_exists 均依赖该常量，
+                // 直接使用默认图标，避免抛异常导致 checkInstalled 误判模块未安装、折扣读路径静默降级。
+                $info['icon_100'] = $info['icon_200'] = $info['icon_300'] = $info['icon_400'] = '/static/admin/images/module_default_icon.png';
             } else {
                 $width = 100;
                 $height = 100;

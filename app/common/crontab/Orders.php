@@ -56,6 +56,10 @@ class Orders
                 foreach ($lists as $order) {
                     \app\common\service\Discount::rollback($order['order_no']);
                 }
+                //优惠券：自动取消订单，逐单释放占用中的券（无券为空操作）
+                foreach ($lists as $order) {
+                    \app\common\service\Coupon::release($shopid, $order['order_no']);
+                }
             }
 
             Db::commit();

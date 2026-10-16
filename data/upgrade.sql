@@ -428,3 +428,8 @@ ON DUPLICATE KEY UPDATE
   `group` = VALUES(`group`),
   `icon` = VALUES(`icon`),
   `module` = VALUES(`module`);
+
+-- 3. 新增订单优惠券相关字段
+ALTER TABLE `muucmf_orders` ADD `coupon_id` INT(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '优惠券模板ID' AFTER `discount_fee`;
+ALTER TABLE `muucmf_orders` ADD `coupon_user_id` INT(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '用户优惠券记录ID' AFTER `coupon_id`;
+ALTER TABLE `muucmf_orders` ADD `coupon_fee` INT(11) NOT NULL DEFAULT '0' COMMENT '优惠券优惠金额（分）' AFTER `coupon_user_id`;

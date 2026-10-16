@@ -227,6 +227,8 @@ class Orders extends Api
 
                 //限时折扣：取消订单，回滚活动销量与限购计数
                 \app\common\service\Discount::rollback($order['order_no']);
+                //优惠券：取消订单，释放占用中的券（无券为空操作）
+                \app\common\service\Coupon::release(intval($order['shopid'] ?? 0), $order['order_no']);
 
                 Db::commit();
 
