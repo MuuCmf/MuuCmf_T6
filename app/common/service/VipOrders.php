@@ -173,7 +173,8 @@ class VipOrders extends OrdersLogic
         $channel = $params['channel'];
 
         //组装提交数据
-        $data['app'] = 'vip';
+        // 卡项订单统一归属 svip 插件应用；channel 按各端实际渠道原样写入（pc/weixin/h5等）
+        $data['app'] = 'svip';
         $data['shopid'] = $shopid;
         $data['order_no'] = build_order_no();
         $data['uid'] = $uid;

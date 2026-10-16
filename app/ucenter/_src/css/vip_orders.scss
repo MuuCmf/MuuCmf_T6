@@ -1,0 +1,321 @@
+// ============================================================
+// 卡项下单弹窗（ucenter/Vip/create，由卡项详情页 modalTrigger AJAX 加载）
+// 样式跟随站点主题（body 类名），默认 Blue
+// ============================================================
+
+// 主题色（与 body 上的类名对应，同 ucenter 其它页面）
+$ucenter-theme-colors: (
+    'Blue': #03b8cf,
+    'Green': #00ce74,
+    'LightRed': #ff6666,
+    'Orange': #ff9900,
+    'LightPink': #FFB6C1,
+    'Magenta': #8666b8,
+);
+
+.vip-orders-modal {
+    margin: -15px; // 抵消 modal-body 默认内边距，视觉全宽对齐弹窗内容区
+    padding: 20px;
+    color: #333;
+    -webkit-font-smoothing: antialiased;
+
+    * {
+        box-sizing: border-box;
+    }
+
+    // 商品信息
+    .vom-product {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 16px 18px;
+        background: linear-gradient(135deg, #f5faff, #ecf7ff);
+        border-radius: 12px;
+        margin-bottom: 18px;
+
+        .vom-cover {
+            width: 76px;
+            height: 76px;
+            border-radius: 10px;
+            overflow: hidden;
+            flex-shrink: 0;
+            background: #fff;
+            box-shadow: 0 2px 8px rgba(3, 184, 207, 0.16);
+
+            img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                display: block;
+            }
+        }
+
+        .vom-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .vom-title {
+            margin: 0 0 6px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #222;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .vom-desc {
+            margin: 0;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #888;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+    }
+
+    // 分组标题
+    .vom-section {
+        margin-bottom: 18px;
+    }
+
+    .vom-label {
+        margin: 0 0 10px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #333;
+    }
+
+    // 购买时长
+    .vom-cycles {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .vom-cycle {
+        padding: 8px 18px;
+        border: 1px solid #e3e8ef;
+        border-radius: 20px;
+        background: #fff;
+        color: #555;
+        font-size: 13px;
+        line-height: 1;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        outline: none;
+
+        &:hover {
+            border-color: #03b8cf;
+            color: #03b8cf;
+        }
+
+        &.active {
+            background: #03b8cf;
+            border-color: #03b8cf;
+            color: #fff;
+            font-weight: 600;
+            box-shadow: 0 4px 10px rgba(3, 184, 207, 0.28);
+        }
+    }
+
+    // 支付方式
+    .vom-pays {
+        display: flex;
+        gap: 12px;
+    }
+
+    .vom-pay {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex: 1;
+        padding: 12px 14px;
+        border: 1px solid #e3e8ef;
+        border-radius: 10px;
+        background: #fff;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        margin: 0;
+
+        input {
+            display: none;
+        }
+
+        &:hover {
+            border-color: #03b8cf;
+        }
+
+        &.active {
+            border-color: #03b8cf;
+            background: rgba(3, 184, 207, 0.05);
+            box-shadow: inset 0 0 0 1px #03b8cf;
+        }
+
+        .vom-pay-logo {
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #fff;
+            border-radius: 7px;
+            overflow: hidden;
+            border: 1px solid #f0f0f0;
+            flex-shrink: 0;
+
+            img {
+                max-width: 100%;
+                max-height: 100%;
+            }
+        }
+
+        .vom-pay-name {
+            font-size: 14px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        .vom-pay-check {
+            position: absolute;
+            top: -7px;
+            right: -7px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #03b8cf;
+            color: #fff;
+            font-size: 11px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 6px rgba(3, 184, 207, 0.35);
+        }
+
+        &.active .vom-pay-check {
+            display: flex;
+        }
+    }
+
+    // 底部提交
+    .vom-footer {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        padding-top: 16px;
+        border-top: 1px dashed #e8ecf1;
+
+        .vom-total {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .vom-total-label {
+            display: block;
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 2px;
+        }
+
+        .vom-total-price {
+            font-size: 22px;
+            font-weight: 700;
+            color: #03b8cf;
+
+            em {
+                font-style: normal;
+            }
+        }
+
+        .vom-submit {
+            padding: 0 38px;
+            height: 46px;
+            border: 0;
+            border-radius: 23px;
+            background: linear-gradient(135deg, #03b8cf, #029fb3);
+            color: #fff;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 6px 16px rgba(3, 184, 207, 0.3);
+            white-space: nowrap;
+            flex-shrink: 0;
+
+            &:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 10px 22px rgba(3, 184, 207, 0.38);
+            }
+
+            &.loading {
+                opacity: 0.7;
+                cursor: not-allowed;
+                transform: none;
+            }
+        }
+    }
+}
+
+// ============================================================
+// 主题风格：根据 body 类名覆盖主色相关样式（同 ucenter 其它页面）
+// ============================================================
+@each $theme-name, $theme-color in $ucenter-theme-colors {
+    body.#{$theme-name} {
+        .vip-orders-modal {
+            .vom-product {
+                background: linear-gradient(135deg, rgba($theme-color, 0.08), rgba($theme-color, 0.03));
+
+                .vom-cover {
+                    box-shadow: 0 2px 8px rgba($theme-color, 0.16);
+                }
+            }
+
+            .vom-cycle {
+                &:hover {
+                    border-color: $theme-color;
+                    color: $theme-color;
+                }
+
+                &.active {
+                    background: $theme-color;
+                    border-color: $theme-color;
+                    box-shadow: 0 4px 10px rgba($theme-color, 0.28);
+                }
+            }
+
+            .vom-pay {
+                &:hover {
+                    border-color: $theme-color;
+                }
+
+                &.active {
+                    border-color: $theme-color;
+                    background: rgba($theme-color, 0.05);
+                    box-shadow: inset 0 0 0 1px $theme-color;
+                }
+
+                .vom-pay-check {
+                    background: $theme-color;
+                    box-shadow: 0 2px 6px rgba($theme-color, 0.35);
+                }
+            }
+
+            .vom-total-price {
+                color: $theme-color;
+            }
+
+            .vom-submit {
+                background: linear-gradient(135deg, $theme-color, mix($theme-color, black, 92%));
+                box-shadow: 0 6px 16px rgba($theme-color, 0.3);
+
+                &:hover {
+                    box-shadow: 0 10px 22px rgba($theme-color, 0.38);
+                }
+            }
+        }
+    }
+}

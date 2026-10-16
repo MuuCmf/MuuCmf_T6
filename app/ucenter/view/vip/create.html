@@ -1,136 +1,163 @@
-<!--下单-->
-<div class="{$micro_config_data.style}">
-    <section class="vip-orders-create-section" data-shopid="{$shopid}">
-        <div class="clearfix">
-            <!--商品信息-->
-            <div class="product-info-item">
-                <div class="item clearfix">
-                    <div class="image">
-                        <img src="{$data['cover_400']}" />
-                    </div>
-                    <div class="info">
-                        <h3 class="title text-ellipsis">{$data['title']}</h3>
-                        <div class="description text-ellipsis">{$data['description']}</div>
-                    </div>
-                </div>
-            </div>
-            <!--支付方式-->
-            <div class="payment-info-item">
-                <h3 class="chose_pay">支付方式</h3>
-                <div class="item">
-                    {if !empty($weixin_pay)}
-                    <div class="pay-type wechat">
-                        <div class="radio-primary">
-                            <input type="radio" name="pay_channel" id="is_pay-w" value="weixin" checked>
-                            <label class="radio-inline" for="is_pay-w">微信支付</label>
-                        </div>
-                        <div class="pay-logo">
-                            <img src="__STATIC__/common/images/wepay.png" />
-                        </div>
-                    </div>
-                    {/if}
-                    {if !empty($ali_pay)}
-                    <div class="pay-type aliapy">
-                        <div class="radio-primary">
-                            <input type="radio" name="pay_channel" id="is_pay-a" value="alipay">
-                            <label class="radio-inline" for="is_pay-a">支付宝</label>
-                        </div>
-                        <div class="pay-logo">
-                            <img src="__STATIC__/common/images/alipay.png" />
-                        </div>
-                    </div>
-                    {/if}
-                </div>
-            </div>
+<!-- 卡项下单弹窗（PC 端用户中心，由卡项详情页 modalTrigger AJAX 加载）
+     样式定义于 app/ucenter/_src/css/vip_orders.scss，经 webpack 编译进 main.min.css -->
+<div class="vip-orders-modal">
 
-            <!--确认提交订单-->
-            <div class="create-orders-item">
-                <div class="price-box clearfix">
-                    <h3>支付价格</h3>
-                    <div class="value">
-                        
-                    </div>
-                    <div class="value">
-                        <div class="price-item">
-                            <span class="price">￥ {$price}</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="btns">
-                    <input type="hidden" name="app" value="{$data['app']}" />
-                    <input type="hidden" name="order_info_type" value="{$info_type}" />
-                    <input type="hidden" name="order_info_id" value="{$info_id}" />
-                    <input type="hidden" name="cycle" value="{$cycle}" />
-                    <button type="button" class="btn btn-default btn-lg btn-block sale-btn" data-role="sale"
-                        data-id="{$data['id']}" data-free="{$price}" data-api="{:url('api/orders/create')}">
-                        <!--立即购买-->
-                        确认支付
-                    </button>
-                </div>
-
-                <script>
-                    $(function () {
-                        $('[data-role="sale"]').click(function () {
-                            var shopid = $('.vip-orders-create-section').data('shopid');
-                            var app =  $('[name="app"]').val();
-                            var order_info_type = $('[name="order_info_type"]').val();
-                            var order_info_id = $('[name="order_info_id"]').val();
-                            var cycle =  $('[name="cycle"]').val();
-                            var channel = 'pc';
-                            var url = $(this).data('api');
-                            var data = {
-                                app: app,
-                                shopid: shopid,
-                                order_info_id: order_info_id,
-                                order_info_type: order_info_type,
-                                cycle: cycle,
-                                channel: channel,
-                            };
-
-                            //ajax创建订单
-                            $.post(url, data, function (ret) {
-                                //console.log(ret);
-                                if (ret.code == 0) {
-                                    toast.show(ret.msg, {
-                                        type: 'default',
-                                        placement: 'center'
-                                    });
-                                    return false;
-                                }
-                                if (ret.code == 200) {
-                                    //调整至支付页面
-                                    pay(ret.data.order_no);
-                                }
-                            });
-
-                            // 请求支付
-                            function pay(order_no) {
-                                var url = "{:url('api/pay/pay')}";
-                                var data = {
-                                    order_no: order_no,
-                                    pay_channel: 'weixin'
-                                };
-                                $.post(url, data, function (ret) {
-                                    if (ret.code == 0) {
-                                        modal_confirm(ret.msg);
-                                        return false;
-                                    }
-                                    if (ret.code == 200) {
-                                        //至支付页面
-                                        toast.show('订单创建成功,即将进入支付页面', {
-                                            type: 'default',
-                                            placement: 'center'
-                                        });
-                                        setTimeout(function () {
-                                            window.location.href = ret.url;
-                                        }, 1500);
-                                    }
-                                });
-                            }
-                        });
-                    });
-                </script>
-            </div>
+    <!-- 商品信息 -->
+    <div class="vom-product">
+        <div class="vom-cover">
+            <img src="{$data['cover_400']|default=''}" alt="{$data['title']|default=''}" />
         </div>
-    </section>
+        <div class="vom-info">
+            <h3 class="vom-title">{$data['title']|default=''}</h3>
+            <p class="vom-desc">{$data['description']|default=''}</p>
+        </div>
+    </div>
+
+    <!-- 购买时长 -->
+    <div class="vom-section">
+        <h4 class="vom-label">购买时长</h4>
+        <div class="vom-cycles" id="vomCycles">
+            {if $data['month_price'] > 0}
+            <button type="button" class="vom-cycle {if $cycle=='month'}active{/if}" data-cycle="month" data-price="{$data['month_price']}">1个月</button>
+            {/if}
+            {if $data['quarter_price'] > 0}
+            <button type="button" class="vom-cycle {if $cycle=='quarter'}active{/if}" data-cycle="quarter" data-price="{$data['quarter_price']}">3个月</button>
+            {/if}
+            {if $data['year_price'] > 0}
+            <button type="button" class="vom-cycle {if $cycle=='year'}active{/if}" data-cycle="year" data-price="{$data['year_price']}">1年</button>
+            {/if}
+            {if $data['year_two_price'] > 0}
+            <button type="button" class="vom-cycle {if $cycle=='year_two'}active{/if}" data-cycle="year_two" data-price="{$data['year_two_price']}">2年</button>
+            {/if}
+            {if $data['year_three_price'] > 0}
+            <button type="button" class="vom-cycle {if $cycle=='year_three'}active{/if}" data-cycle="year_three" data-price="{$data['year_three_price']}">3年</button>
+            {/if}
+            {if $data['year_five_price'] > 0}
+            <button type="button" class="vom-cycle {if $cycle=='year_five'}active{/if}" data-cycle="year_five" data-price="{$data['year_five_price']}">5年</button>
+            {/if}
+            {if $data['forever_price'] > 0}
+            <button type="button" class="vom-cycle {if $cycle=='forever'}active{/if}" data-cycle="forever" data-price="{$data['forever_price']}">永久</button>
+            {/if}
+        </div>
+    </div>
+
+    <!-- 支付方式 -->
+    <div class="vom-section">
+        <h4 class="vom-label">支付方式</h4>
+        <div class="vom-pays">
+            {if !empty($weixin_pay)}
+            <label class="vom-pay active">
+                <input type="radio" name="pay_channel" value="weixin" checked />
+                <span class="vom-pay-logo"><img src="__STATIC__/common/images/wepay.png" alt="微信支付" /></span>
+                <span class="vom-pay-name">微信支付</span>
+                <i class="vom-pay-check">✓</i>
+            </label>
+            {/if}
+            {if !empty($ali_pay)}
+            <label class="vom-pay">
+                <input type="radio" name="pay_channel" value="alipay" />
+                <span class="vom-pay-logo"><img src="__STATIC__/common/images/alipay.png" alt="支付宝" /></span>
+                <span class="vom-pay-name">支付宝</span>
+                <i class="vom-pay-check">✓</i>
+            </label>
+            {/if}
+        </div>
+    </div>
+
+    <!-- 金额与提交 -->
+    <div class="vom-footer">
+        <div class="vom-total">
+            <span class="vom-total-label">应付金额</span>
+            <span class="vom-total-price">￥<em id="vomPrice">{$price|default='0.00'}</em></span>
+        </div>
+        <button type="button" class="vom-submit" id="vomSubmit" data-api="{:url('api/orders/create')}" data-shopid="{$shopid}">立即支付</button>
+    </div>
+
+    <input type="hidden" name="order_info_type" value="{$info_type}" />
+    <input type="hidden" name="order_info_id" value="{$info_id}" />
+    <input type="hidden" name="cycle" id="vomCycleInput" value="{$cycle}" />
+    <input type="hidden" name="app" value="{$data['app']}" />
+
+    <script>
+        $(function () {
+            var $modal = $('.vip-orders-modal');
+            var $submit = $('#vomSubmit');
+            var $price = $('#vomPrice');
+            var $cycleInput = $('#vomCycleInput');
+
+            // 购买时长切换：高亮 + 价格联动
+            $modal.on('click', '.vom-cycle', function () {
+                var $this = $(this);
+                $modal.find('.vom-cycle').removeClass('active');
+                $this.addClass('active');
+                $price.text($this.data('price'));
+                $cycleInput.val($this.data('cycle'));
+            });
+
+            // 支付方式切换
+            $modal.on('click', '.vom-pay', function () {
+                var $this = $(this);
+                $modal.find('.vom-pay').removeClass('active');
+                $this.addClass('active');
+                $this.find('input[type="radio"]').prop('checked', true);
+            });
+
+            // 提交下单
+            $submit.on('click', function () {
+                if ($submit.hasClass('loading')) return;
+                var data = {
+                    app: $modal.find('[name="app"]').val(),
+                    shopid: $submit.data('shopid'),
+                    order_info_id: $modal.find('[name="order_info_id"]').val(),
+                    order_info_type: $modal.find('[name="order_info_type"]').val(),
+                    cycle: $cycleInput.val(),
+                    channel: 'pc'
+                };
+                var api = $submit.data('api');
+
+                $submit.addClass('loading').prop('disabled', true).text('提交中...');
+
+                // 创建订单
+                $.post(api, data, function (ret) {
+                    if (ret.code == 0) {
+                        toast.show(ret.msg, {type: 'default', placement: 'center'});
+                        $submit.removeClass('loading').prop('disabled', false).text('立即支付');
+                        return false;
+                    }
+                    if (ret.code == 200) {
+                        if (ret.data.paid == 1) {
+                            // 免费/0元卡项：下单即开通成功，关闭弹窗并刷新
+                            toast.show('开通成功', {type: 'success', placement: 'center'});
+                            setTimeout(function () {
+                                $('[data-dismiss="modal"]').click();
+                                window.location.reload();
+                            }, 1000);
+                            return false;
+                        }
+                        // 待支付：跳转收银台
+                        pay(ret.data.order_no);
+                    }
+                });
+
+                // 请求支付
+                function pay(order_no) {
+                    var url = "{:url('api/pay/pay')}";
+                    var pay_channel = $modal.find('input[name="pay_channel"]:checked').val() || 'weixin';
+                    $.post(url, {order_no: order_no, pay_channel: pay_channel}, function (ret) {
+                        if (ret.code == 0) {
+                            modal_confirm(ret.msg);
+                            $submit.removeClass('loading').prop('disabled', false).text('立即支付');
+                            return false;
+                        }
+                        if (ret.code == 200) {
+                            toast.show('订单创建成功，即将进入支付页面', {type: 'default', placement: 'center'});
+                            setTimeout(function () {
+                                window.location.href = ret.url;
+                            }, 1500);
+                        }
+                    });
+                }
+            });
+        });
+    </script>
 </div>
