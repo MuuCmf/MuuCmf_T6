@@ -11,6 +11,11 @@
             <li id="vip">
                 <a href="{:url('ucenter/Vip/lists')}"> VIP卡项</a>
             </li>
+            {if condition="is_module_installed('business')"}
+            <li id="coupon">
+                <a href="{:url('business/pc.Coupon/my')}"> 优惠券</a>
+            </li>
+            {/if}
         </ul>
 
         <div class="title">我的积分</div>

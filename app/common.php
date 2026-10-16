@@ -691,3 +691,20 @@ if (!function_exists('is_internal_host')) {
         return false;
     }
 }
+
+if (!function_exists('is_module_installed')) {
+
+    /**
+     * 检查模块是否已安装（供模板层判断菜单/入口显示）
+     * @param string $name 模块名
+     * @return bool
+     */
+    function is_module_installed($name)
+    {
+        try {
+            return (new \app\common\model\Module())->checkInstalled($name);
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+}
