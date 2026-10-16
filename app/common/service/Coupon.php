@@ -158,9 +158,11 @@ class Coupon
      * @param int    $couponUserId 用户持有券记录 ID
      * @param string $orderNo      订单号
      * @param int    $priceCent    折后价（分）
+     * @param string $app          所属模块（传入时引擎占用前完整复核）
+     * @param string|null $infoType 内容类型
      * @return bool 占用成功返回 true，business 缺失或失败返回 false
      */
-    public static function occupy(int $shopid, int $uid, int $couponUserId, string $orderNo, int $priceCent): bool
+    public static function occupy(int $shopid, int $uid, int $couponUserId, string $orderNo, int $priceCent, string $app = '', ?string $infoType = null): bool
     {
         $engine = self::engineForWrite();
         if ($engine === null) {
@@ -168,7 +170,7 @@ class Coupon
         }
 
         try {
-            return (new $engine())->occupy($shopid, $uid, $couponUserId, $orderNo, $priceCent);
+            return (new $engine())->occupy($shopid, $uid, $couponUserId, $orderNo, $priceCent, $app, $infoType);
         } catch (\Throwable $e) {
             Log::error('[coupon] occupy 失败，order_no=' . $orderNo . '：' . $e->getMessage());
             return false;

@@ -76,7 +76,7 @@
                                 {else}
                                 <span class="price">单价：￥ {$v['price']}</span>
                                 {if !empty($v['coupon_fee'])}
-                                <span class="price">优惠券：-￥{:sprintf('%.2f', $v['coupon_fee'] / 100)}</span>
+                                <span class="price">优惠券：-￥{:sprintf('%.2f', $v['coupon_fee'] / 100)}{if !empty($v['coupon_title'])}（{$v['coupon_title']}）{/if}</span>
                                 {/if}
                                 <span class="total">应付：￥ {$v['paid_fee']}</span>
                                 {/if}
