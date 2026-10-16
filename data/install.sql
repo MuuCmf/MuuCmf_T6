@@ -877,7 +877,7 @@ CREATE TABLE IF NOT EXISTS `muucmf_member` (
   `password` varchar(255) NOT NULL COMMENT '登录密码',
   `sex` tinyint(3) UNSIGNED NOT NULL DEFAULT '0' COMMENT '性别',
   `avatar` varchar(255) DEFAULT '' COMMENT '用户头像',
-  `birthday` date NOT NULL DEFAULT '0000-00-00' COMMENT '生日',
+  `birthday` date NOT NULL DEFAULT '1970-01-01' COMMENT '生日',
   `qq` char(10) DEFAULT '' COMMENT 'qq号',
   `login` int(10) UNSIGNED NOT NULL DEFAULT '0' COMMENT '登录次数',
   `signature` text NULL COMMENT '个性签名',

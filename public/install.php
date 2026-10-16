@@ -835,7 +835,7 @@ EOF;
         $auth_key = substr(md5(uniqid(true)), 0, 32);
     }
     $newPassword = user_md5($password, $auth_key);
-    $pdo->query("INSERT INTO `{$db_prefix}member` (`uid`, `shopid`, `username`, `email`, `mobile`, `realname`, `nickname`, `password`, `sex`, `avatar`, `birthday`, `qq`, `login`, `signature`, `score1`, `score2`, `score3`, `score4`, `status`, `reg_ip`, `last_login_time`, `last_login_ip`, `create_time`, `update_time`) VALUES ('1', '0', '{$admin}', 'admin@admin.com', '', '', '{$admin}', '{$newPassword}', '0', '', '0000-00-00', '', '0', '', '', '', '', '', '1', '', '', '', '', '')");
+    $pdo->query("INSERT INTO `{$db_prefix}member` (`uid`, `shopid`, `username`, `email`, `mobile`, `realname`, `nickname`, `password`, `sex`, `avatar`, `birthday`, `qq`, `login`, `signature`, `score1`, `score2`, `score3`, `score4`, `status`, `reg_ip`, `last_login_time`, `last_login_ip`, `create_time`, `update_time`) VALUES ('1', '0', '{$admin}', 'admin@admin.com', '', '', '{$admin}', '{$newPassword}', '0', '', '1970-01-01', '', '0', '', '', '', '', '', '1', '', '', '', '', '')");
     show_js_msg('创建管理员账号 ... 成功 ');
 
     //写配置数据

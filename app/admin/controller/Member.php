@@ -126,6 +126,9 @@ class Member extends Admin
         if (request()->isPost()) {
             $data = (array)input('post.', [], 'trim,htmlspecialchars,strip_tags');
 
+            // 密码单独取值：避免 htmlspecialchars/trim 过滤破坏密码特殊字符
+            $password = (string)input('post.password', '', 'text');
+
             // 初始化写入数据
             if (!empty($uid)) {
                 $member_data['uid'] = $uid;
@@ -141,6 +144,11 @@ class Member extends Admin
             $member_data['sex'] = intval($data['sex']);
             $member_data['status'] = intval($data['status']);
             $member_data['signature'] = $data['signature'] ?? '';
+
+            // 密码：新增或编辑时填写则生效（留空则不修改）
+            if (!empty($password)) {
+                $member_data['password'] = $password;
+            }
 
             if ($member_data['username'] == '' && $member_data['email'] == '' && $member_data['mobile'] == '') {
                 return $this->error('用户名、邮箱、手机号，至少填写一项！');

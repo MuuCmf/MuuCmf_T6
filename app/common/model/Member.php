@@ -19,7 +19,7 @@ class Member extends Base
     protected $autoWriteTimestamp = true;
 
     //自动完成
-    protected $insert = ['reg_ip'];
+    protected $insert = ['reg_ip', 'birthday' => '1970-01-01'];
     protected $update = ['update_time'];
     public $_status  = [
         1  => '启用',
@@ -41,16 +41,22 @@ class Member extends Base
     public function edit($data)
     {
         if (!empty($data['uid'])) {
+            // 编辑：传入明文密码时加密后更新，未传则保持原密码不变
+            if (!empty($data['password'])) {
+                $data['password'] = user_md5($data['password'], Config::get('auth.auth_key'));
+            }
             $res = $this->update($data, ['uid' => $data['uid']]);
             return $data['uid'];
         } else {
-            // 初始密码
-            $data['password'] = user_md5('123456', Config::get('auth.auth_key'));
+            // 新增：初始密码默认 123456，传入则以传入密码为准
+            $data['password'] = !empty($data['password'])
+                ? user_md5($data['password'], Config::get('auth.auth_key'))
+                : user_md5('123456', Config::get('auth.auth_key'));
             $res = $this->save($data);
         }
 
-        if (!empty($this->uid)) {
-            return $this->uid;
+        if (!empty($this->id)) {
+            return $this->id;
         }
 
         return $res;
@@ -67,6 +73,9 @@ class Member extends Base
      */
     public function register($username = '', $nickname = '', $password = '', $email = '', $mobile = '', $channel = '')
     {
+        // 注册前彻底清除同账号的软删除旧记录（status=-1），释放账号并避免残留脏数据
+        $this->purgeDeletedMember($username, $email, $mobile);
+
         $data = [
             'username' => $username,
             'password' => user_md5($password, Config::get('auth.auth_key')),
@@ -98,6 +107,35 @@ class Member extends Base
     }
 
     /**
+     * 彻底清除软删除（status=-1）的旧账号及其身份关联数据，释放账号供重新注册
+     * @param string $username 用户名
+     * @param string $email    邮箱
+     * @param string $mobile   手机号
+     * @return void
+     */
+    protected function purgeDeletedMember($username, $email, $mobile)
+    {
+        $condition = [];
+        if (!empty($username)) $condition[] = ['username', '=', $username];
+        if (!empty($email))    $condition[] = ['email', '=', $email];
+        if (!empty($mobile))   $condition[] = ['mobile', '=', $mobile];
+        if (empty($condition)) return;
+
+        $deleted = $this->where($condition)->where('status', -1)->field('uid')->select();
+        if ($deleted->isEmpty()) return;
+
+        $uids = array_column($deleted->toArray(), 'uid');
+        // 删除身份/授权/绑定/令牌类关联数据，再删除主记录
+        Db::name('auth_group_access')->where('uid', 'in', $uids)->delete();
+        Db::name('member_sync')->where('uid', 'in', $uids)->delete();
+        Db::name('member_wallet')->where('uid', 'in', $uids)->delete();
+        Db::name('user_token')->where('uid', 'in', $uids)->delete();
+        Db::name('member_authentication')->where('uid', 'in', $uids)->delete();
+        Db::name('field')->where('uid', 'in', $uids)->delete();
+        $this->where('uid', 'in', $uids)->delete();
+    }
+
+    /**
      * 验证账号和密码是否正确
      * @param  string  $account 账号
      * @param  string  $password 用户密码
@@ -123,8 +161,8 @@ class Member extends Base
             default:
                 return 0; //参数错误
         }
-        // 获取用户数据
-        $user = $this->where($map)->find();
+        // 获取用户数据（排除已删除账号 status=-1）
+        $user = $this->where($map)->where('status', 'in', [0, 1])->find();
         if ($user) {
             if ($user['status'] == 1) {
                 // 行为限制
@@ -149,10 +187,12 @@ class Member extends Base
             if ($user['status'] == 0) {
                 return 0;
             }
-            // 用户被删除
-            if ($user['status'] == -1) {
-                return -1;
-            }
+        }
+
+        // 账号存在但已被软删除（status=-1），区别于不存在的账号，便于提示重新注册
+        $deleted = $this->where($map)->where('status', -1)->find();
+        if ($deleted) {
+            return -3; //账号已删除，可重新注册
         }
 
         return -1; //用户不存在或被禁用
@@ -184,8 +224,8 @@ class Member extends Base
             default:
                 return 0; //参数错误
         }
-        // 获取用户数据
-        $user = $this->where($map)->find();
+        // 获取用户数据（排除已删除账号 status=-1，已删除账号视为不存在，可走快捷登录重新注册）
+        $user = $this->where($map)->where('status', 'in', [0, 1])->find();
         $verifyModel = new Verify();
         if ($user) {
             // 行为限制
@@ -196,7 +236,12 @@ class Member extends Base
                 return $return['msg'];
             }
 
-            if ($user['uid'] && $user['status']) {
+            // 用户被禁用：与密码登录口径一致，禁止验证码登录
+            if ($user['status'] == 0) {
+                return 0;
+            }
+
+            if ($user['uid'] && $user['status'] == 1) {
                 /* 验证用户验证码 */
                 if (!$verifyModel->checkVerify($account, $type, $captcha)) {
                     return -2;
@@ -672,13 +717,19 @@ class Member extends Base
     public function checkUsername($username, $uid)
     {
         try {
+            // 空用户名（纯邮箱/纯手机注册用户）不做唯一性校验，与验证器 uniqueMember 一致
+            if (empty($username)) {
+                return true;
+            }
+
             //如果用户名中有空格，不允许注册
             if (strpos($username, ' ') !== false) {
                 throw new Exception('用户名格式错误');
             }
-            //验证唯一性
+            //验证唯一性（排除已删除账号 status=-1，软删除账号可重新注册）
             $map[] = ['username', '=', $username];
             $map[] = ['uid', '<>', $uid];
+            $map[] = ['status', 'in', [0, 1]];
             $has = $this->where($map)->count();
             if ($has) {
                 throw new Exception('用户名已被占用');
@@ -710,9 +761,10 @@ class Member extends Base
                     throw new Exception('请正确填写邮箱！');
                 }
 
-                //验证唯一性
+                //验证唯一性（排除已删除账号 status=-1）
                 $map[] = ['email', '=', $email];
                 $map[] = ['uid', '<>', $uid];
+                $map[] = ['status', 'in', [0, 1]];
                 $has = $this->where($map)->count();
                 if ($has) {
                     throw new Exception('邮箱已被占用');
@@ -733,9 +785,10 @@ class Member extends Base
                     throw new Exception('请正确填写手机号！');
                 }
 
-                //验证唯一性
+                //验证唯一性（排除已删除账号 status=-1）
                 $map[] = ['mobile', '=', $mobile];
                 $map[] = ['uid', '<>', $uid];
+                $map[] = ['status', 'in', [0, 1]];
                 $has = $this->where($map)->count();
                 if ($has) {
                     throw new Exception('手机号已被占用');

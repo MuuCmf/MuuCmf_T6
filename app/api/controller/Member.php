@@ -176,12 +176,16 @@ class Member extends Api
                 }
                 // 验证账号和密码
                 $uid = $this->CommonMember->verifyUserPassword($account, $password);
+                if (is_string($uid)) return $this->error($uid); // 行为限制等错误消息
                 if ($uid == 0) return $this->error('用户被禁用，请联系管理员');
                 if ($uid == -1) return $this->error('用户不存在，请联系管理员');
                 if ($uid == -2) return $this->error('密码错误');
+                if ($uid == -3) return $this->error('该账号已被删除，请重新注册');
             } else {
                 //验证码登录
                 $uid = $this->CommonMember->verifyUserCaptcha($account, $verify);
+                if (is_string($uid)) return $this->error($uid); // 行为限制等错误消息
+                if ($uid == 0) return $this->error('用户被禁用，请联系管理员');
                 if ($uid == -2) return $this->error('验证码错误');
                 //快捷登录，第一次登录的用户默认生成新用户
                 if ($uid == -1) {

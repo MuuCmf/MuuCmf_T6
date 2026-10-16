@@ -8,9 +8,9 @@ class Member extends Validate
 {
     //需要验证的键值
     protected $rule =   [
-        'username'           => "checkUsername|checkUsernameLength|checkDenyMember|unique:member",
-        'email'              => "email|checkDenyEmail|unique:member",  //验证邮箱|验证邮箱在表中唯一性
-        'mobile'             => "mobile|checkDenyMobile|unique:member",
+        'username'           => "checkUsername|checkUsernameLength|checkDenyMember|uniqueMember",
+        'email'              => "email|checkDenyEmail|uniqueEmail",  //验证邮箱|验证邮箱在表中唯一性
+        'mobile'             => "mobile|checkDenyMobile|uniqueMobile",
         'password'           => 'require|length:6,32',
         'confirm_password'   => 'require|length:6,32|confirm:password',
     ];
@@ -112,6 +112,51 @@ class Member extends Validate
     protected function checkDenyMobile($value)
     {
         return true; //TODO: 暂不限制，下一个版本完善
+    }
+
+    /**
+     * 验证用户名在 member 表中的唯一性（排除已删除账号 status=-1，软删除账号可重新注册）
+     * @param  string $value 用户名
+     * @return boolean|string
+     */
+    protected function uniqueMember($value)
+    {
+        if (empty($value)) return true;
+        $has = Db::name('member')->where('username', $value)->where('status', 'in', [0, 1])->count();
+        if ($has) {
+            return '用户名已存在';
+        }
+        return true;
+    }
+
+    /**
+     * 验证邮箱在 member 表中的唯一性（排除已删除账号 status=-1）
+     * @param  string $value 邮箱
+     * @return boolean|string
+     */
+    protected function uniqueEmail($value)
+    {
+        if (empty($value)) return true;
+        $has = Db::name('member')->where('email', $value)->where('status', 'in', [0, 1])->count();
+        if ($has) {
+            return '邮箱已经存在';
+        }
+        return true;
+    }
+
+    /**
+     * 验证手机号在 member 表中的唯一性（排除已删除账号 status=-1）
+     * @param  string $value 手机号
+     * @return boolean|string
+     */
+    protected function uniqueMobile($value)
+    {
+        if (empty($value)) return true;
+        $has = Db::name('member')->where('mobile', $value)->where('status', 'in', [0, 1])->count();
+        if ($has) {
+            return '手机号已存在';
+        }
+        return true;
     }
 
  }   
