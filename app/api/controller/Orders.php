@@ -175,7 +175,6 @@ class Orders extends Api
 
     /**
      * @title 取消订单
-     * @return \think\Response|void
      */
     public function cancel()
     {
@@ -229,6 +228,8 @@ class Orders extends Api
                 \app\common\service\Discount::rollback($order['order_no']);
                 //优惠券：取消订单，释放占用中的券（无券为空操作）
                 \app\common\service\Coupon::release(intval($order['shopid'] ?? 0), $order['order_no']);
+                //拼团：取消订单，成员置为已取消，未成团回退人数（幂等，非拼团订单为空操作）
+                \app\common\service\Groupbuy::release(intval($order['shopid'] ?? 0), $order['order_no']);
 
                 Db::commit();
 
