@@ -139,9 +139,10 @@ class Groupbuy
      * @param string $app      所属模块
      * @param string $infoType 内容类型
      * @param int    $infoId   内容 ID
+     * @param int    $quantity 购买件数（默认 1）
      * @return array ['group_id' => int, 'token' => string, 'group_no' => string]
      */
-    public static function createGroup(int $shopid, int $uid, int $itemId, string $orderNo, int $payFee, string $app, string $infoType, int $infoId): array
+    public static function createGroup(int $shopid, int $uid, int $itemId, string $orderNo, int $payFee, string $app, string $infoType, int $infoId, int $quantity = 1): array
     {
         $engine = self::engineForWrite();
         if ($engine === null) {
@@ -149,7 +150,7 @@ class Groupbuy
         }
 
         try {
-            return (new $engine())->createGroup($shopid, $uid, $itemId, $orderNo, $payFee, $app, $infoType, $infoId);
+            return (new $engine())->createGroup($shopid, $uid, $itemId, $orderNo, $payFee, $app, $infoType, $infoId, $quantity);
         } catch (\Throwable $e) {
             if ($e instanceof \Exception) {
                 throw $e;
@@ -170,9 +171,10 @@ class Groupbuy
      * @param string $app      所属模块
      * @param string $infoType 内容类型
      * @param int    $infoId   内容 ID
+     * @param int    $quantity 购买件数（默认 1）
      * @return array ['group_id' => int, 'status' => int]
      */
-    public static function joinGroup(int $shopid, int $uid, string $token, string $orderNo, int $payFee, string $app, string $infoType, int $infoId): array
+    public static function joinGroup(int $shopid, int $uid, string $token, string $orderNo, int $payFee, string $app, string $infoType, int $infoId, int $quantity = 1): array
     {
         $engine = self::engineForWrite();
         if ($engine === null) {
@@ -180,7 +182,7 @@ class Groupbuy
         }
 
         try {
-            return (new $engine())->joinGroup($shopid, $uid, $token, $orderNo, $payFee, $app, $infoType, $infoId);
+            return (new $engine())->joinGroup($shopid, $uid, $token, $orderNo, $payFee, $app, $infoType, $infoId, $quantity);
         } catch (\Throwable $e) {
             if ($e instanceof \Exception) {
                 throw $e;

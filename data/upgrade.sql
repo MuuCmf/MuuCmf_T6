@@ -433,25 +433,12 @@ ON DUPLICATE KEY UPDATE
 ALTER TABLE `muucmf_orders` ADD `coupon_id` INT(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '优惠券模板ID' AFTER `discount_fee`;
 ALTER TABLE `muucmf_orders` ADD `coupon_user_id` INT(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '用户优惠券记录ID' AFTER `coupon_id`;
 ALTER TABLE `muucmf_orders` ADD `coupon_fee` INT(11) NOT NULL DEFAULT '0' COMMENT '优惠券优惠金额（分）' AFTER `coupon_user_id`;
+ALTER TABLE `muucmf_orders` ADD `coupon_title` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '优惠券标题快照' AFTER `coupon_fee`;
+ALTER TABLE `muucmf_orders` ADD `coupon_rule` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '优惠券规则快照' AFTER `coupon_title`;
+
 -- 拼团：拼团团实例ID，0非拼团
 ALTER TABLE `muucmf_orders` ADD `group_id` INT(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '拼团团实例ID，0非拼团' AFTER `coupon_rule`;
--- 拼团：拼团活动ID，0非拼团
 ALTER TABLE `muucmf_orders` ADD `groupbuy_id` INT(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '拼团活动ID，0非拼团' AFTER `group_id`;
 ALTER TABLE `muucmf_orders` ADD `group_fee` INT(11) NOT NULL DEFAULT '0' COMMENT '拼团优惠金额（分）' AFTER `groupbuy_id`;
 ALTER TABLE `muucmf_orders` ADD `group_title` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '拼团活动标题快照' AFTER `group_fee`;
 
--- ============================================================================
--- 幂等修复段：orders 优惠券快照列（coupon_title/coupon_rule）与拼团团实例ID（group_id）
--- 历史遗漏：上方"新增订单优惠券相关字段"段仅 ADD coupon_id/coupon_user_id/coupon_fee，
---           快照列无 ADD；group_id 的 AFTER coupon_rule 依赖快照列存在，老库执行会报错。
--- 本段用 information_schema 判断 + PREPARE 动态 DDL（MySQL 5.7 无 ADD COLUMN IF NOT EXISTS），可重复执行。
--- ============================================================================
-SET @_ct := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_orders' AND COLUMN_NAME = 'coupon_title');
-SET @_d := IF(@_ct = 0, 'ALTER TABLE `muucmf_orders` ADD `coupon_title` VARCHAR(255) NOT NULL DEFAULT '''' COMMENT ''优惠券标题快照'' AFTER `coupon_fee`', 'SELECT 1');
-PREPARE _st FROM @_d; EXECUTE _st; DEALLOCATE PREPARE _st;
-SET @_cr := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_orders' AND COLUMN_NAME = 'coupon_rule');
-SET @_d := IF(@_cr = 0, 'ALTER TABLE `muucmf_orders` ADD `coupon_rule` VARCHAR(255) NOT NULL DEFAULT '''' COMMENT ''优惠券规则快照'' AFTER `coupon_title`', 'SELECT 1');
-PREPARE _st FROM @_d; EXECUTE _st; DEALLOCATE PREPARE _st;
-SET @_gid := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_orders' AND COLUMN_NAME = 'group_id');
-SET @_d := IF(@_gid = 0, 'ALTER TABLE `muucmf_orders` ADD `group_id` INT(11) UNSIGNED NOT NULL DEFAULT ''0'' COMMENT ''拼团团实例ID，0非拼团'' AFTER `coupon_rule`', 'SELECT 1');
-PREPARE _st FROM @_d; EXECUTE _st; DEALLOCATE PREPARE _st;

@@ -136,6 +136,21 @@ class Orders extends Base
             }
         }
 
+        // 优惠券快照兜底：历史/异常订单独立列 coupon_title/coupon_rule 缺失时，
+        // 从 metadata.coupon_snapshot 回退（新订单独立列已完整写入；防御列加入前创建的老订单或异常数据）
+        if ((empty($data['coupon_title']) || empty($data['coupon_rule'])) && !empty($data['metadata'])) {
+            $metaArr = is_array($data['metadata']) ? $data['metadata'] : json_decode((string)$data['metadata'], true);
+            if (is_array($metaArr)) {
+                $snap = $metaArr['coupon_snapshot'] ?? [];
+                if (empty($data['coupon_title']) && !empty($snap['coupon_title'])) {
+                    $data['coupon_title'] = (string)$snap['coupon_title'];
+                }
+                if (empty($data['coupon_rule']) && !empty($snap['coupon_rule'])) {
+                    $data['coupon_rule'] = (string)$snap['coupon_rule'];
+                }
+            }
+        }
+
         return $this->cleanUtf8($data);
     }
 
