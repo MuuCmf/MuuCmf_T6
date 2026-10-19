@@ -564,8 +564,10 @@ class Pay extends Api
             throw $e;
         }
 
-        //消息通知
-        $this->sendPaySuccessTmplmsg($order_info['channel'], $order_info);
+        //消息通知（并发重复回调未抢到订单状态迁移时，业务未重复执行，跳过模板消息避免重复推送）
+        if (!is_array($result) || empty($result['already_paid'])) {
+            $this->sendPaySuccessTmplmsg($order_info['channel'], $order_info);
+        }
 
         return $result;
     }
