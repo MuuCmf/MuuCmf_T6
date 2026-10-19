@@ -230,6 +230,14 @@ class Orders extends Api
                 \app\common\service\Coupon::release(intval($order['shopid'] ?? 0), $order['order_no']);
                 //拼团：取消订单，成员置为已取消，未成团回退人数（幂等，非拼团订单为空操作）
                 \app\common\service\Groupbuy::release(intval($order['shopid'] ?? 0), $order['order_no']);
+                //商品库存回补：按订单归属模块派发（未实现 stockRollback 的模块自动跳过）
+                $cancelApp = (string)($order['app'] ?? '');
+                if (preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $cancelApp)) {
+                    $cancelOrderService = 'app\\' . $cancelApp . '\\service\\Orders';
+                    if (class_exists($cancelOrderService) && method_exists($cancelOrderService, 'stockRollback')) {
+                        (new $cancelOrderService)->stockRollback($order);
+                    }
+                }
 
                 Db::commit();
 

@@ -42,11 +42,23 @@ class Pay extends Api
     {
         if (request()->isPost()) {
             try {
-                $order_no = $this->params['order_no'];
+                $order_no = isset($this->params['order_no']) ? (string)$this->params['order_no'] : '';
                 $channel = empty($this->params['channel']) ? '' : $this->params['channel'];
                 $order_data = $this->OrderModel->getDataByOrderNo($order_no);
                 if (!$order_data) {
                     throw new Exception('订单不存在');
+                }
+                // 支付前置校验：仅订单本人、未支付、且仍处于「待付款」状态的订单可发起支付。
+                // 订单被取消/删除（status != 1）后仍允许支付，会导致取消时已归还的优惠券、
+                // 限时折扣额度（限购计数/活动库存）、拼团名额在支付成功后再次生效，形成优惠复用漏洞。
+                if (intval($order_data['uid']) !== intval(get_uid())) {
+                    throw new Exception('无权操作该订单');
+                }
+                if (intval($order_data['paid']) === 1) {
+                    throw new Exception('订单已支付，请勿重复支付');
+                }
+                if (intval($order_data['status']) !== 1) {
+                    throw new Exception('订单已取消或已关闭，无法支付');
                 }
                 //更新渠道
                 if (!empty($channel) && $channel != $order_data['channel']) {
