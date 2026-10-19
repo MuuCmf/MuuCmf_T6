@@ -304,4 +304,29 @@ class Groupbuy
             return [];
         }
     }
+
+    /**
+     * 支付/超时竞态补偿：订单已支付但所属团已失败/已取消时立即自动退款
+     *
+     * 供订单支付回调在结算后调用：成员已支付却因超时扫描/团长取消而不属任何有效团时，
+     * 立即退还该订单，避免「订单已收款却既不属有效团也无退款」的资金不一致。
+     * business 模块缺失时返回 false（安全降级，不影响订单主流程）。
+     *
+     * @param array $order 订单数据（需含 group_id / order_no / paid / refund / app）
+     * @return bool 是否已退款
+     */
+    public static function refundIfGroupFailed(array $order): bool
+    {
+        $service = 'app\\business\\service\\GroupbuyRefund';
+        if (!class_exists($service) || !method_exists($service, 'refundIfGroupFailed')) {
+            return false;
+        }
+
+        try {
+            return (bool)$service::refundIfGroupFailed($order);
+        } catch (\Throwable $e) {
+            Log::error('[groupbuy] refundIfGroupFailed 失败，order_no=' . (string)($order['order_no'] ?? '') . '：' . $e->getMessage());
+            return false;
+        }
+    }
 }
