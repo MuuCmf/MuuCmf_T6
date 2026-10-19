@@ -101,6 +101,36 @@ class Groupbuy
     }
 
     /**
+     * 按指定的参与内容精确解析拼团信息（开团算价/展示专用）
+     *
+     * 与 resolve 的区别：严格以传入的参与内容计算价格，避免同商品多活动时
+     * 「页面展示 / 下单」被最优活动覆盖。business 未启用时返回 null。
+     *
+     * @param int    $shopid   平台/店铺 ID
+     * @param int    $itemId   参与内容 ID
+     * @param int    $uid      用户 ID
+     * @param int    $price    内容原价（分）
+     * @param string $app      所属模块（传值时校验内容归属）
+     * @param string $infoType 内容类型（传值时校验内容归属）
+     * @param int    $infoId   内容 ID（传值时校验内容归属）
+     * @return array|null 命中返回拼团信息数组，未命中或 business 缺失返回 null
+     */
+    public static function resolveByItem(int $shopid, int $itemId, int $uid, int $price, string $app = '', string $infoType = '', int $infoId = 0): ?array
+    {
+        $engine = self::engine();
+        if ($engine === null) {
+            return null;
+        }
+
+        try {
+            return (new $engine())->resolveByItem($shopid, $itemId, $uid, $price, $app, $infoType, $infoId);
+        } catch (\Throwable $e) {
+            Log::warning('[groupbuy] resolveByItem 降级为原价：' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
      * 按参团 token 精确解析团的拼团信息（参团算价/展示专用）
      *
      * 与 resolve 的区别：严格以团绑定的参与内容计算价格，避免同商品多活动时
