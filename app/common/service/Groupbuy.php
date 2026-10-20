@@ -113,9 +113,10 @@ class Groupbuy
      * @param string $app      所属模块（传值时校验内容归属）
      * @param string $infoType 内容类型（传值时校验内容归属）
      * @param int    $infoId   内容 ID（传值时校验内容归属）
+     * @param int    $quantity 本次购买件数（默认 1，用于限购展示口径）
      * @return array|null 命中返回拼团信息数组，未命中或 business 缺失返回 null
      */
-    public static function resolveByItem(int $shopid, int $itemId, int $uid, int $price, string $app = '', string $infoType = '', int $infoId = 0): ?array
+    public static function resolveByItem(int $shopid, int $itemId, int $uid, int $price, string $app = '', string $infoType = '', int $infoId = 0, int $quantity = 1): ?array
     {
         $engine = self::engine();
         if ($engine === null) {
@@ -123,7 +124,7 @@ class Groupbuy
         }
 
         try {
-            return (new $engine())->resolveByItem($shopid, $itemId, $uid, $price, $app, $infoType, $infoId);
+            return (new $engine())->resolveByItem($shopid, $itemId, $uid, $price, $app, $infoType, $infoId, $quantity);
         } catch (\Throwable $e) {
             Log::warning('[groupbuy] resolveByItem 降级为原价：' . $e->getMessage());
             return null;

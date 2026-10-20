@@ -43,6 +43,7 @@ class Orders extends Api
                     validate(OrdersValidate::class)->check($this->params);
                 } catch (ValidateException $e) {
                     // 验证失败 输出错误信息
+                    Db::rollback();
                     return $this->error($e->getError());
                 }
 
@@ -94,7 +95,7 @@ class Orders extends Api
                 Db::commit();
 
                 return $this->success('创建订单成功', $order);
-            } catch (Exception $e) {
+            } catch (\Throwable $e) {
                 Db::rollback();
                 if (\think\facade\App::isDebug()) {
                     return $this->error($e->getMessage() . $e->getFile() . $e->getLine());
@@ -242,7 +243,7 @@ class Orders extends Api
                 Db::commit();
 
                 return $this->success('取消订单成功');
-            } catch (Exception $e) {
+            } catch (\Throwable $e) {
                 Db::rollback();
                 if (\think\facade\App::isDebug()) {
                     return $this->error($e->getMessage() . $e->getFile() . $e->getLine());
@@ -303,7 +304,7 @@ class Orders extends Api
                 Db::commit();
 
                 return $this->success('删除订单成功');
-            } catch (Exception $e) {
+            } catch (\Throwable $e) {
                 Db::rollback();
                 if (\think\facade\App::isDebug()) {
                     return $this->error($e->getMessage() . $e->getFile() . $e->getLine());
