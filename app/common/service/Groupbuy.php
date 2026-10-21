@@ -1,8 +1,8 @@
 <?php
 namespace app\common\service;
 
-use app\common\model\Module;
 use think\facade\Log;
+use app\common\service\Concerns\BusinessEngineProxy;
 
 /**
  * 拼团门面（common 侧）
@@ -16,62 +16,10 @@ use think\facade\Log;
  */
 class Groupbuy
 {
-    /**
-     * 读路径引擎类名缓存：命中返回 'app\business\service\Groupbuy'，未就绪为空字符串
-     *
-     * @var string|null
-     */
-    private static $engineClass = null;
+    use BusinessEngineProxy;
 
-    /**
-     * 解析拼团引擎类名
-     *
-     * @param bool $requireInstalled true=读路径（要求 business 模块已安装）；false=写路径（仅要求引擎类存在）
-     * @return string|null 引擎类名，不可用时返回 null
-     */
-    private static function resolveEngine(bool $requireInstalled): ?string
-    {
-        $engine = 'app\\business\\service\\Groupbuy';
-        if (!class_exists($engine)) {
-            return null;
-        }
-
-        if (!$requireInstalled) {
-            return $engine;
-        }
-
-        try {
-            $ready = (bool)(new Module())->checkInstalled('business');
-        } catch (\Throwable $e) {
-            $ready = false;
-        }
-
-        return $ready ? $engine : null;
-    }
-
-    /**
-     * 获取读路径可用引擎类名（带进程内缓存）
-     *
-     * @return string|null 引擎类名，不可用时返回 null
-     */
-    private static function engine(): ?string
-    {
-        if (self::$engineClass === null) {
-            self::$engineClass = self::resolveEngine(true) ?? '';
-        }
-
-        return self::$engineClass !== '' ? self::$engineClass : null;
-    }
-
-    /**
-     * 获取写路径可用引擎类名（不缓存）
-     *
-     * @return string|null 引擎类名，不可用时返回 null
-     */
-    private static function engineForWrite(): ?string
-    {
-        return self::resolveEngine(false);
-    }
+    /** 引擎类全限定名 */
+    private const ENGINECLASS = 'app\\business\\service\\Groupbuy';
 
     /**
      * 解析某内容命中的最优拼团活动
@@ -87,7 +35,7 @@ class Groupbuy
      */
     public static function resolve(int $shopid, string $app, int $uid, int $infoId, string $infoType, int $price, string $sku = ''): ?array
     {
-        $engine = self::engine();
+        $engine = self::engineForRead(self::ENGINECLASS);
         if ($engine === null) {
             return null;
         }
@@ -118,7 +66,7 @@ class Groupbuy
      */
     public static function resolveByItem(int $shopid, int $itemId, int $uid, int $price, string $app = '', string $infoType = '', int $infoId = 0, int $quantity = 1): ?array
     {
-        $engine = self::engine();
+        $engine = self::engineForRead(self::ENGINECLASS);
         if ($engine === null) {
             return null;
         }
@@ -142,20 +90,80 @@ class Groupbuy
      * @param int    $uid      用户 ID
      * @param int    $price    商品原价（分）
      * @param int    $quantity 购买数量
+     * @param string $app      所属模块（传值时校验团内容归属）
+     * @param string $infoType 内容类型（传值时校验团内容归属）
+     * @param int    $infoId   内容 ID（传值时校验团内容归属）
      * @return array|null 命中返回拼团信息数组，未命中返回 null
      */
-    public static function resolveByToken(int $shopid, string $token, int $uid, int $price, int $quantity): ?array
+    public static function resolveByToken(int $shopid, string $token, int $uid, int $price, int $quantity, string $app = '', string $infoType = '', int $infoId = 0): ?array
     {
-        $engine = self::engine();
+        $engine = self::engineForRead(self::ENGINECLASS);
         if ($engine === null) {
             return null;
         }
 
         try {
-            return (new $engine())->resolveByToken($shopid, $token, $uid, $price, $quantity);
+            return (new $engine())->resolveByToken($shopid, $token, $uid, $price, $quantity, $app, $infoType, $infoId);
         } catch (\Throwable $e) {
             Log::warning('[groupbuy] resolveByToken 降级为原价：' . $e->getMessage());
             return null;
+        }
+    }
+
+    /**
+     * 获取某参与内容进行中的团（详情页/移动端选团参团共用）
+     *
+     * business 未启用或引擎缺失时返回空数组，调用方按「暂无进行中的团」降级展示。
+     *
+     * @param int $shopid 平台/店铺 ID
+     * @param int $itemId 参与内容 ID
+     * @param int $limit  返回数量（默认 5，最大 20）
+     * @return array 已格式化的团列表
+     */
+    public static function groups(int $shopid, int $itemId, int $limit = 5): array
+    {
+        $engine = self::engineForRead(self::ENGINECLASS);
+        if ($engine === null) {
+            return [];
+        }
+
+        try {
+            return (new $engine())->groups($shopid, $itemId, $limit);
+        } catch (\Throwable $e) {
+            Log::warning('[groupbuy] groups 降级为空列表：' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * 参团资格状态（库存/限购）
+     *
+     * business 未启用或引擎缺失时返回不可参团，调用方按「入口不可用」降级。
+     *
+     * @param int $shopid 平台/店铺 ID
+     * @param int $itemId 参与内容 ID
+     * @param int $uid    用户 ID（0 表示游客）
+     * @return array ['can_join'=>bool,'stock_full'=>bool,'limit_buy'=>int,'bought'=>int,'need_login'=>bool]
+     */
+    public static function joinStatus(int $shopid, int $itemId, int $uid): array
+    {
+        $default = [
+            'can_join'   => false,
+            'stock_full' => false,
+            'limit_buy'  => 0,
+            'bought'     => 0,
+            'need_login' => $uid <= 0,
+        ];
+        $engine = self::engineForRead(self::ENGINECLASS);
+        if ($engine === null) {
+            return $default;
+        }
+
+        try {
+            return (new $engine())->joinStatus($shopid, $itemId, $uid);
+        } catch (\Throwable $e) {
+            Log::warning('[groupbuy] joinStatus 降级为不可参团：' . $e->getMessage());
+            return $default;
         }
     }
 
@@ -175,7 +183,7 @@ class Groupbuy
      */
     public static function createGroup(int $shopid, int $uid, int $itemId, string $orderNo, int $payFee, string $app, string $infoType, int $infoId, int $quantity = 1): array
     {
-        $engine = self::engineForWrite();
+        $engine = self::engineForWrite(self::ENGINECLASS);
         if ($engine === null) {
             throw new \Exception('拼团功能未启用');
         }
@@ -207,7 +215,7 @@ class Groupbuy
      */
     public static function joinGroup(int $shopid, int $uid, string $token, string $orderNo, int $payFee, string $app, string $infoType, int $infoId, int $quantity = 1): array
     {
-        $engine = self::engineForWrite();
+        $engine = self::engineForWrite(self::ENGINECLASS);
         if ($engine === null) {
             throw new \Exception('拼团功能未启用');
         }
@@ -232,7 +240,7 @@ class Groupbuy
      */
     public static function settle(int $shopid, string $orderNo): bool
     {
-        $engine = self::engineForWrite();
+        $engine = self::engineForWrite(self::ENGINECLASS);
         if ($engine === null) {
             return false;
         }
@@ -254,7 +262,7 @@ class Groupbuy
      */
     public static function release(int $shopid, string $orderNo): bool
     {
-        $engine = self::engineForWrite();
+        $engine = self::engineForWrite(self::ENGINECLASS);
         if ($engine === null) {
             return false;
         }
@@ -276,7 +284,7 @@ class Groupbuy
      */
     public static function refundRollback(int $shopid, string $orderNo): bool
     {
-        $engine = self::engineForWrite();
+        $engine = self::engineForWrite(self::ENGINECLASS);
         if ($engine === null) {
             return false;
         }
@@ -299,7 +307,7 @@ class Groupbuy
      */
     public static function cancelGroup(int $shopid, int $uid, int $groupId): array
     {
-        $engine = self::engineForWrite();
+        $engine = self::engineForWrite(self::ENGINECLASS);
         if ($engine === null) {
             throw new \Exception('拼团功能未启用');
         }
@@ -323,7 +331,7 @@ class Groupbuy
      */
     public static function expireGroups(int $shopid = 0): array
     {
-        $engine = self::engineForWrite();
+        $engine = self::engineForWrite(self::ENGINECLASS);
         if ($engine === null) {
             return [];
         }

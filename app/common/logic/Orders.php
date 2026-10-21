@@ -5,7 +5,6 @@ namespace app\common\logic;
 use app\common\logic\Channel;
 use app\common\model\Evaluate as EvaluateModel;
 use app\common\service\Discount as DiscountFacade;
-use app\common\service\Groupbuy as GroupbuyFacade;
 
 class Orders extends Base
 {
@@ -336,38 +335,5 @@ class Orders extends Base
         }
 
         return ['price' => $discountPrice, 'discount' => $discount];
-    }
-
-    /**
-     * 解析拼团并按「拼团优先、未命中回落限时折扣」返回成交单价
-     *
-     * 各模块在「会员折扣之后、计算 paid_fee 之前」调用本方法替代 applyDiscount：
-     * 命中拼团时按拼团价成交且不再叠加限时折扣（互斥）；未命中拼团时回落 applyDiscount 原逻辑。
-     * 优惠券的叠加由调用方在拿到本方法结果后继续处理（券门槛基数 = 拼团价/折后价）。
-     *
-     * @param int    $shopid   平台/店铺 ID
-     * @param string $app      所属模块
-     * @param int    $uid      用户 ID
-     * @param int    $infoId   内容 ID
-     * @param string $infoType 内容类型
-     * @param int    $price    内容原价（分）
-     * @param int    $quantity 购买数量（预留，单价解析不使用）
-     * @return array ['price' => 成交单价(分), 'groupbuy' => 拼团 resolve 结果|null, 'discount' => 折扣 resolve 结果|null]
-     */
-    public function applyGroupbuy(int $shopid, string $app, int $uid, int $infoId, string $infoType, int $price, int $quantity = 1): array
-    {
-        // 1. 拼团优先：命中且拼团价低于原价时按拼团价成交（与限时折扣互斥）
-        $groupbuy = GroupbuyFacade::resolve($shopid, $app, $uid, $infoId, $infoType, $price);
-        if (!empty($groupbuy)) {
-            $groupPrice = intval($groupbuy['group_price']);
-            if ($groupPrice > 0 && $groupPrice < $price) {
-                return ['price' => $groupPrice, 'groupbuy' => $groupbuy, 'discount' => null];
-            }
-        }
-
-        // 2. 未命中拼团：回落限时折扣（原逻辑不变）
-        $discountResult = $this->applyDiscount($shopid, $app, $uid, $infoId, $infoType, $price, $quantity);
-
-        return ['price' => $discountResult['price'], 'groupbuy' => null, 'discount' => $discountResult['discount']];
     }
 }

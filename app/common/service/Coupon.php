@@ -1,8 +1,8 @@
 <?php
 namespace app\common\service;
 
-use app\common\model\Module;
 use think\facade\Log;
+use app\common\service\Concerns\BusinessEngineProxy;
 
 /**
  * 优惠券门面（common 侧）
@@ -16,65 +16,10 @@ use think\facade\Log;
  */
 class Coupon
 {
-    /**
-     * 读路径引擎类名缓存：命中返回 'app\business\service\Coupon'，未就绪为空字符串
-     *
-     * @var string|null
-     */
-    private static $engineClass = null;
+    use BusinessEngineProxy;
 
-    /**
-     * 解析券引擎类名
-     *
-     * @param bool $requireInstalled true=读路径（要求 business 模块已安装）；false=写路径（仅要求引擎类存在）
-     * @return string|null 引擎类名，不可用时返回 null
-     */
-    private static function resolveEngine(bool $requireInstalled): ?string
-    {
-        $engine = 'app\\business\\service\\Coupon';
-        if (!class_exists($engine)) {
-            return null;
-        }
-
-        // 写路径为订单生命周期内的数据补偿，只要引擎类存在即放行，
-        // 保证 business 保留数据卸载（is_setup=0、数据表仍在）时回滚/结算仍可落库
-        if (!$requireInstalled) {
-            return $engine;
-        }
-
-        try {
-            $ready = (bool)(new Module())->checkInstalled('business');
-        } catch (\Throwable $e) {
-            // 安装状态查询异常时按未就绪处理，确保 C 端安全降级
-            $ready = false;
-        }
-
-        return $ready ? $engine : null;
-    }
-
-    /**
-     * 获取读路径可用引擎类名（带进程内缓存）
-     *
-     * @return string|null 引擎类名，不可用时返回 null
-     */
-    private static function engine(): ?string
-    {
-        if (self::$engineClass === null) {
-            self::$engineClass = self::resolveEngine(true) ?? '';
-        }
-
-        return self::$engineClass !== '' ? self::$engineClass : null;
-    }
-
-    /**
-     * 获取写路径可用引擎类名（不缓存）
-     *
-     * @return string|null 引擎类名，不可用时返回 null
-     */
-    private static function engineForWrite(): ?string
-    {
-        return self::resolveEngine(false);
-    }
+    /** 引擎类全限定名 */
+    private const ENGINECLASS = 'app\\business\\service\\Coupon';
 
     /**
      * 获取用户在指定 app/内容下可用的券列表
@@ -88,7 +33,7 @@ class Coupon
      */
     public static function getAvailable(int $shopid, int $uid, string $app, ?string $infoType, int $priceCent): array
     {
-        $engine = self::engine();
+        $engine = self::engineForRead(self::ENGINECLASS);
         if ($engine === null) {
             return [];
         }
@@ -114,7 +59,7 @@ class Coupon
      */
     public static function checkValid(int $shopid, int $uid, int $couponUserId, string $app, ?string $infoType, int $priceCent): ?array
     {
-        $engine = self::engine();
+        $engine = self::engineForRead(self::ENGINECLASS);
         if ($engine === null) {
             return null;
         }
@@ -137,7 +82,7 @@ class Coupon
      */
     public static function getMyCoupons(int $shopid, int $uid, int $status = -1): array
     {
-        $engine = self::engine();
+        $engine = self::engineForRead(self::ENGINECLASS);
         if ($engine === null) {
             return [];
         }
@@ -164,7 +109,7 @@ class Coupon
      */
     public static function occupy(int $shopid, int $uid, int $couponUserId, string $orderNo, int $priceCent, string $app = '', ?string $infoType = null): bool
     {
-        $engine = self::engineForWrite();
+        $engine = self::engineForWrite(self::ENGINECLASS);
         if ($engine === null) {
             return false;
         }
@@ -187,7 +132,7 @@ class Coupon
      */
     public static function settle(int $shopid, int $uid, string $orderNo): bool
     {
-        $engine = self::engineForWrite();
+        $engine = self::engineForWrite(self::ENGINECLASS);
         if ($engine === null) {
             return false;
         }
@@ -209,7 +154,7 @@ class Coupon
      */
     public static function release(int $shopid, string $orderNo): bool
     {
-        $engine = self::engineForWrite();
+        $engine = self::engineForWrite(self::ENGINECLASS);
         if ($engine === null) {
             return false;
         }
@@ -231,7 +176,7 @@ class Coupon
      */
     public static function refundRollback(int $shopid, string $orderNo): bool
     {
-        $engine = self::engineForWrite();
+        $engine = self::engineForWrite(self::ENGINECLASS);
         if ($engine === null) {
             return false;
         }
@@ -254,7 +199,7 @@ class Coupon
      */
     public static function grant(int $shopid, int $couponId, array $uids): array
     {
-        $engine = self::engineForWrite();
+        $engine = self::engineForWrite(self::ENGINECLASS);
         if ($engine === null) {
             return ['ok' => false, 'granted' => 0, 'skipped' => 0];
         }
@@ -277,7 +222,7 @@ class Coupon
      */
     public static function claim(int $shopid, int $couponId, int $uid): array
     {
-        $engine = self::engineForWrite();
+        $engine = self::engineForWrite(self::ENGINECLASS);
         if ($engine === null) {
             return ['ok' => false, 'message' => '暂不可领取'];
         }

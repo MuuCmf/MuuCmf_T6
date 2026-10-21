@@ -1,8 +1,8 @@
 <?php
 namespace app\common\service;
 
-use app\common\model\Module;
 use think\facade\Log;
+use app\common\service\Concerns\BusinessEngineProxy;
 
 /**
  * 限时折扣门面（common 侧）
@@ -16,70 +16,10 @@ use think\facade\Log;
  */
 class Discount
 {
-    /**
-     * 读路径引擎类名缓存：命中返回 'app\business\service\Discount'，未就绪为空字符串
-     *
-     * @var string|null
-     */
-    private static $engineClass = null;
+    use BusinessEngineProxy;
 
-    /**
-     * 解析折扣引擎类名
-     *
-     * @param bool $requireInstalled true=读路径（要求 business 模块已安装）；false=写路径（仅要求引擎类存在）
-     * @return string|null 引擎类名，不可用时返回 null
-     */
-    private static function resolveEngine(bool $requireInstalled): ?string
-    {
-        $engine = 'app\\business\\service\\Discount';
-        if (!class_exists($engine)) {
-            return null;
-        }
-
-        // 写路径为订单生命周期内的数据补偿，只要引擎类存在即放行，
-        // 保证 business 保留数据卸载（is_setup=0、数据表仍在）时回滚/结算仍可落库
-        if (!$requireInstalled) {
-            return $engine;
-        }
-
-        try {
-            $ready = (bool)(new Module())->checkInstalled('business');
-        } catch (\Throwable $e) {
-            // 安装状态查询异常时按未就绪处理，确保 C 端安全降级
-            $ready = false;
-        }
-
-        return $ready ? $engine : null;
-    }
-
-    /**
-     * 获取读路径可用引擎类名（带进程内缓存）
-     *
-     * 需同时满足「引擎类存在」且「business 模块已安装」，任一不满足即返回 null，
-     * 由调用方降级为原价，避免模块未安装时查询缺失数据表导致 C 端页面报错。
-     *
-     * @return string|null 引擎类名，不可用时返回 null
-     */
-    private static function engine(): ?string
-    {
-        if (self::$engineClass === null) {
-            self::$engineClass = self::resolveEngine(true) ?? '';
-        }
-
-        return self::$engineClass !== '' ? self::$engineClass : null;
-    }
-
-    /**
-     * 获取写路径可用引擎类名（不缓存）
-     *
-     * 仅要求引擎类存在，供 consume/settle/rollback 等补偿操作使用。
-     *
-     * @return string|null 引擎类名，不可用时返回 null
-     */
-    private static function engineForWrite(): ?string
-    {
-        return self::resolveEngine(false);
-    }
+    /** 引擎类全限定名 */
+    private const ENGINECLASS = 'app\\business\\service\\Discount';
 
     /**
      * 解析某内容命中的最优限时折扣
@@ -95,7 +35,7 @@ class Discount
      */
     public static function resolve(int $shopid, string $app, int $uid, int $infoId, string $infoType, int $price, string $sku = ''): ?array
     {
-        $engine = self::engine();
+        $engine = self::engineForRead(self::ENGINECLASS);
         if ($engine === null) {
             return null;
         }
@@ -121,7 +61,7 @@ class Discount
      */
     public static function resolveBatch(int $shopid, string $app, string $infoType, int $uid, array $contents): array
     {
-        $engine = self::engine();
+        $engine = self::engineForRead(self::ENGINECLASS);
         if ($engine === null) {
             return [];
         }
@@ -150,7 +90,7 @@ class Discount
      */
     public static function consume(int $shopid, string $app, int $uid, string $orderNo, int $infoId, string $infoType, int $quantity, array $discount): bool
     {
-        $engine = self::engineForWrite();
+        $engine = self::engineForWrite(self::ENGINECLASS);
         if ($engine === null) {
             return false;
         }
@@ -171,7 +111,7 @@ class Discount
      */
     public static function settle(string $orderNo): bool
     {
-        $engine = self::engineForWrite();
+        $engine = self::engineForWrite(self::ENGINECLASS);
         if ($engine === null) {
             return false;
         }
@@ -192,7 +132,7 @@ class Discount
      */
     public static function rollback(string $orderNo): bool
     {
-        $engine = self::engineForWrite();
+        $engine = self::engineForWrite(self::ENGINECLASS);
         if ($engine === null) {
             return false;
         }
