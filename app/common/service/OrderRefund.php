@@ -180,6 +180,12 @@ class OrderRefund
             return false;
         }
 
+        // 分销：退款完成后冲正已发放的推广佣金（幂等；未产生分销时为空操作）
+        $distribution_class = 'app\\distribution\\service\\Orders';
+        if (class_exists($distribution_class)) {
+            $distribution_class::revert($shopid, $orderNo);
+        }
+
         // 事务外：营销占用回滚（幂等）。跨模块调用返回 false（business 模块停用/表缺失）时记录告警，便于对账补偿
         if (!Discount::rollback($orderNo)) {
             Log::warning('[拼团自动退款] 限时折扣占用回滚未生效，order_no=' . $orderNo);
