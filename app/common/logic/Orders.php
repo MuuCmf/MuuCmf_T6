@@ -293,7 +293,7 @@ class Orders extends Base
                         $row['products'] = json_decode($row['products'], true);
                         $row['products_title'] = $row['products']['title'];
                         foreach ($keys as $key) {
-                            $data[] = $row[$key];
+                            $data[] = $this->escapeExportCell($row[$key] ?? '');
                         }
                         $column_data[] = implode("\t ,", $data) . "\t ,";
                         unset($data);
@@ -304,6 +304,27 @@ class Orders extends Base
             }
         }
         return $html;
+    }
+
+    /**
+     * 导出单元格防公式注入
+     *
+     * 以 = + - @ 或制表符/回车开头的值会被表格软件当作公式解析，
+     * 统一前置单引号将其转义为纯文本。
+     */
+    protected function escapeExportCell($value)
+    {
+        if (!is_scalar($value)) {
+            return $value;
+        }
+        $str = (string)$value;
+        if ($str === '') {
+            return $str;
+        }
+        if (in_array($str[0], ['=', '+', '-', '@', "\t", "\r"], true)) {
+            return "'" . $str;
+        }
+        return $str;
     }
 
     /**

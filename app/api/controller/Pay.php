@@ -62,8 +62,44 @@ class Pay extends Api
                 }
                 //更新渠道
                 if (!empty($channel) && $channel != $order_data['channel']) {
+                    $old_order_no = (string)$order_data['order_no'];
                     $order_no = build_order_no(); // 更好渠道后更新订单号
-                    $this->OrderModel->edit(['id' => $order_data['id'], 'order_no' => $order_no, 'channel' => $channel]);
+                    $shopid = intval($order_data['shopid'] ?? 0);
+                    // 订单号改写与优惠记录迁移必须同事务：任一环节失败整体回滚，
+                    // 避免「订单号已变、记录仍挂旧号」导致支付后的 settle 与取消/退款时的 rollback 全部落空
+                    Db::transaction(function () use ($order_data, $old_order_no, $order_no, $channel, $shopid) {
+                        // 乐观锁：仅当订单号仍是本次读取到的旧号时才允许改写，
+                        // 防止并发/重复请求各自换号，导致订单与优惠记录挂在不同单号上而失联
+                        $affected = $this->OrderModel->where('id', $order_data['id'])
+                            ->where('order_no', $old_order_no)
+                            ->update([
+                                'order_no'    => $order_no,
+                                'channel'     => $channel,
+                                'update_time' => time(),
+                            ]);
+                        if (intval($affected) !== 1) {
+                            throw new Exception('订单状态已变化，请重新发起支付');
+                        }
+
+                        // 订单号变更后同步迁移优惠链路记录（折扣占用 / 券占用 / 拼团成员）：
+                        // 三者均以 order_no 为键，若不迁移，支付成功后的 settle 与取消/退款时的 rollback 都会失效
+                        $migrations = [
+                            '限时折扣' => \app\common\service\Discount::migrateOrderNo($old_order_no, $order_no),
+                            '优惠券'   => \app\common\service\Coupon::migrateOrderNo($shopid, $old_order_no, $order_no),
+                            '拼团'     => \app\common\service\Groupbuy::migrateOrderNo($shopid, $old_order_no, $order_no),
+                        ];
+                        // null 表示 business 模块不可用（此类订单不会有对应记录），跳过；
+                        // false 表示迁移失败，抛错回滚订单号改写，避免优惠记录失联
+                        $failed = [];
+                        foreach ($migrations as $name => $result) {
+                            if ($result === false) {
+                                $failed[] = $name;
+                            }
+                        }
+                        if (!empty($failed)) {
+                            throw new Exception('订单优惠记录迁移失败：' . implode('、', $failed));
+                        }
+                    });
                     $order_data['order_no'] = $order_no;
                     $order_data['channel'] = $channel;
                 }

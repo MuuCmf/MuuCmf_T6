@@ -234,4 +234,27 @@ class Coupon
             return ['ok' => false, 'message' => '领取失败'];
         }
     }
+
+    /**
+     * 订单号变更时迁移券占用记录（支付切换渠道重写订单号后调用）
+     *
+     * @param int    $shopid     平台/店铺 ID
+     * @param string $oldOrderNo 原订单号
+     * @param string $newOrderNo 新订单号
+     * @return bool|null true=迁移成功；false=迁移失败；null=business 不可用（无对应记录，调用方应跳过而非视为失败）
+     */
+    public static function migrateOrderNo(int $shopid, string $oldOrderNo, string $newOrderNo): ?bool
+    {
+        $engine = self::engineForWrite(self::ENGINECLASS);
+        if ($engine === null) {
+            return null;
+        }
+
+        try {
+            return (new $engine())->migrateOrderNo($shopid, $oldOrderNo, $newOrderNo);
+        } catch (\Throwable $e) {
+            Log::error('[coupon] migrateOrderNo 失败，order_no=' . $oldOrderNo . ' → ' . $newOrderNo . '：' . $e->getMessage());
+            return false;
+        }
+    }
 }
