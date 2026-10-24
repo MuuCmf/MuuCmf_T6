@@ -181,8 +181,9 @@ class OrderRefund
         }
 
         // 分销：退款完成后冲正已发放的推广佣金（幂等；未产生分销时为空操作）
+        // 模块卸载后类文件可能仍残留，需同时校验安装状态，避免调用失效模块的写库逻辑
         $distribution_class = 'app\\distribution\\service\\Orders';
-        if (class_exists($distribution_class)) {
+        if (class_exists($distribution_class) && (new \app\common\model\Module())->checkInstalled('distribution')) {
             $distribution_class::revert($shopid, $orderNo);
         }
 

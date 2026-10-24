@@ -418,8 +418,9 @@ class Pay extends Api
                     $order_data['refund_no'] =  $refund_info['refund_no'];
 
                     // 分销：退款完成后冲正已发放的推广佣金（幂等；失败仅记录日志，不阻断用户退款）
+                    // 模块卸载后类文件可能仍残留，需同时校验安装状态
                     $distribution_class = 'app\\distribution\\service\\Orders';
-                    if (class_exists($distribution_class)) {
+                    if (class_exists($distribution_class) && (new \app\common\model\Module())->checkInstalled('distribution')) {
                         $distribution_class::revert(intval($this->params['shopid']), $refund_info['order_no']);
                     }
                 }
