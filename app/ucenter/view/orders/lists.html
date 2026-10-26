@@ -103,7 +103,7 @@
                                     data-order-no="{$v.order_no}" data-role="pay">
                                     立即支付
                                 </button>
-                                <a href="{if $v.app=='vip'}{:url('api/Orders/cancel')}{else}{:url($v.app . '/api.orders/cancel')}{/if}"
+                                <a href="{if $v.app=='vip' || $v.app=='svip'}{:url('api/Orders/cancel')}{else}{:url($v.app . '/api.orders/cancel')}{/if}"
                                     class="btn btn-danger btn-sm ajax-post" target-form="action-form-{$v.id}"
                                     data-confirm="确认执行取消操作？">
                                     取消订单
@@ -189,7 +189,7 @@
 
                                 {if $v['status'] == 0}
                                 <a disabled href="#" class="btn btn-sm disabled">已取消</a>
-                                <a href="{if $v.app=='vip'}{:url('api/Orders/delete')}{else}{:url($v.app . '/api.Orders/delete')}{/if}"
+                                <a href="{if $v.app=='vip' || $v.app=='svip'}{:url('api/Orders/delete')}{else}{:url($v.app . '/api.Orders/delete')}{/if}"
                                     class="btn btn-danger btn-sm ajax-post" target-form="action-form-{$v.id}"
                                     data-confirm="确认执行删除操作？">
                                     删除

@@ -3,6 +3,8 @@
 // 样式跟随站点主题（body 类名），默认 Blue
 // ============================================================
 
+@use "sass:color";
+
 // 主题色（与 body 上的类名对应，同 ucenter 其它页面）
 $ucenter-theme-colors: (
     'Blue': #03b8cf,
@@ -309,7 +311,7 @@ $ucenter-theme-colors: (
             }
 
             .vom-submit {
-                background: linear-gradient(135deg, $theme-color, mix($theme-color, black, 92%));
+                background: linear-gradient(135deg, $theme-color, color.mix($theme-color, black, 92%));
                 box-shadow: 0 6px 16px rgba($theme-color, 0.3);
 
                 &:hover {
