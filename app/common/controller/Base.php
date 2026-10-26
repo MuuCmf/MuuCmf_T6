@@ -29,7 +29,8 @@ class Base
     {
         $this->app_name = $this->params['app'] ?? App('http')->getName();
         $this->params = request()->param();
-        $this->shopid = $this->params['shopid'] ?? 0;
+        // 平台ID强制整数化，防止拼接进 whereRaw 等 SQL 场景时形成注入
+        $this->shopid = intval($this->params['shopid'] ?? 0);
         //验证应用安装状态
         $this->appInstalled();
         //记住登录
