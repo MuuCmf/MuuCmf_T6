@@ -78,7 +78,7 @@
             }else{
             $referer = url('index/index/index');
             }
-            session('login_http_referer',$referer);
+            session('login_http_referer',(string)$referer);
             {/php}
             <input name="from" type="hidden" value="{$referer}">
             <div class="form-group">
