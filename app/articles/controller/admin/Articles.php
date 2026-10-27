@@ -74,7 +74,6 @@ class Articles extends Admin
                 validate(ArticlesValidate::class)->check([
                     'title'  => $data['title'],
                     'description' => $data['description'],
-                    'cover' => $data['cover'],
                     'category_id' => $data['category_id']
                 ]);
             } catch (ValidateException $e) {
@@ -86,7 +85,7 @@ class Articles extends Admin
 
             if($res){
                 // 写入搜索索引
-                (new SearchModel)->add($this->shopid, 'article', $res, 'article', $data['title'], $data['description'], $data['cover']);
+                (new SearchModel)->add($this->shopid, 'article', $res, 'article', $data['title'], $data['description'], $data['cover'] ?? '');
                 return $this->success($title . '成功', $res, cookie('__forward__'));
             }else{
                 return $this->error($title . '失败');
