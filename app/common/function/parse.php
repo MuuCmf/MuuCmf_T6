@@ -698,13 +698,14 @@ if (!function_exists('build_order_no')) {
      * 生成订单编号
      * 
      * 根据当前时间、微秒时间戳和随机数生成唯一的订单编号
-     * 格式为: 年月日 + 微秒时间戳后6位 + 4位随机数
+     * 格式为: 年月日 + 微秒时间戳后6位 + 6位随机数
      * 
      * @return string 返回生成的订单编号
      */
     function build_order_no()
     {
-        return date('Ymd') . substr(microtime(), 2, 6) . sprintf('%04d', mt_rand(0, 9999));
+        // 随机段由 4 位提升至 6 位并使用 CSPRNG，降低订单号可预测性
+        return date('Ymd') . substr(microtime(), 2, 6) . sprintf('%06d', random_int(0, 999999));
     }
 }
 
