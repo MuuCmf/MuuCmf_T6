@@ -357,6 +357,10 @@ class Member extends Api
         //查询用户信息
         $user = query_user($uid, ['uid', 'nickname', 'avatar', 'email', 'mobile', 'realname', 'sex', 'qq', 'score', 'birthday', 'signature']);
         if (is_array($user) && !empty($user)) {
+            // 已删除(status=-1)/禁用(status=0)用户视为未登录，返回 login 让前端清除本地失效 token
+            if (!isset($user['status']) || (int)$user['status'] !== 1) {
+                return $this->error('用户已禁用或删除', 'login');
+            }
             //格式化生日
             $birthday = strtotime($user['birthday']);
             $birthday = $birthday > 0 ? $birthday : time();

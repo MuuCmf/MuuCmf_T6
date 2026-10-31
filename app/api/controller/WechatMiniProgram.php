@@ -75,7 +75,8 @@ class WechatMiniProgram extends Api
         $user = $this->MemberSyncModel->getDataByMap($map);
         if (!empty($user)) {
             $user = query_user($user['uid'], ['uid', 'nickname', 'avatar', 'email', 'mobile', 'realname', 'sex', 'score']);
-            if (is_array($user)) {
+            // 仅正常状态（status=1）用户允许静默登录；已删除(-1)/禁用(0)一律拒绝，避免删除后仍自动签发 token
+            if (is_array($user) && isset($user['status']) && (int)$user['status'] === 1) {
                 $this->MemberModel->updateLogin($user['uid']);
                 $token = JWTAuth::builder(['uid' => $user['uid']]);
                 $token = 'Bearer ' . $token;
@@ -105,41 +106,75 @@ class WechatMiniProgram extends Api
         $map[] = ['openid', '=', $oauth['openid']];
         $map[] = ['type', '=', 'weixin_mp'];
         $user = $this->MemberSyncModel->getDataByMap($map);
+        // 是否为已删除账号的重新注册流程
+        $reRegister = false;
         // 已登录过
         if (!empty($user)) {
-            $user = query_user($user['uid'], ['uid', 'nickname', 'avatar', 'email', 'mobile', 'realname', 'sex', 'score']);
-            $this->MemberModel->updateLogin($user['uid']);
-        } else {
-            // 未登录过，创建用户
-            $result = MiniProgramServer::decryptData($oauth['session_key'], $params['iv'], $params['encrypted_data']);
-            // 解密失败（微信返回非法数据/参数不匹配）时返回错误，避免未定义索引与创建残缺用户
-            if (!is_array($result) || !isset($result['openId'], $result['nickName'])) {
+            $existing = query_user($user['uid'], ['uid', 'nickname', 'avatar', 'email', 'mobile', 'realname', 'sex', 'score']);
+            if (is_array($existing) && isset($existing['status'])) {
+                if ((int)$existing['status'] === 0) {
+                    // 禁用账号不允许登录
+                    return $this->error('用户已被禁用');
+                } elseif ((int)$existing['status'] === 1) {
+                    $user = $existing;
+                    $this->MemberModel->updateLogin($user['uid']);
+                } else {
+                    // 已删除账号（status=-1）不复用旧账号，继续走下方创建流程，允许重新注册
+                    $user = null;
+                    $reRegister = true;
+                }
+            } else {
+                $user = null;
+                $reRegister = true;
+            }
+        }
+        if (empty($user)) {
+            // 未登录过 / 已删除，创建用户
+            try {
+                $result = MiniProgramServer::decryptData($oauth['session_key'], $params['iv'], $params['encrypted_data']);
+            } catch (\Throwable $e) {
+                // 微信返回空/非法 encryptedData 时会抛出解密异常，统一按解密失败处理
+                $result = null;
+            }
+            $decrypted = is_array($result) && isset($result['openId'], $result['nickName']);
+            // 新用户必须解密成功；已删除账号重新注册时微信可能返回空/无效的 encryptedData，
+            // 此时以 openid 为准创建账号，昵称头像由登录成功后的资料提交接口补齐
+            if (!$decrypted && !$reRegister) {
                 return $this->error('微信数据解密失败，请重试');
             }
-            $nickname = $result['nickName'];
-            if ($nickname == '微信用户') {
+            if ($decrypted) {
+                $nickname = $result['nickName'];
+                if ($nickname == '微信用户') {
+                    $nickname = rand_nickname(config('system.USER_NICKNAME_PREFIX'));
+                }
+                $avatar = $result['avatarUrl'] ?? '';
+                $sex = $result['gender'] ?? 0;
+            } else {
                 $nickname = rand_nickname(config('system.USER_NICKNAME_PREFIX'));
+                $avatar = '';
+                $sex = 0;
             }
             $data = [
                 'unionid'   => $oauth['unionid'] ?? '',
                 'openid'    => $oauth['openid'],
                 'nickname'  => $nickname,
-                'avatar'    => $result['avatarUrl'] ?? '',
-                'sex'       => $result['gender'] ?? 0,
+                'avatar'    => $avatar,
+                'sex'       => $sex,
                 'shopid'    => $params['shopid'],
                 'oauth_type' => 'weixin_mp'
             ];
             $user = $this->MemberModel->oauth($this->shopid, $data);
         }
 
-        if ($user) {
+        // 签发 token 前再次校验用户状态，避免已删除/禁用账号拿到登录态
+        if ($user && isset($user['status']) && (int)$user['status'] === 1) {
             $this->MemberModel->updateLogin($user['uid']);
             $token = JWTAuth::builder(['uid' => $user['uid']]);
             $token = 'Bearer ' . $token;
             return $this->success('success', ['token' => $token]);
         }
 
-        return $this->error('需要登录', 'login');
+        return $this->error('用户已禁用或删除', 'login');
     }
 
     /**

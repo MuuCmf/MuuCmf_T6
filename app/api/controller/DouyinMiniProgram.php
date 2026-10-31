@@ -98,6 +98,10 @@ class DouyinMiniProgram extends Api
         $user = $this->MemberSyncModel->getDataByMap($map);
         if ($user){
             $user = query_user($user['uid'],['uid','nickname','avatar','email','mobile','realname','sex','qq','score']);
+            // 仅正常状态（status=1）用户允许静默登录；已删除(-1)/禁用(0)一律拒绝
+            if (!is_array($user) || !isset($user['status']) || (int)$user['status'] !== 1) {
+                return $this->error('用户已禁用或删除');
+            }
             $this->MemberModel->updateLogin($user['uid']);
             $token = JWTAuth::builder(['uid'=>$user['uid']]);
             $token = 'Bearer ' . $token;
@@ -135,7 +139,8 @@ class DouyinMiniProgram extends Api
             'oauth_type' => 'douyin_mp'
         ];
         $user = $this->MemberModel->oauth($this->shopid, $data);
-        if ($user){
+        // 已删除/禁用用户不允许登录
+        if ($user && isset($user['status']) && (int)$user['status'] === 1){
             $token = JWTAuth::builder(['uid'=>$user['uid']]);
             $token = 'Bearer ' . $token;
             return $this->success('success',['token'=>$token]);

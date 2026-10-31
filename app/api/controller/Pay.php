@@ -154,12 +154,13 @@ class Pay extends Api
                     $order_data['channel'] == 'app_ios' ||
                     $order_data['channel'] == 'app_harmony'
                 ) {
-                    // 获取支付参数
-                    $config = ChannelServer::config($order_data['channel'], $this->shopid);
+                    // 获取支付参数（以订单 shopid 为准，防止客户端 shopid 篡改导致用错商户配置）
+                    $order_shopid = intval($order_data['shopid'] ?? 0);
+                    $config = ChannelServer::config($order_data['channel'], $order_shopid);
                     if ($order_data['channel'] == 'weixin_h5' || $order_data['channel'] == 'weixin_mp' || $order_data['channel'] == 'weixin_work') {
-                        // 获取用户openid
+                        // 获取用户openid（同样以订单 shopid 取会员绑定，保证 openid 与商户 appid 匹配）
                         $openid = MemberSync::where([
-                            ['shopid', '=', $this->shopid],
+                            ['shopid', '=', $order_shopid],
                             ['uid', '=', get_uid()],
                             ['type', '=', $order_data['channel']]
                         ])->value('openid');
@@ -171,7 +172,7 @@ class Pay extends Api
                     //$pay_data['subject'] = $title;
                     $pay_data['body'] = $title;
                     $pay_data['out_trade_no'] = $order_no;
-                    $pay_data['total_fee'] = intval($order_data['paid_fee'] * 100);
+                    $pay_data['total_fee'] = intval(round($order_data['paid_fee'] * 100));
                     $pay_data['notify_url'] = $notify_url;
                     // 发起支付
                     $PayService = PayServer::init($config['appid'], $this->params['pay_channel']);
@@ -201,7 +202,7 @@ class Pay extends Api
                     $pay_data['subject'] = $title;
                     $pay_data['body'] = $title;
                     $pay_data['out_order_no'] = $order_no;
-                    $pay_data['total_amount'] = intval($order_data['paid_fee'] * 100);
+                    $pay_data['total_amount'] = intval(round($order_data['paid_fee'] * 100));
                     $pay_data['notify_url'] = $notify_url;
 
                     $result_pay = DouyinMiniProgramServer::createOrder($pay_data);
@@ -210,7 +211,7 @@ class Pay extends Api
                 if ($order_data['channel'] == 'baidu_mp') {
                     $pay_data['dealTitle'] = $title;
                     $pay_data['tpOrderId'] = $order_no;
-                    $pay_data['totalAmount'] = (string)intval($order_data['paid_fee'] * 100);
+                    $pay_data['totalAmount'] = (string)intval(round($order_data['paid_fee'] * 100));
                     $pay_data['notifyUrl'] = $notify_url;
 
                     $result_pay = BaiduMiniProgramServer::createOrder($pay_data);
@@ -248,8 +249,8 @@ class Pay extends Api
                 throw new Exception('无权操作该订单');
             }
 
-            // 获取支付参数
-            $config = ChannelServer::config($order_data['channel'], $this->shopid);
+            // 获取支付参数（以订单 shopid 为准）
+            $config = ChannelServer::config($order_data['channel'], intval($order_data['shopid'] ?? 0));
             // 微信支付
             if ($order_data['channel'] == 'weixin_h5' || $order_data['channel'] == 'weixin_mp' || $order_data['channel'] == 'weixin_work') {
                 $PayService = PayServer::init($config['appid'], $this->params['pay_channel']);
@@ -282,7 +283,7 @@ class Pay extends Api
                     throw new Exception('无权操作该订单');
                 }
 
-                $config = ChannelServer::config($order_data['channel'], $this->shopid);
+                $config = ChannelServer::config($order_data['channel'], intval($order_data['shopid'] ?? 0));
                 $PayService = PayServer::init($config['appid'], $this->params['pay_channel']);
                 if (!$PayService || !$PayService->server) {
                     throw new Exception('支付服务初始化失败');
@@ -322,6 +323,10 @@ class Pay extends Api
             $refund_order = $query->find();
             if (!$refund_order || $refund_order['uid'] != $uid) {
                 return $this->error('无权操作该订单');
+            }
+            // 应用商店订单为授权类虚拟商品，用户不允许申请退款（如需退款请由后台人工处理）
+            if ((string)$refund_order['app'] === 'appstore') {
+                return $this->error('应用商店订单不支持申请退款');
             }
             // 以数据库订单为准，避免调用方伪造 shopid/app 等参数
             $this->params['order_no'] = $refund_order['order_no'];
@@ -391,8 +396,8 @@ class Pay extends Api
                             //退款至用户账户（income 参数顺序：shopid, uid, money；修复此前参数错位导致资金入错账户）
                             $result = (new MemberWallet())->income($this->params['shopid'], $refund_info['uid'], $refund_info['refund_fee'], false);
                         } else {
-                            //退款至付款账户（使用订单实际渠道，防止渠道参数被用户篡改）
-                            $config = ChannelServer::config($refund_info['channel'], $this->shopid);
+                            //退款至付款账户（使用订单实际渠道与订单 shopid，防止渠道/商户参数被用户篡改）
+                            $config = ChannelServer::config($refund_info['channel'], intval($this->params['shopid'] ?? 0));
                             $PayService = PayServer::init($config['appid'], $this->params['pay_channel']);
                             if (!$PayService || !$PayService->server) {
                                 throw new Exception('支付服务初始化失败');

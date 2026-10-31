@@ -4,6 +4,7 @@ declare (strict_types=1);
 namespace app\common\middleware;
 
 use Closure;
+use think\facade\Db;
 use thans\jwt\exception\JWTException;
 use thans\jwt\exception\TokenBlacklistException;
 use thans\jwt\exception\TokenBlacklistGracePeriodException;
@@ -101,6 +102,18 @@ class CheckAuth extends JWTAuth
                 }
             }
         }
+        // 校验会员实时状态：已删除(-1)/禁用(0)/不存在均视为无效登录态，
+        // 避免用户被删除或禁用后，已签发的旧 JWT 仍能访问各模块业务接口
+        $memberStatus = Db::name('member')->where('uid', $uid)->value('status');
+        if ($memberStatus === null || (int)$memberStatus !== 1) {
+            if ($type == 'json') {
+                return json(['code' => 0, 'data' => 'login', 'msg' => '用户已禁用或删除']);
+            }
+            if ($type == 'html') {
+                return redirect('/ucenter/common/login');
+            }
+        }
+
         $request->uid = $uid;
         $response = $next($request);
 
