@@ -233,30 +233,19 @@
             confirmText = '确认执行该操作？';
         }
 
-        let custom = '';
-        if(type == 'error'){
-            // 自定义模态框样式
-            custom = '<div class="confirm-info text-center '+ type +'">'+
-                        '<i class="fa fa-exclamation-circle"></i>'+
+        // 图标与按钮形态：有回调时为确认框（确认+取消），否则为提示框（仅确认）
+        let icon = type == 'success' ? 'fa-check-circle' : 'fa-exclamation-circle';
+        let hasCallback = typeof callback === "function";
+
+        let custom = '<div class="confirm-info ' + type + '">'+
+                        '<span class="confirm-icon"><i class="fa ' + icon + '"></i></span>'+
                         '<p class="title">系统提示</p>'+
                         '<p class="desc">'+ confirmText +'</p>'+
-                        '<div class="btns text-center">'+
-                            '<button class="btn btn-info confirm margin-right" type="button">确认</button>'+
-                            '<button type="button" class="btn" data-dismiss="modal">取消</button>'+
+                        '<div class="btns">'+
+                            '<button class="btn btn-info confirm" type="button">确认</button>'+
+                            (hasCallback ? '<button type="button" class="btn cancel" data-dismiss="modal">取消</button>' : '')+
                         '</div>'+
                     '</div>';
-        }else{
-            // 自定义模态框样式
-            custom = '<div class="confirm-info text-center '+ type +'">'+
-                        '<i class="fa fa-check-circle"></i>'+
-                        '<p class="title">系统提示</p>'+
-                        '<p class="desc">'+ confirmText +'</p>'+
-                        '<div class="btns text-center">'+
-                            '<button class="btn btn-info confirm margin-right" type="button">确认</button>'+
-                            '<button type="button" class="btn" data-dismiss="modal">取消</button>'+
-                        '</div>'+
-                    '</div>';
-        }
 
         let modal_html = '<div class="modal fade confirm-modal" id="tip_Modal">'+
                         '<div class="modal-dialog modal-tip">'+
@@ -276,12 +265,16 @@
         $('#tip_Modal').on('click','.confirm',function(){
             if (typeof callback === "function") {
                 callback();
-                $('#tip_Modal').remove();
             }
-            //关闭模态框
-            $('#tip_Modal [data-dismiss="modal"]').click();
-            //移除dom
+            //关闭并移除模态框，同时清理遮罩与页面滚动锁
             $('#tip_Modal').remove();
+            $('.modal-backdrop').remove();
+            $('body').removeClass('modal-open');
+        });
+
+        //取消 / 点击遮罩关闭后清理 DOM
+        $('#tip_Modal').on('hidden.zui.modal', function(){
+            $(this).remove();
             $('.modal-backdrop').remove();
         });
         
