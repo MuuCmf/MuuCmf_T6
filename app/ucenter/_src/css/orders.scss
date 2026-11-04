@@ -305,116 +305,200 @@
     }
 }
 
-/*评价表单部分*/
-.evaluate-section {
-	background-color: #fff;
+/*评价弹窗*/
+.evaluate-modal {
+    .modal-dialog {
+        width: 540px;
+        max-width: calc(100% - 40px);
+        margin: 60px auto;
+    }
 
-  	/*5分评价*/
-  	.add-evaluate-box {
-		padding: 10px;
-  		.submit {
-  			padding: 0;
-  		}
-  		.start-item {
-  			padding: 10px 0;
-  			margin: 0 auto;
-  			text-align: center;
-  		}
-  	}
+    .modal-content {
+        border: 0;
+        border-radius: 16px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
+        overflow: hidden;
+    }
 
-  	.detail-evaluate-box {
-  		border-top:1px solid #f2f2f2;
+    .modal-header {
+        position: relative;
+        padding: 28px 32px 0;
+        border-bottom: 0;
 
-  		.content {
-  			padding:10px;
-  			margin:10px;
-  			
-  			font-size: 14px;
-  			color: #666;
-  		}
-  		.images {
-  			padding:10px;
-  			margin:10px;
-  			border-bottom:1px solid #f2f2f2;
-  			.item {
-  				display: inline-block;
-  				border:1px solid #f2f2f2;
-  				width: 60px;
-  				height: 60px;
-  				overflow: hidden;
-  				margin-right: 5px;
-  			}
-  		}
+        .modal-title {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 600;
+            color: #222;
+        }
 
-  		.evaluate-score {
-  			padding: 10px 0;
-  			text-align: center;
-  		}
+        .modal-subtitle {
+            margin: 8px 0 0;
+            font-size: 13px;
+            color: #999;
+        }
 
-  		.tip-box {
-  			padding:10px;
-  			margin: 10px;
-  			color: #666;
-  		}
-  	}
+        .close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            float: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 30px;
+            height: 30px;
+            margin: 0;
+            padding: 0;
+            border-radius: 50%;
+            background: #f5f6f8;
+            color: #999;
+            font-size: 18px;
+            font-weight: 400;
+            line-height: 1;
+            text-align: center;
+            opacity: 1;
+            transition: background .2s ease, color .2s ease;
 
-	.star_score { 
-		background:url('../../common/images/star_h.png');
-		height:48px; 
-		position:relative; 
-		margin: 0 auto;
-		margin-bottom: 20px;
+            &:hover,
+            &:focus {
+                background: #eceef1;
+                color: #333;
+                opacity: 1;
+            }
+        }
+    }
 
-		a{
-			height:48px; 
-			display:block; 
-			text-indent:-999em; 
-			position:absolute;
-			left:0;
+    .modal-body {
+        padding: 24px 32px 30px;
+    }
 
-			&:hover{ 
-				background:url('../../common/images/star.png');
-				left:0;
-			}
-		}
-		a.clibg{ 
-			background:url('../../common/images/star.png');
-			left:0;
-		}
-	}
+    .evaluate-label {
+        display: block;
+        margin-bottom: 10px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #333;
+    }
 
-	/*星星样式*/
-	.show_number{ 
-		padding-left:50px; 
-		padding-top:20px;
+    .rating-group {
+        margin-bottom: 20px;
+    }
 
-		li{ 
-			width:240px; 
-			border:1px solid #ccc; 
-			padding:10px; 
-			margin-right:5px; 
-			margin-bottom:20px;
+    .star-item {
+        padding: 20px 16px 18px;
+        border: 1px solid #eef5f6;
+        border-radius: 12px;
+        background: linear-gradient(180deg, #f8fcfd 0%, #f2f8f9 100%);
+        text-align: center;
+    }
 
-			span{ 
-				display:inline-block; 
-				line-height:21px;
-			}
-		}
-	}
-	.atar_show{
-		background:url('../../images/star_h.png'); 
-		width:240px; 
-		height:48px;  
-		position:relative; 
-		margin: 0 auto;
-		margin-bottom: 20px;
+    .star_score {
+        position: relative;
+        width: 245px;
+        height: 48px;
+        margin: 0 auto 12px;
+        background: url('../../common/images/star_h.png') repeat;
 
-		.show_star{ 
-			background:url('../../images/star.png');
-			height:48px; 
-			width:240px;
-		}
-	}
+        a {
+            position: absolute;
+            left: 0;
+            display: block;
+            height: 48px;
+            text-indent: -999em;
+            cursor: pointer;
+
+            &:hover,
+            &.clibg {
+                background: url('../../common/images/star.png') repeat;
+            }
+        }
+    }
+
+    .score-tip {
+        margin: 0;
+        font-size: 13px;
+        color: #666;
+    }
+
+    .score-num {
+        margin: 0 2px 0 4px;
+        font-size: 20px;
+        font-weight: 700;
+        line-height: 1;
+        color: #03b8cf;
+    }
+
+    .score-unit {
+        font-size: 12px;
+        color: #666;
+    }
+
+    .attitude {
+        min-height: 18px;
+        margin: 8px 0 0;
+        font-size: 13px;
+        line-height: 1.6;
+        color: #03b8cf;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-control {
+        padding: 12px 14px;
+        border: 1px solid #e6e8eb;
+        border-radius: 10px;
+        background: #fafbfc;
+        box-shadow: none;
+        font-size: 14px;
+        line-height: 1.6;
+        resize: none;
+        transition: border-color .2s ease, box-shadow .2s ease, background .2s ease;
+
+        &::placeholder {
+            color: #b5b5b5;
+        }
+
+        &:focus {
+            border-color: #03b8cf;
+            background: #fff;
+            box-shadow: 0 0 0 3px rgba(3, 184, 207, 0.12);
+        }
+    }
+
+    .char-count {
+        margin-top: 6px;
+        font-size: 12px;
+        color: #bbb;
+        text-align: right;
+    }
+
+    .btn-evaluate {
+        height: 46px;
+        margin-top: 4px;
+        border: 0;
+        border-radius: 10px;
+        background: #03b8cf;
+        color: #fff;
+        font-size: 16px;
+        font-weight: 600;
+        box-shadow: 0 10px 22px rgba(3, 184, 207, 0.28);
+        transition: background .2s ease, box-shadow .2s ease, transform .1s ease;
+
+        &:hover,
+        &:focus {
+            background: #02a6bb;
+            color: #fff;
+            box-shadow: 0 12px 26px rgba(3, 184, 207, 0.34);
+        }
+
+        &:active {
+            transform: translateY(1px);
+            box-shadow: 0 6px 16px rgba(3, 184, 207, 0.28);
+        }
+    }
 }
 
 // 主题色（与 body 上的类名对应）
@@ -453,6 +537,34 @@ $ucenter-theme-colors: (
                 .order-actions .btn-primary {
                     background: $theme-color;
                     border-color: $theme-color;
+                }
+            }
+        }
+
+        .evaluate-modal {
+            .star-item {
+                border-color: rgba($theme-color, 0.12);
+                background: linear-gradient(180deg, rgba($theme-color, 0.06) 0%, rgba($theme-color, 0.02) 100%);
+            }
+
+            .score-num,
+            .attitude {
+                color: $theme-color;
+            }
+
+            .form-control:focus {
+                border-color: $theme-color;
+                box-shadow: 0 0 0 3px rgba($theme-color, 0.12);
+            }
+
+            .btn-evaluate {
+                background: $theme-color;
+                box-shadow: 0 10px 22px rgba($theme-color, 0.28);
+
+                &:hover,
+                &:focus {
+                    background: $theme-color;
+                    box-shadow: inset 0 0 0 100px rgba(0, 0, 0, 0.06), 0 12px 26px rgba($theme-color, 0.34);
                 }
             }
         }

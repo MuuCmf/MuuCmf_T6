@@ -274,38 +274,44 @@
     </div>
 </div>
 
-<div class="modal fade" id="evaluateModal">
+<!--订单评价模态框-->
+<div class="modal fade evaluate-modal" id="evaluateModal">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span
+                <button type="button" class="close" data-dismiss="modal" aria-label="关闭"><span
                         aria-hidden="true">×</span></button>
-                <h3 class="modal-title">订单评价</h3>
+                <h3 class="modal-title">商品评价</h3>
+                <p class="modal-subtitle">您的评价会帮助更多用户做出选择</p>
             </div>
             <div class="modal-body">
-                <div class="evaluate-section">
-                    <form action="{:url('api/evaluate/edit')}" method="post" class="form ajax-form">
-                        <input type="hidden" name="order_no" value="" />
-                        <input type="hidden" name="type" value="" />
-                        <input type="hidden" name="type_id" value="" />
-                        <div class="form-group">
-                            <label for="exampleInputAccount1">请输入评价内容</label>
-                            <textarea class="form-control" name="content" row=3 placeholder="请输入评价内容"></textarea>
-                        </div>
+                <form action="{:url('api/evaluate/edit')}" method="post" class="ajax-form">
+                    <input type="hidden" name="order_no" value="" />
+                    <input type="hidden" name="shopid" value="{$shopid}" />
+                    <input type="hidden" name="type" value="" />
+                    <input type="hidden" name="type_id" value="" />
 
-                        <div class="form-group">
-                            <div class="start-item clearfix">
-                                <div class="star_score"></div>
-                                <p>您的评分：<span class="fenshu">5</span> 分</p>
-                                <div class="attitude"></div>
-                                <input type="hidden" name="value" value="5" />
-                            </div>
+                    <div class="form-group rating-group">
+                        <span class="evaluate-label">商品评分</span>
+                        <div class="star-item">
+                            <div class="star_score"></div>
+                            <p class="score-tip">
+                                您的评分：<span class="score-num fenshu">5</span><span class="score-unit">分</span>
+                            </p>
+                            <p class="attitude"></p>
+                            <input type="hidden" name="value" value="5" />
                         </div>
-                        <div class="submit">
-                            <button type="submit" class="btn btn-block btn-lg btn-warning">确认</button>
-                        </div>
-                    </form>
-                </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="evaluate-label" for="evaluateContent">评价内容</label>
+                        <textarea id="evaluateContent" class="form-control" name="content" rows="4" maxlength="200"
+                            placeholder="说说商品的质量、物流速度和服务态度吧~"></textarea>
+                        <div class="char-count"><span>0</span>/200</div>
+                    </div>
+
+                    <button type="submit" class="btn btn-block btn-evaluate">提交评价</button>
+                </form>
             </div>
         </div>
     </div>
@@ -400,7 +406,7 @@
             $(ele).css("width", w);
             $(ele).parent(".atar_show").siblings("span").text(num + "分");
         }
-        scoreFun($('.start-item'));
+        scoreFun($('.star-item'));
         //默认选择5分
         $('.star_score>a:last').click();
         //显示评分
@@ -481,6 +487,14 @@
 
     $(function () {
         // 评价数据处理
+        var $evaluateModal = $('#evaluateModal');
+        var $content = $evaluateModal.find('textarea[name="content"]');
+        var $charCount = $evaluateModal.find('.char-count span');
+
+        $content.on('input', function () {
+            $charCount.text($(this).val().length);
+        });
+
         $('[data-target="#evaluateModal"]').click(function () {
             var order_no = $(this).data('order-no');
             var type = $(this).data('type');
@@ -489,6 +503,11 @@
             $('#evaluateModal [name="order_no"]').val(order_no);
             $('#evaluateModal [name="type"]').val(type);
             $('#evaluateModal [name="type_id"]').val(type_id);
+
+            // 重置为默认状态：清空内容、默认5分
+            $content.val('');
+            $charCount.text(0);
+            $('.star_score > a:last').click();
         })
     });
 </script>

@@ -78,9 +78,9 @@ class Evaluate extends Api
         // 评价对象以订单数据为准（服务端取值），防止攻击者指定任意 type/type_id 刷评价
         $type = $order_data['order_info_type'];
         $type_id = intval($order_data['order_info_id']);
-        // 评分范围限制 1-5
-        $value = intval($value);
-        $value = min(5, max(1, $value));
+        // 评分范围限制 0.5-5，保留 0.5 分精度（与前端星级组件一致）
+        $value = round(floatval($value) * 2) / 2;
+        $value = min(5, max(0.5, $value));
         //检测是否已评论
         $evaluate_map = [];
         $evaluate_map[] = ['uid', '=', $uid];
@@ -89,15 +89,12 @@ class Evaluate extends Api
         $is_have = $this->EvaluateModel->getDataByMap($evaluate_map);
         if ($is_have && $is_have['status'] == 1) {
             if ($is_have['create_time'] != $is_have['update_time']) {
-                $this->error('您已经评价过了');
+                return $this->error('您已经评价过了');
             }
             $id = $is_have['id'];
         }
         //处理评价图片
-        if (!empty($images)) {
-            $images = $images;
-            $images = explode(',', $images);
-        }
+        $images = empty($images) ? [] : explode(',', $images);
 
         //提交
         $data = [
@@ -122,7 +119,7 @@ class Evaluate extends Api
                 'evaluate' => 1
             ];
             $this->OrdersModel->edit($order_edit_data);
-            return $this->success('提交成功', $res);
+            return $this->success('提交成功', $res, 'refresh');
         }
         return $this->error('提交失败，请稍后再试');
     }
