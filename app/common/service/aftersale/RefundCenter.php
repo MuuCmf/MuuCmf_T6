@@ -98,6 +98,8 @@ class RefundCenter
             'source'     => 3,
             'remark'     => (string)($opts['remark'] ?? '自动退款'),
             'refund_fee' => $amount,
+            // 自动退款不经过审核，显式放行待审核单据校验（订单取消/过期时用户申请可能仍在途）
+            'force'      => true,
         ];
         // 业务侧差异参数（如商城的库存回补开关），由策略按需读取
         if (array_key_exists('restore_stock', $opts)) {
@@ -365,6 +367,20 @@ class RefundCenter
             }
         }
         RefundLog::write($refundNo, (string)$row['order_no'], $from, RefundStatus::AGREED, $from === RefundStatus::AGREED ? '重新打款' : '审核通过', $remark, 2, self::operatorId($operator));
+
+        // 审核时可改判退款去向（如积分订单退积分、线下人工处理），未指定则沿用申请时的去向
+        if (array_key_exists('refund_to', $options)) {
+            $targetOverride = intval($options['refund_to']);
+            $policy = PolicyRegistry::resolve((string)$row['app']);
+            if (!in_array($targetOverride, $policy->allowedTargets($order), true)) {
+                throw new \Exception('该订单不支持此退款方式');
+            }
+            Db::name('refund')->where('id', intval($row['id']))->update([
+                'refund_to'   => $targetOverride,
+                'update_time' => $now,
+            ]);
+            $row['refund_to'] = $targetOverride;
+        }
 
         $params = $options + [
             'app'        => (string)$row['app'],

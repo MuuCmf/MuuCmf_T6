@@ -325,9 +325,9 @@ class Pay extends Api
             if ((string)$refund_order['app'] === 'appstore') {
                 return $this->error('应用商店订单不支持申请退款');
             }
-            // 通用入口仅开放 minishop 用户提交售后申请：统一生成待审核售后单，
-            // 禁止通过该入口直接修改退款状态或触发打款，避免绕过商家后台审核。
-            if ((string)$refund_order['app'] !== 'minishop') {
+            // 通用入口仅开放已接入统一售后的应用（实现 app\{app}\service\aftersale\Policy）：
+            // 统一生成待审核售后单，禁止通过该入口直接修改退款状态或触发打款，避免绕过商家后台审核。
+            if (!RefundCenter::supports((string)$refund_order['app'])) {
                 return $this->error('该订单暂不支持在线申请退款，请联系商家处理');
             }
             try {

@@ -191,6 +191,15 @@ class RefundExecutor
             }
 
             $refund['refund_no'] = self::buildRefundNo($app, $orderNo);
+            // 存在待审核/退货中的售后单时禁止直接打款：必须走 RefundCenter::approve 完成审核，
+            // 否则后台「直接退款」会绕过审核把待审核单据直接置为打款中（自动退款显式传 force 放行）
+            if (!(bool)($refund['force'] ?? false)) {
+                $existDoc = Db::name('refund')->where('refund_no', $refund['refund_no'])->find();
+                if (!empty($existDoc)
+                    && in_array(intval($existDoc['status']), [RefundStatus::WAIT_AUDIT, RefundStatus::RETURNING], true)) {
+                    throw new \Exception('该订单存在待处理的售后申请，请先完成审核');
+                }
+            }
             $channel = $this->resolveChannel($refundTo);
             // 打款前预建退款单：先落库再调用渠道，崩溃后可按单号对账并幂等重试
             $outRefundNo = $refundTo === 1 ? (string)$refund['refund_no'] : null;
@@ -297,6 +306,10 @@ class RefundExecutor
 
     /**
      * 查询同一订单已完成的外部/余额退款流水（旧链路可能已打款但订单状态未收敛）
+     *
+     * 必须排除业务分账/佣金类收入流水：预约等应用的分账流水同为
+     * app + type=2 + status=1，仅凭订单号匹配会把「服务人员收入」误判为「已退款」，
+     * 导致退款被静默收敛（不真实打款）。退款流水 uid 恒为订单用户，分账流水 uid 为服务人员。
      */
     private function findCompletedFlow(array $order, string $app): array
     {
@@ -304,8 +317,11 @@ class RefundExecutor
             ->where('order_no', (string)($order['order_no'] ?? ''))
             ->where('shopid', intval($order['shopid'] ?? 0))
             ->where('app', $app)
+            ->where('uid', intval($order['uid'] ?? 0))
             ->where('type', 2)
             ->where('status', 1)
+            ->where('remark', 'not like', '%的收入%')
+            ->where('remark', 'not like', '%佣金%')
             ->find() ?: []);
     }
 
