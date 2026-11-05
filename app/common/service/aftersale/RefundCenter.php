@@ -17,11 +17,30 @@ use app\common\service\aftersale\policy\PolicyRegistry;
 class RefundCenter
 {
     /**
+     * 不支持用户端申请售后的应用
+     *
+     * 虚拟商品（课程/直播/试卷/资料）一经购买即发放权益，不支持用户自助申请退款，
+     * 仅保留后台手动退款入口（RefundExecutor::execute / approve）。
+     */
+    public const USER_APPLY_DISABLED_APPS = ['classroom', 'live', 'exam', 'material'];
+
+    /**
      * 指定应用是否已接入售后策略
      */
     public static function supports(string $app): bool
     {
         return PolicyRegistry::supports($app);
+    }
+
+    /**
+     * 指定应用是否禁止用户端申请售后
+     *
+     * @param string $app 应用标识
+     * @return bool
+     */
+    public static function userApplyDisabled(string $app): bool
+    {
+        return in_array($app, self::USER_APPLY_DISABLED_APPS, true);
     }
 
     /**
@@ -55,6 +74,10 @@ class RefundCenter
     {
         $app = (string)($opts['app'] ?? ($order['app'] ?? ''));
         if (!RefundExecutor::enabled() || !self::supports($app)) {
+            // 旧链路不处理积分退回（会把积分数额当作金额退回余额），积分订单仅在新链路生效
+            if ((string)($order['pay_channel'] ?? '') === 'score') {
+                return false;
+            }
             return \app\common\service\OrderRefund::autoRefund($order, $opts);
         }
 
@@ -83,15 +106,18 @@ class RefundCenter
         }
 
         $payChannel = (string)($fresh['pay_channel'] ?? '');
-        if (in_array($payChannel, ['score', 'password'], true)) {
-            // 非资金渠道无真实资金可退
+        if ($payChannel === 'password') {
+            // 口令支付无真实资金可退，也没有积分可返
             return false;
         }
-
-        $amount = max(0, intval($fresh['paid_fee'] ?? 0));
         $channel = (string)($fresh['channel'] ?? '');
-        // 仅真实在线支付可原路退回；余额支付直接退余额
-        $canOriginal = $amount > 0 && $channel !== '' && $channel !== 'balance'
+        // 积分支付订单退回积分，不参与原路退回
+        $isScore = $payChannel === 'score' || $channel === 'score';
+
+        // 自动退款金额与各应用策略保持一致（如商城扣除不退的运费），避免与执行器金额复核冲突
+        $amount = PolicyRegistry::resolve($app)->refundableAmount($fresh);
+        // 仅真实在线支付可原路退回；余额/积分支付直接退回对应账户
+        $canOriginal = !$isScore && $amount > 0 && $channel !== '' && $channel !== 'balance'
             && $payChannel !== '' && $payChannel !== 'balance';
 
         $params = [
@@ -125,8 +151,8 @@ class RefundCenter
             }
         }
 
-        // 实付 0 的订单无资金可退，走线下登记以收回权益（与旧状态机口径一致）
-        $target = $amount > 0 ? 0 : 2;
+        // 积分订单退回积分；实付 0 的订单无资金可退，走线下登记以收回权益（与旧状态机口径一致）
+        $target = $isScore ? 3 : ($amount > 0 ? 0 : 2);
         try {
             (new RefundExecutor())->execute($fresh, $params + ['refund_to' => $target]);
             return true;
@@ -171,6 +197,10 @@ class RefundCenter
         $app = (string)($fresh['app'] ?? '');
         if (!RefundExecutor::enabled() || !self::supports($app)) {
             throw new \Exception('该应用暂未接入售后申请流程');
+        }
+        // 虚拟商品不支持用户端申请售后，仅支持后台手动退款
+        if (self::userApplyDisabled($app)) {
+            throw new \Exception('该商品不支持在线申请退款，如需退款请联系客服');
         }
 
         $policy = PolicyRegistry::resolve($app);
@@ -302,6 +332,295 @@ class RefundCenter
     }
 
     /**
+     * 惰性补建售后单（历史数据迁移）
+     *
+     * 接入统一售后前，退款申请只写订单 refund=1/2，没有对应售后单，后台既看不到申请记录，
+     * 也无法走统一审核打款。后台处理这类订单时按订单当前退款状态补建售后单
+     * （申请中→待审核，退货中→退货中）；已存在售后单时原样返回，不做任何改动。
+     *
+     * @param array $order 订单数据（需含 id 或 order_no）
+     * @return string|null 售后单号，无需补建时返回 null
+     * @throws \Exception
+     */
+    public static function ensureDoc(array $order): ?string
+    {
+        $orderId = intval($order['id'] ?? 0);
+        $orderNo = (string)($order['order_no'] ?? '');
+        if ($orderId <= 0 && $orderNo === '') {
+            return null;
+        }
+
+        $fresh = $orderId > 0
+            ? Db::name('orders')->where('id', $orderId)->find()
+            : Db::name('orders')->where('order_no', $orderNo)->find();
+        if (empty($fresh)) {
+            return null;
+        }
+        $app = (string)($fresh['app'] ?? '');
+        if (!RefundExecutor::enabled() || !self::supports($app)) {
+            return null;
+        }
+        // 仅申请中/退货中的历史订单需要补建，其他状态说明没有在途售后
+        $orderRefund = intval($fresh['refund'] ?? 0);
+        if (!in_array($orderRefund, [1, 2], true)) {
+            return null;
+        }
+
+        $refundNo = self::buildRefundNo($app, (string)$fresh['order_no']);
+        Db::startTrans();
+        try {
+            $exist = Db::name('refund')->where('refund_no', $refundNo)->lock(true)->find();
+            if (!empty($exist)) {
+                Db::commit();
+                return (string)$exist['refund_no'];
+            }
+
+            $policy = PolicyRegistry::resolve($app);
+            $amount = $policy->refundableAmount($fresh);
+            $target = self::decideTarget($fresh, $policy, $amount);
+            // 订单已处于退货中时补建为退货中，后续可直接「确认收货并打款」
+            $status = $orderRefund === 2 ? RefundStatus::RETURNING : RefundStatus::WAIT_AUDIT;
+            $now = time();
+            (new Refund())->edit([
+                'refund_no'     => $refundNo,
+                'order_no'      => (string)$fresh['order_no'],
+                'order_id'      => intval($fresh['id'] ?? 0),
+                'app'           => $app,
+                'shopid'        => intval($fresh['shopid'] ?? 0),
+                'uid'           => intval($fresh['uid'] ?? 0),
+                'type'          => 1,
+                'status'        => $status,
+                'order_fee'     => intval($fresh['paid_fee'] ?? 0),
+                'refund_fee'    => $amount,
+                'refund_to'     => $target,
+                'reason'        => '历史退款申请补建',
+                'source'        => 2,
+                'complete_time' => 0,
+                'create_time'   => $now,
+                'update_time'   => $now,
+            ]);
+            RefundLog::write($refundNo, (string)$fresh['order_no'], 0, $status, '历史退款申请补建售后单', '', 2, 0);
+            Db::commit();
+        } catch (\Throwable $e) {
+            Db::rollback();
+            // 并发补建：唯一键冲突说明另一方已补建成功，按幂等返回
+            if (self::isDuplicateKey($e)) {
+                return $refundNo;
+            }
+            throw $e;
+        }
+
+        Log::info('[售后] 历史退款申请补建售后单，order_no=' . $fresh['order_no'] . '，refund_no=' . $refundNo);
+        return $refundNo;
+    }
+
+    /**
+     * 重新处理已结束的售后单（后台人工重开）
+     *
+     * 拒绝/打款失败关闭的售后单在订单侧已恢复为未申请状态，后台没有入口再次处理，
+     * 只能等用户重新申请。由管理员显式重开后回到「待审核」，订单同步回到「申请中」，
+     * 之后可正常走审核打款流程。
+     *
+     * @param string $refundNo 退款单号
+     * @param array  $operator 操作人信息（id）
+     * @param string $remark   重开原因
+     * @return array refund_no / status / refund_to / refund_fee
+     * @throws \Exception
+     */
+    public static function reopen(string $refundNo, array $operator = [], string $remark = ''): array
+    {
+        if ($refundNo === '') {
+            throw new \Exception('退款单号不能为空');
+        }
+
+        Db::startTrans();
+        try {
+            $doc = Db::name('refund')->where('refund_no', $refundNo)->lock(true)->find();
+            if (empty($doc)) {
+                throw new \Exception('售后单不存在');
+            }
+            $from = intval($doc['status']);
+            if (!in_array($from, [RefundStatus::REJECTED, RefundStatus::CLOSED], true)) {
+                throw new \Exception('该售后单当前状态不支持重新处理');
+            }
+            $order = Db::name('orders')->where('order_no', (string)$doc['order_no'])->find();
+            if (empty($order)) {
+                throw new \Exception('订单不存在');
+            }
+            if (intval($order['refund'] ?? 0) === 4) {
+                throw new \Exception('该订单已完成退款，无需重新处理');
+            }
+
+            // 按当前订单重新计算应退金额与去向，避免历史单据金额与最新口径不一致导致执行器拒绝
+            $policy = PolicyRegistry::resolve((string)$doc['app']);
+            $amount = $policy->refundableAmount($order);
+            $target = intval($doc['refund_to']);
+            if (!in_array($target, $policy->allowedTargets($order), true)) {
+                $target = self::decideTarget($order, $policy, $amount);
+            }
+
+            $now = time();
+            Db::name('refund')->where('id', intval($doc['id']))->update([
+                'status'        => RefundStatus::WAIT_AUDIT,
+                'refund_fee'    => $amount,
+                'refund_to'     => $target,
+                'complete_time' => 0,
+                // 重置创建时间，避免超时关闭任务按旧申请时间立即关闭重开的单据
+                'create_time'   => $now,
+                'update_time'   => $now,
+            ]);
+            $affected = Db::name('orders')
+                ->where('id', intval($order['id']))
+                ->where('refund', '<>', 4)
+                ->update(['refund' => 1, 'update_time' => $now]);
+            if (intval($affected) !== 1) {
+                throw new \Exception('订单状态已变更，请刷新后重试');
+            }
+            RefundLog::write($refundNo, (string)$doc['order_no'], $from, RefundStatus::WAIT_AUDIT, '后台重新处理售后', $remark, 2, self::operatorId($operator));
+            Db::commit();
+        } catch (\Throwable $e) {
+            Db::rollback();
+            throw $e;
+        }
+
+        Log::info('[售后] 后台重新处理售后单，refund_no=' . $refundNo);
+        return [
+            'refund_no'  => $refundNo,
+            'status'     => RefundStatus::WAIT_AUDIT,
+            'refund_to'  => intval($target),
+            'refund_fee' => intval($amount),
+        ];
+    }
+
+    /**
+     * 用户查询售后详情与处理进度
+     *
+     * @param string $orderNo 订单号
+     * @param int    $uid     当前用户ID
+     * @return array refund（无售后单时为 null）/ logs
+     * @throws \Exception
+     */
+    public static function userDetail(string $orderNo, int $uid): array
+    {
+        if ($orderNo === '' || $uid <= 0) {
+            throw new \Exception('订单参数错误');
+        }
+        $order = Db::name('orders')->where('order_no', $orderNo)->find();
+        if (empty($order) || intval($order['uid'] ?? 0) !== $uid) {
+            throw new \Exception('订单不存在');
+        }
+        $refund = RefundQuery::latestByOrderNo($orderNo);
+        if (empty($refund)) {
+            return ['refund' => null, 'logs' => []];
+        }
+        $logs = Db::name('refund_log')
+            ->where('refund_no', (string)$refund['refund_no'])
+            ->order('id desc')
+            ->select()
+            ->toArray();
+        $logs = array_map(function (array $log) {
+            return [
+                'action'        => (string)($log['action'] ?? ''),
+                'remark'        => (string)($log['remark'] ?? ''),
+                'operator_type' => intval($log['operator_type'] ?? 0),
+                'create_time'   => !empty($log['create_time']) ? date('Y-m-d H:i:s', intval($log['create_time'])) : '',
+            ];
+        }, $logs);
+        return ['refund' => $refund, 'logs' => $logs];
+    }
+
+    /**
+     * 用户撤销售后申请（仅待审核）
+     *
+     * @param string $refundNo 退款单号
+     * @param int    $uid      当前用户ID
+     * @param string $remark   撤销原因
+     * @return void
+     * @throws \Exception
+     */
+    public static function cancelByUser(string $refundNo, int $uid, string $remark = ''): void
+    {
+        if ($refundNo === '' || $uid <= 0) {
+            throw new \Exception('售后单参数错误');
+        }
+        Db::startTrans();
+        try {
+            $row = Db::name('refund')->where('refund_no', $refundNo)->lock(true)->find();
+            if (empty($row) || intval($row['uid'] ?? 0) !== $uid) {
+                throw new \Exception('售后单不存在');
+            }
+            $from = intval($row['status']);
+            if ($from !== RefundStatus::WAIT_AUDIT) {
+                throw new \Exception('当前售后状态不可撤销，请联系客服');
+            }
+            $now = time();
+            $affected = Db::name('refund')
+                ->where('id', intval($row['id']))
+                ->where('status', RefundStatus::WAIT_AUDIT)
+                ->update([
+                    'status'        => RefundStatus::CLOSED,
+                    'complete_time' => $now,
+                    'update_time'   => $now,
+                ]);
+            if ($affected !== 1) {
+                throw new \Exception('售后单状态已变更，请刷新后重试');
+            }
+            self::updateOrderRefund($row, 0, [1], $now);
+            RefundLog::write($refundNo, (string)$row['order_no'], $from, RefundStatus::CLOSED, '用户撤销售后申请', $remark, 1, $uid);
+            Db::commit();
+        } catch (\Throwable $e) {
+            Db::rollback();
+            throw $e;
+        }
+        Log::info('[售后] 用户撤销售后申请，refund_no=' . $refundNo);
+    }
+
+    /**
+     * 用户填写退货物流（退货中单据）
+     *
+     * @param string $refundNo  退款单号
+     * @param int    $uid       当前用户ID
+     * @param string $company   物流公司
+     * @param string $logisticNo 物流单号
+     * @return array 最新售后单信息
+     * @throws \Exception
+     */
+    public static function submitReturnLogistics(string $refundNo, int $uid, string $company, string $logisticNo): array
+    {
+        $company = trim($company);
+        $logisticNo = trim($logisticNo);
+        if ($refundNo === '' || $uid <= 0) {
+            throw new \Exception('售后单参数错误');
+        }
+        if ($company === '' || $logisticNo === '') {
+            throw new \Exception('请填写退货物流公司与单号');
+        }
+        Db::startTrans();
+        try {
+            $row = Db::name('refund')->where('refund_no', $refundNo)->lock(true)->find();
+            if (empty($row) || intval($row['uid'] ?? 0) !== $uid) {
+                throw new \Exception('售后单不存在');
+            }
+            if (intval($row['status']) !== RefundStatus::RETURNING) {
+                throw new \Exception('当前售后状态无需填写退货物流');
+            }
+            $now = time();
+            Db::name('refund')->where('id', intval($row['id']))->update([
+                'return_company' => $company,
+                'return_no'      => $logisticNo,
+                'return_time'    => $now,
+                'update_time'    => $now,
+            ]);
+            RefundLog::write($refundNo, (string)$row['order_no'], RefundStatus::RETURNING, RefundStatus::RETURNING, '买家填写退货物流', $company . ' ' . $logisticNo, 1, $uid);
+            Db::commit();
+        } catch (\Throwable $e) {
+            Db::rollback();
+            throw $e;
+        }
+        return (array)RefundQuery::latestByOrderNo((string)$row['order_no']);
+    }
+
+    /**
      * 审核通过：状态置「已同意」后走公共执行器打款
      *
      * 原路退回失败且网关未受理时自动回落余额，保证资金不挂账；其他失败保留「已同意」等待重试。
@@ -390,6 +709,8 @@ class RefundCenter
             'source'     => intval($row['source']) ?: 1,
             // 打款前由执行器复核单据仍为「已同意」，避免并发拒绝/关闭后继续打款
             'require_doc_status' => RefundStatus::AGREED,
+            // 透传给策略：确认收到退回商品时允许回补库存（策略会结合持锁后的订单状态复核）
+            'goods_received'     => $goodsReceived,
         ];
         // 退货打款须在持锁重读后确认订单仍为「退货中」，防止并发的关单/取消改变订单状态后仍打款
         if ($waitingReturn) {
@@ -796,9 +1117,16 @@ class RefundCenter
 
     /**
      * 退款去向自动判定：在策略允许的去向范围内按支付能力择优
-     * @return int
+     *
+     * 供后台直退等未走售后单的入口复用，保证「去向判定」只有一份实现。
+     *
+     * @param array $order  订单数据
+     * @param mixed $policy 已解析的退款策略（实现 RefundPolicyInterface）
+     * @param int   $amount 应退金额（分）
+     * @param array $items  退款明细
+     * @return int 退款去向：0余额 1原路 2线下 3积分
      */
-    private static function decideTarget(array $order, $policy, int $amount, array $items = []): int
+    public static function decideTarget(array $order, $policy, int $amount, array $items = []): int
     {
         $allowed = array_values(array_map('intval', (array)$policy->allowedTargets($order)));
         if (empty($allowed)) {

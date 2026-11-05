@@ -3,6 +3,7 @@
 namespace app\common\service\aftersale;
 
 use think\facade\Db;
+use app\common\service\aftersale\policy\PolicyRegistry;
 
 /**
  * 售后单查询
@@ -91,6 +92,35 @@ class RefundQuery
     }
 
     /**
+     * 售后单展示增强
+     *
+     * 统一各端（后台列表/详情、用户端详情）的展示口径：
+     * 积分订单的退款项为积分数量，需按积分展示；同时补充该订单可选的退款去向。
+     *
+     * @param array $info  售后单信息（latestByOrderNo / mapByOrderNos 输出）
+     * @param array $order 订单数据（含 pay_channel / paid_fee / app）
+     * @return array
+     */
+    public static function decorate(array $info, array $order): array
+    {
+        $isScore = (string)($order['pay_channel'] ?? '') === 'score';
+        $info['refund_fee_unit'] = $isScore ? '积分' : '元';
+        if ($isScore) {
+            $info['refund_fee'] = (string)intval($info['refund_fee_fen'] ?? 0);
+        }
+
+        try {
+            $policy = PolicyRegistry::resolve((string)($order['app'] ?? ''));
+            $info['allowed_targets'] = array_values(array_map('intval', (array)$policy->allowedTargets($order)));
+        } catch (\Throwable $e) {
+            // 策略未接入时仅展示，不给出去向选项
+            $info['allowed_targets'] = [];
+        }
+
+        return $info;
+    }
+
+    /**
      * 售后单输出格式化
      */
     private static function format(array $row): array
@@ -108,6 +138,9 @@ class RefundQuery
             'refund_fee_fen'  => intval($row['refund_fee'] ?? 0),
             'reason'          => (string)($row['reason'] ?? ''),
             'source'          => intval($row['source'] ?? 2),
+            'return_company'  => (string)($row['return_company'] ?? ''),
+            'return_no'       => (string)($row['return_no'] ?? ''),
+            'return_time_str' => !empty($row['return_time']) ? date('Y-m-d H:i:s', intval($row['return_time'])) : '',
             'create_time_str' => !empty($row['create_time']) ? date('Y-m-d H:i:s', intval($row['create_time'])) : '',
             'update_time_str' => !empty($row['update_time']) ? date('Y-m-d H:i:s', intval($row['update_time'])) : '',
         ];

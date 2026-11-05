@@ -101,7 +101,10 @@ class OrderRefund
             return true; // 已退款，幂等
         }
 
-        $refundPrice = max(0, intval($order['paid_fee'] ?? 0));
+        // 调用方可按业务口径指定退款金额（如商城运费不退），未指定时按实付全额
+        $refundPrice = isset($opts['refund_fee'])
+            ? max(0, intval($opts['refund_fee']))
+            : max(0, intval($order['paid_fee'] ?? 0));
         $app = (string)($opts['app'] ?? 'common');
         $skipPayChannels = (array)($opts['skipPayChannels'] ?? []);
         $inTxHook = $opts['inTxHook'] ?? null;
@@ -189,11 +192,14 @@ class OrderRefund
             }
 
             // 订单标记已退款（refund_to：0 余额 / 1 原路），并置 paid=0 收回权益，防止退款后仍可使用
+            // refund_fee/refund_status 与统一执行器落库口径一致，避免旧链路漏记已退金额
             Db::name('orders')->where('id', $orderId)->update([
                 'refund'        => 4,
                 'refund_to'     => $refundTo,
                 'refund_no'      => $refundNo,
                 'refund_result'  => $refundResultJson,
+                'refund_fee'     => Db::raw('refund_fee + ' . $refundPrice),
+                'refund_status'  => 3,
                 'paid'          => 0,
                 'update_time'   => time(),
             ]);

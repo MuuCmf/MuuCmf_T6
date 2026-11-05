@@ -464,6 +464,9 @@ CREATE TABLE IF NOT EXISTS `muucmf_refund` (
   `source` tinyint(2) NOT NULL DEFAULT '2' COMMENT '1用户申请 2后台手动 3自动退款',
   `out_refund_no` varchar(64) DEFAULT NULL COMMENT '渠道退款单号（原路退款）',
   `gateway_result` text COMMENT '渠道返回结果JSON',
+  `return_company` varchar(64) NOT NULL DEFAULT '' COMMENT '退货物流公司',
+  `return_no` varchar(64) NOT NULL DEFAULT '' COMMENT '退货物流单号',
+  `return_time` int(11) NOT NULL DEFAULT '0' COMMENT '退货物流填写时间',
   `complete_time` int(11) NOT NULL DEFAULT '0' COMMENT '完成时间',
   `create_time` int(11) NOT NULL DEFAULT '0',
   `update_time` int(11) NOT NULL DEFAULT '0',
@@ -501,6 +504,30 @@ SET @col := (SELECT COUNT(*) FROM information_schema.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_orders' AND COLUMN_NAME = 'refund_status');
 SET @sql := IF(@col = 0,
   'ALTER TABLE `muucmf_orders` ADD COLUMN `refund_status` tinyint(2) NOT NULL DEFAULT ''0'' COMMENT ''退款状态 0未退 1部分退 2退款中 3已全退'' AFTER `refund_fee`',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- ============================================================
+-- 统一售后中心：退货物流回填字段（用户端售后详情/退货使用）
+-- ============================================================
+SET @col := (SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_refund' AND COLUMN_NAME = 'return_company');
+SET @sql := IF(@col = 0,
+  'ALTER TABLE `muucmf_refund` ADD COLUMN `return_company` varchar(64) NOT NULL DEFAULT '''' COMMENT ''退货物流公司'' AFTER `gateway_result`',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @col := (SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_refund' AND COLUMN_NAME = 'return_no');
+SET @sql := IF(@col = 0,
+  'ALTER TABLE `muucmf_refund` ADD COLUMN `return_no` varchar(64) NOT NULL DEFAULT '''' COMMENT ''退货物流单号'' AFTER `return_company`',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @col := (SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_refund' AND COLUMN_NAME = 'return_time');
+SET @sql := IF(@col = 0,
+  'ALTER TABLE `muucmf_refund` ADD COLUMN `return_time` int(11) NOT NULL DEFAULT ''0'' COMMENT ''退货物流填写时间'' AFTER `return_no`',
   'SELECT 1');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
