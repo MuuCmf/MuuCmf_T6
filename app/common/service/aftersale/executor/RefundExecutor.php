@@ -1,0 +1,372 @@
+<?php
+
+namespace app\common\service\aftersale\executor;
+
+use think\facade\Db;
+use think\facade\Log;
+use app\common\model\Refund;
+use app\common\service\aftersale\Lifecycle;
+use app\common\service\aftersale\RefundStatus;
+use app\common\service\aftersale\policy\PolicyRegistry;
+use app\common\service\aftersale\channel\RefundChannelInterface;
+use app\common\service\aftersale\channel\OriginalChannel;
+use app\common\service\aftersale\channel\BalanceChannel;
+use app\common\service\aftersale\channel\OfflineChannel;
+use app\common\service\aftersale\channel\ScoreChannel;
+
+/**
+ * 退款执行器（唯一实现）
+ *
+ * 流程：订单级锁 → 持锁重读 → 幂等检查 → 策略校验 → 金额复核
+ *      → 事务外打款 → 事务内落库与权益收回 → 事务外生命周期回滚
+ *
+ * 各应用差异全部下沉到 RefundPolicyInterface，执行器本身不感知业务规则。
+ */
+class RefundExecutor
+{
+    /**
+     * 售后执行器总开关
+     */
+    public const AFTERSALE_EXECUTOR = true;
+
+    /**
+     * 是否启用新执行器
+     */
+    public static function enabled(): bool
+    {
+        return self::AFTERSALE_EXECUTOR;
+    }
+
+    /**
+     * 只做策略预演，不产生任何资金与写库动作（供双跑比对使用）
+     * @param array $order 订单数据
+     * @param array $refund 退款参数：refund_to / refund_fee / remark
+     * @return array 预演结果
+     * @throws \Exception
+     */
+    public function preview(array $order, array $refund): array
+    {
+        $orderNo = (string)($order['order_no'] ?? '');
+        if ($orderNo === '') {
+            throw new \Exception('订单参数错误');
+        }
+        $app = (string)($order['app'] ?? '');
+        $policy = PolicyRegistry::resolve($app);
+        $policy->validate($order, $refund);
+
+        $refundTo = intval($refund['refund_to'] ?? 0);
+        $targets = $policy->allowedTargets($order);
+        if (!in_array($refundTo, $targets, true)) {
+            throw new \Exception('该订单不支持此退款方式');
+        }
+        $amount = $policy->refundableAmount($order, (array)($refund['items'] ?? []));
+        if ($amount < 0) {
+            throw new \Exception('退款金额异常');
+        }
+        // 与 execute 保持同一口径：余额/原路退款必须有金额
+        if ($amount === 0 && in_array($refundTo, [0, 1], true)) {
+            throw new \Exception('订单实付金额为 0，无需退款');
+        }
+        if (isset($refund['refund_fee']) && intval($refund['refund_fee']) !== $amount) {
+            throw new \Exception('退款金额与应退金额不一致，请刷新后重试');
+        }
+
+        return [
+            'app'        => $app,
+            'refund_to'  => $refundTo,
+            'refund_fee' => $amount,
+            'refund_no'  => self::buildRefundNo($app, $orderNo),
+        ];
+    }
+
+    /**
+     * 执行退款
+     * @param array $order 订单数据（需含 id 或 order_no）
+     * @param array $refund 退款参数：refund_to / refund_fee / remark / source
+     * @return array refund_to / refund_no / refund_result
+     * @throws \Exception
+     */
+    public function execute(array $order, array $refund): array
+    {
+        $orderId = intval($order['id'] ?? 0);
+        $orderNo = (string)($order['order_no'] ?? '');
+        if ($orderId <= 0 && $orderNo === '') {
+            throw new \Exception('订单参数错误');
+        }
+
+        // 订单级互斥：同一订单不同退款单号也只能串行处理，避免重复打款
+        $lockName = 'aftersale:' . substr(md5($orderNo !== '' ? $orderNo : (string)$orderId), 0, 40);
+        $lockResult = Db::query('SELECT GET_LOCK(?, 0) AS locked', [$lockName]);
+        if (empty($lockResult[0]['locked'])) {
+            throw new \Exception('该订单正在退款处理中，请稍后重试');
+        }
+
+        try {
+            // 持锁重读，杜绝旧快照
+            $fresh = $orderId > 0
+                ? Db::name('orders')->where('id', $orderId)->find()
+                : Db::name('orders')->where('order_no', $orderNo)->find();
+            if (empty($fresh)) {
+                throw new \Exception('订单不存在');
+            }
+            $orderNo = (string)$fresh['order_no'];
+
+            // 幂等：已退款直接返回既有结果
+            if (intval($fresh['refund'] ?? 0) === 4) {
+                return [
+                    'refund_to'     => intval($fresh['refund_to'] ?? 0),
+                    'refund_no'     => (string)($fresh['refund_no'] ?? ''),
+                    'refund_result' => (string)($fresh['refund_result'] ?? ''),
+                ];
+            }
+
+            $app = (string)($fresh['app'] ?? '');
+
+            // 已完成退款流水兜底：旧链路已打款但订单未收敛时直接收尾，避免换新单号再次调用网关
+            $completedFlow = $this->findCompletedFlow($fresh, $app);
+            if (!empty($completedFlow)) {
+                return $this->convergeCompleted($fresh, $completedFlow, $refund);
+            }
+
+            $policy = PolicyRegistry::resolve($app);
+            $policy->validate($fresh, $refund);
+
+            $refundTo = intval($refund['refund_to'] ?? 0);
+            if (!in_array($refundTo, $policy->allowedTargets($fresh), true)) {
+                throw new \Exception('该订单不支持此退款方式');
+            }
+            $amount = $policy->refundableAmount($fresh, (array)($refund['items'] ?? []));
+            if ($amount < 0) {
+                throw new \Exception('退款金额异常');
+            }
+            // 原路/余额退款必须有金额；线下与积分渠道允许 0 金额（仅回滚业务）
+            if ($amount === 0 && in_array($refundTo, [0, 1], true)) {
+                throw new \Exception('订单实付金额为 0，无需退款');
+            }
+            // 金额复核：调用方传入与应退金额不一致时直接拒绝，避免静默改金额造成账实不符
+            if (isset($refund['refund_fee']) && intval($refund['refund_fee']) !== $amount) {
+                throw new \Exception('退款金额与应退金额不一致，请刷新后重试');
+            }
+
+            $refund['refund_no'] = self::buildRefundNo($app, $orderNo);
+            $channel = $this->resolveChannel($refundTo);
+            // 打款前预建退款单：先落库再调用渠道，崩溃后可按单号对账并幂等重试
+            $outRefundNo = $refundTo === 1 ? (string)$refund['refund_no'] : null;
+            (new Refund())->createPending((string)$refund['refund_no'], $fresh, $refund, $amount, $refundTo, $outRefundNo);
+
+            // 事务外：外部网关调用，避免长事务占用数据库连接
+            try {
+                $transferResult = $channel->transfer($fresh, $refund, $amount);
+            } catch (\Throwable $e) {
+                (new Refund())->markClosed((string)$refund['refund_no'], $e->getMessage());
+                throw $e;
+            }
+
+            // 事务内：本地落账 + 订单状态 + 权益收回
+            $finalRefundNo = (string)$refund['refund_no'];
+            Db::startTrans();
+            try {
+                $settleResult = $channel->settle($fresh, $refund, $amount, $transferResult);
+                $refundResultJson = json_encode($settleResult, JSON_UNESCAPED_UNICODE);
+                // 余额退款沿用资金流水号作为退款单号，保持与旧链路对账口径一致
+                if ($refundTo === 0 && !empty($settleResult['flow_no'])) {
+                    $finalRefundNo = (string)$settleResult['flow_no'];
+                }
+                $affected = Db::name('orders')
+                    ->where('id', intval($fresh['id']))
+                    ->where('paid', 1)
+                    ->where('refund', '<>', 4)
+                    ->update([
+                        'refund'        => 4,
+                        'refund_to'     => $refundTo,
+                        'refund_no'     => $finalRefundNo,
+                        'refund_result' => $refundResultJson,
+                        'refund_fee'    => Db::raw('refund_fee + ' . $amount),
+                        'refund_status' => 3,
+                        'paid'          => 0,
+                        'update_time'   => time(),
+                    ]);
+                if (intval($affected) !== 1) {
+                    throw new \Exception('订单状态已变更，请刷新后重试');
+                }
+                // 售后单与订单同事务收敛，避免「流水已完成但订单未更新」
+                (new Refund())->markCompleted((string)$refund['refund_no'], $settleResult, $amount, $refundTo === 1 ? $finalRefundNo : null);
+                $policy->onRefundedInTx($fresh, $refund);
+                Db::commit();
+            } catch (\Throwable $e) {
+                Db::rollback();
+                throw $e;
+            }
+
+            // 事务外：统一营销占用回滚与分销佣金冲正，失败仅记录日志，不阻断已完成的退款
+            try {
+                Lifecycle::rollback($orderNo, intval($fresh['shopid'] ?? 0), Lifecycle::MODE_REFUND, true);
+            } catch (\Throwable $e) {
+                Log::warning('[售后] 生命周期回滚失败，order_no=' . $orderNo . '：' . $e->getMessage());
+            }
+            try {
+                $policy->onRefundedAfterTx($fresh, $refund);
+            } catch (\Throwable $e) {
+                Log::warning('[售后] 事务后钩子失败，order_no=' . $orderNo . '：' . $e->getMessage());
+            }
+
+            Log::info('[售后] 退款完成，order_no=' . $orderNo . '，refund_to=' . $refundTo . '，refund_no=' . $finalRefundNo);
+
+            return [
+                'refund_to'     => $refundTo,
+                'refund_no'     => $finalRefundNo,
+                'refund_result' => $refundResultJson,
+            ];
+        } finally {
+            try {
+                Db::query('SELECT RELEASE_LOCK(?)', [$lockName]);
+            } catch (\Throwable $e) {
+                Log::warning('[售后] 释放退款锁失败，order_no=' . $orderNo . '：' . $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * 固定派生退款单号：重试复用同一 out_refund_no，支付网关幂等去重
+     *
+     * 过渡期按应用沿用旧实现的派生规则，避免灰度切换后与在途退款生成不同单号而重复打款。
+     */
+    public static function buildRefundNo(string $app, string $orderNo): string
+    {
+        switch ($app) {
+            case 'classroom':
+                return 'cr' . substr(md5('classroom_refund_' . $orderNo), 0, 30);
+            case 'exam':
+                return 'er' . substr(md5('exam_refund_' . $orderNo), 0, 30);
+            case 'material':
+                return 'mr' . substr(md5('material_refund_' . $orderNo), 0, 30);
+            case 'live':
+                return 'lr' . substr(md5('live_refund_' . $orderNo), 0, 30);
+            case 'appstore':
+                return 'as' . substr(md5('appstore_refund_' . $orderNo), 0, 30);
+            case 'reservation':
+                return 'RF' . substr(md5('reservation|' . $orderNo), 0, 30);
+            case 'activity':
+                return 'RF' . substr(md5('activity|' . $orderNo), 0, 30);
+            default:
+                return 'RF' . substr(md5($app . '|' . $orderNo), 0, 30);
+        }
+    }
+
+    /**
+     * 查询同一订单已完成的外部/余额退款流水（旧链路可能已打款但订单状态未收敛）
+     */
+    private function findCompletedFlow(array $order, string $app): array
+    {
+        return (array)(Db::name('capital_flow')
+            ->where('order_no', (string)($order['order_no'] ?? ''))
+            ->where('shopid', intval($order['shopid'] ?? 0))
+            ->where('app', $app)
+            ->where('type', 2)
+            ->where('status', 1)
+            ->find() ?: []);
+    }
+
+    /**
+     * 按已完成流水收尾：不重复打款，只收敛订单状态与权益
+     */
+    private function convergeCompleted(array $order, array $completed, array $refund): array
+    {
+        $orderNo = (string)($order['order_no'] ?? '');
+        $flowNo = (string)($completed['flow_no'] ?? '');
+        $refundTo = (string)($completed['channel'] ?? '') === 'balance' ? 0 : 1;
+        $refundResultJson = json_encode([
+            'channel' => (string)($completed['channel'] ?? ''),
+            'flow_no' => $flowNo,
+        ], JSON_UNESCAPED_UNICODE);
+
+        $policy = PolicyRegistry::resolve((string)($order['app'] ?? ''));
+        $amount = intval($completed['price'] ?? ($order['paid_fee'] ?? 0));
+        $businessRefundNo = self::buildRefundNo((string)($order['app'] ?? ''), $orderNo);
+        Db::startTrans();
+        try {
+            $affected = Db::name('orders')
+                ->where('id', intval($order['id'] ?? 0))
+                ->where('paid', 1)
+                ->where('refund', '<>', 4)
+                ->update([
+                    'refund'        => 4,
+                    'refund_to'     => $refundTo,
+                    'refund_no'     => $flowNo,
+                    'refund_result' => $refundResultJson,
+                    'refund_fee'    => Db::raw('refund_fee + ' . $amount),
+                    'refund_status' => 3,
+                    'paid'          => 0,
+                    'update_time'   => time(),
+                ]);
+            if (intval($affected) === 1) {
+                (new Refund())->recordCompleted($businessRefundNo, $order, $refund, $amount, $refundTo, [
+                    'channel' => (string)($completed['channel'] ?? ''),
+                    'flow_no' => $flowNo,
+                ]);
+                $policy->onRefundedInTx($order, $refund);
+            }
+            Db::commit();
+        } catch (\Throwable $e) {
+            Db::rollback();
+            throw $e;
+        }
+
+        try {
+            Lifecycle::rollback($orderNo, intval($order['shopid'] ?? 0), Lifecycle::MODE_REFUND, true);
+        } catch (\Throwable $e) {
+            Log::warning('[售后] 已完成流水收尾时生命周期回滚失败，order_no=' . $orderNo . '：' . $e->getMessage());
+        }
+        try {
+            $policy->onRefundedAfterTx($order, $refund);
+        } catch (\Throwable $e) {
+            Log::warning('[售后] 已完成流水收尾时事务后钩子失败，order_no=' . $orderNo . '：' . $e->getMessage());
+        }
+
+        Log::info('[售后] 按已完成流水收尾，order_no=' . $orderNo . '，refund_no=' . $flowNo);
+        return [
+            'refund_to'     => $refundTo,
+            'refund_no'     => $flowNo,
+            'refund_result' => $refundResultJson,
+        ];
+    }
+
+    /**
+     * 双跑比对：用新执行器的策略预演结果与旧实现实际结果对比
+     * 只记录日志，不产生资金动作
+     */
+    public static function shadowCompare(string $tag, array $order, array $refund, int $oldAmount, string $oldRefundNo): void
+    {
+        try {
+            $preview = (new self())->preview($order, $refund);
+        } catch (\Throwable $e) {
+            Log::warning('[售后双跑][' . $tag . '] 预演失败，order_no=' . (string)($order['order_no'] ?? '') . '：' . $e->getMessage());
+            return;
+        }
+        $matched = intval($preview['refund_fee']) === $oldAmount;
+        Log::info('[售后双跑][' . $tag . '] order_no=' . (string)($order['order_no'] ?? '')
+            . ' target=' . intval($refund['refund_to'] ?? 0) . '/' . intval($preview['refund_to'])
+            . ' amount=' . $oldAmount . '/' . intval($preview['refund_fee'])
+            . ' refund_no=' . $oldRefundNo . '/' . (string)$preview['refund_no']
+            . ' matched=' . ($matched ? 1 : 0));
+    }
+
+    /**
+     * 退款去向 → 渠道实现
+     */
+    private function resolveChannel(int $refundTo): RefundChannelInterface
+    {
+        switch ($refundTo) {
+            case 1:
+                return new OriginalChannel();
+            case 0:
+                return new BalanceChannel();
+            case 2:
+                return new OfflineChannel();
+            case 3:
+                return new ScoreChannel();
+            default:
+                throw new \Exception('不支持的退款去向：' . $refundTo);
+        }
+    }
+}

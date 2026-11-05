@@ -9,21 +9,19 @@ use think\facade\Log;
 use app\common\facade\channel\Channel as ChannelServer;
 use app\common\facade\channel\Pay as PayServer;
 use app\common\controller\Api;
-use app\common\model\CapitalFlow;
 use app\common\model\MemberSync;
-use app\common\model\MemberWallet;
 use app\common\model\Orders as OrdersModel;
 use app\common\facade\wechat\OfficialAccount;
 use app\common\facade\wechat\MiniProgram as WeixinMiniProgramServer;
 use app\common\facade\bytedance\MiniProgram as DouyinMiniProgramServer;
 use app\common\facade\baidu\MiniProgram as BaiduMiniProgramServer;
+use app\common\service\aftersale\RefundCenter;
 
 
 class Pay extends Api
 {
     private OrdersModel $OrderModel; //订单模型
     private $OrderLogic; //订单逻辑
-    private CapitalFlow $CapitalFlowModel; //资金流模型
     protected $middleware = [
         'app\\common\\middleware\\CheckAuth' => ['only' => 'pay,refund,close,query'],
     ];
@@ -32,7 +30,6 @@ class Pay extends Api
     {
         parent::__construct();
         $this->OrderModel = new OrdersModel();
-        $this->CapitalFlowModel = new CapitalFlow();
     }
 
     /**
@@ -298,16 +295,12 @@ class Pay extends Api
     }
 
     /**
-     * 退款
+     * 退款申请（兼容旧客户端入口）
+     * 仅生成待审核售后单，不在此接口直接改状态或打款
      */
     public function refund()
     {
         if (request()->isAjax()) {
-            // 退款状态值白名单（0未申请 1申请中 2退货中 3已退货 4退款完成）
-            $refund_status = intval($this->params['refund'] ?? 0);
-            if (!in_array($refund_status, [0, 1, 2, 3, 4], true)) {
-                return $this->error('非法退款状态');
-            }
             // 越权防护：校验退款订单归属当前登录用户，防止操作他人订单
             $uid = get_uid();
             $order_no = isset($this->params['order_no']) ? (string)$this->params['order_no'] : '';
@@ -321,6 +314,10 @@ class Pay extends Api
                 return $this->error('参数错误');
             }
             $refund_order = $query->find();
+            // 模型对象统一转为数组：售后执行器以数组契约接收订单，避免类型错误
+            if (is_object($refund_order) && method_exists($refund_order, 'toArray')) {
+                $refund_order = $refund_order->toArray();
+            }
             if (!$refund_order || $refund_order['uid'] != $uid) {
                 return $this->error('无权操作该订单');
             }
@@ -328,121 +325,19 @@ class Pay extends Api
             if ((string)$refund_order['app'] === 'appstore') {
                 return $this->error('应用商店订单不支持申请退款');
             }
-            // 以数据库订单为准，避免调用方伪造 shopid/app 等参数
-            $this->params['order_no'] = $refund_order['order_no'];
-            $this->params['shopid'] = $refund_order['shopid'];
-            $this->params['app'] = $refund_order['app'];
-
-            // 初始化订单逻辑层（按订单 app 实例化，应用名白名单校验；修复此前 OrderLogic 未初始化导致的 Fatal Error）
-            if (empty($this->OrderLogic)) {
-                $app_name = isset($this->params['app']) ? (string)$this->params['app'] : '';
-                if (!preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $app_name)) {
-                    return $this->error('订单应用标识不合法');
-                }
-                $order_namespace = "app\\{$app_name}\\logic\\Orders";
-                if (!class_exists($order_namespace)) {
-                    return $this->error('订单应用逻辑不存在');
-                }
-                $this->OrderLogic = new $order_namespace;
+            // 通用入口仅开放 minishop 用户提交售后申请：统一生成待审核售后单，
+            // 禁止通过该入口直接修改退款状态或触发打款，避免绕过商家后台审核。
+            if ((string)$refund_order['app'] !== 'minishop') {
+                return $this->error('该订单暂不支持在线申请退款，请联系商家处理');
             }
-
-            //开启事务
-            Db::startTrans();
             try {
-                $refund_to = $this->params['refund_to'] ?? 1;
-                //处理订单业务
-                $refund_info = $this->OrderLogic->refund($this->params);
-                //更改订单状态（保持原 status 不变，退款状态由 refund 字段表达，对齐 appstore 行为）
-                $order_data = [
-                    'id' => $refund_info['order_id'],
-                    'refund' => $this->params['refund'],
-                    'refund_to' => $refund_to,
-                ];
-
-                //4为退款流程，其他只更改订单状态
-                if ($this->params['refund'] == 4) {
-                    //是否已有退款记录（限定 type=2 退款流水，避免误匹配其他类型流水）
-                    $map = [
-                        ['order_no', '=', $refund_info['order_no']],
-                        ['shopid', '=', $this->params['shopid']],
-                        ['app', '=', $this->params['app']],
-                        ['type', '=', 2],
-                    ];
-                    $has_refund = $this->CapitalFlowModel->getDataByMap($map);
-                    if ($has_refund) {
-                        if (is_object($has_refund)) $has_refund = $has_refund->toArray();
-                        $refund_info['refund_no'] = $has_refund['flow_no'];
-                    } else {
-                        //订单流水
-                        $flow_no = $this->CapitalFlowModel->createFlow([
-                            'uid' => $refund_info['uid'],
-                            'order_no' => $refund_info['order_no'],
-                            'price' => $refund_info['refund_fee'],
-                            'shopid' => $this->params['shopid'],
-                            'app' => $this->params['app'],
-                            'channel' => $refund_to == 0 ? 'balance' : $refund_info['channel'],
-                            'type' => 2,
-                            'status' => 0
-                        ]);
-                        if ($flow_no) {
-                            $refund_info['refund_no'] = $flow_no;
-                        } else {
-                            throw new Exception('创建退款订单失败');
-                        }
-                    }
-                    if (!$has_refund || $has_refund['status'] == 0) {
-                        //退款逻辑
-                        if ($refund_to == 0) {
-                            //退款至用户账户（income 参数顺序：shopid, uid, money；修复此前参数错位导致资金入错账户）
-                            $result = (new MemberWallet())->income($this->params['shopid'], $refund_info['uid'], $refund_info['refund_fee'], false);
-                        } else {
-                            //退款至付款账户（使用订单实际渠道与订单 shopid，防止渠道/商户参数被用户篡改）
-                            $config = ChannelServer::config($refund_info['channel'], intval($this->params['shopid'] ?? 0));
-                            $PayService = PayServer::init($config['appid'], $this->params['pay_channel']);
-                            if (!$PayService || !$PayService->server) {
-                                throw new Exception('支付服务初始化失败');
-                            }
-                            $result = $PayService->server->refund($refund_info);
-                        }
-                        if (!$result) {
-                            throw new Exception('网络异常，请稍后再试');
-                        }
-                        //更改流水状态
-                        $this->CapitalFlowModel->where('flow_no', $refund_info['refund_no'])->update([
-                            'update_time' => time(),
-                            'status' => 1
-                        ]);
-                    }
-
-                    // 各应用业务回滚钩子（如活动撤销核销码、回退销量/积分；无此方法的模块自动跳过）
-                    $app_refund_service = 'app\\' . $this->params['app'] . '\\service\\Orders';
-                    if (class_exists($app_refund_service) && method_exists($app_refund_service, 'refundRollback')) {
-                        (new $app_refund_service)->refundRollback($refund_order);
-                    }
-
-                    $order_data['refund_no'] =  $refund_info['refund_no'];
-
-                    // 分销：退款完成后冲正已发放的推广佣金（幂等；失败仅记录日志，不阻断用户退款）
-                    // 模块卸载后类文件可能仍残留，需同时校验安装状态
-                    $distribution_class = 'app\\distribution\\service\\Orders';
-                    if (class_exists($distribution_class) && (new \app\common\model\Module())->checkInstalled('distribution')) {
-                        $distribution_class::revert(intval($this->params['shopid']), $refund_info['order_no']);
-                    }
-                }
-
-                $this->OrderModel->edit($order_data);
-                Db::commit();
-
-                // SCRM 业务事件接入：退款完成（refund=4）后回流订单事件，失败不影响退款主流程
-                if ((int)$this->params['refund'] === 4) {
-                    $this->pushScrmBusinessEvent('refund', $refund_order, $refund_info);
-                }
-
-                return $this->success('处理成功');
-            } catch (Exception $e) {
-                Db::rollback();
+                $result = RefundCenter::apply($refund_order, [
+                    'remark' => (string)($this->params['remark'] ?? ''),
+                ]);
+            } catch (\Throwable $e) {
                 return $this->error($e->getMessage());
             }
+            return $this->success('退款申请已提交，请等待商家审核', $result);
         }
     }
 

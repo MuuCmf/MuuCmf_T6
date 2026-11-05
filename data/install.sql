@@ -510,7 +510,8 @@ INSERT INTO `muucmf_crontab` (`id`, `shopid`, `title`, `description`, `execute`,
 (1, 0, '云小店订单自动确认收货', '订单收货确认用户未处理，系统默认7天后自动处理', 'app\\minishop\\crontab\\Receive', 'minute-n', 1, 1, 1, 1, 1645689347, 1645782464),
 (2, 0, '订单自动评价', '订单收货后用户未评价，系统默认7天后自动好评', 'app\\common\\crontab\\Evaluate', 'minute-n', 1, 1, 1, 1, 1645782483, 1645782483),
 (5, 0, '订单24小时自动取消', '订单下单后24小时内未支付，系统自动取消', 'app\\common\\crontab\\Orders', 'hour-n', 1, 1, 1, 1, 1745882710, 1745882794),
-(6, 0, 'Sitemap自动生成', '汇总框架核心页面与已安装应用页面生成 public/sitemap.xml，并同步 robots.txt 的 Sitemap 声明', 'app\\common\\crontab\\Sitemap', 'day', 0, 3, 30, 1, 1759104000, 1759104000);
+(6, 0, 'Sitemap自动生成', '汇总框架核心页面与已安装应用页面生成 public/sitemap.xml，并同步 robots.txt 的 Sitemap 声明', 'app\\common\\crontab\\Sitemap', 'day', 0, 3, 30, 1, 1759104000, 1759104000),
+(7, 0, '售后退款审核超时自动关闭', '用户申请售后超过配置小时数仍未审核，系统自动关闭退款单并释放订单申请状态', 'app\\common\\crontab\\Refund', 'hour-n', 1, 1, 1, 1, 1793880000, 1793880000);
 
 -- --------------------------------------------------------
 
@@ -1232,6 +1233,8 @@ CREATE TABLE IF NOT EXISTS `muucmf_orders` (
   `refund_to` tinyint(4) NOT NULL DEFAULT '1' COMMENT '退款至 0：用户余额 1：原路退回',
   `refund_no` varchar(128) DEFAULT NULL COMMENT '退款单号',
   `refund_result` TEXT NULL COMMENT '退款成功平台返回数据',
+  `refund_fee` int(11) NOT NULL DEFAULT '0' COMMENT '已退金额',
+  `refund_status` tinyint(2) NOT NULL DEFAULT '0' COMMENT '退款状态 0未退 1部分退 2退款中 3已全退',
   `remark` varchar(500) DEFAULT NULL COMMENT '备注',
   `receipt` varchar(255) DEFAULT NULL COMMENT '发票抬头',
   `ip` varchar(128) NOT NULL DEFAULT '' COMMENT 'ip地址',
@@ -1259,6 +1262,61 @@ CREATE TABLE IF NOT EXISTS `muucmf_qrcode_login` (
   `update_time` int(11) UNSIGNED NOT NULL COMMENT '更新时间',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='扫码登录' ROW_FORMAT=COMPACT;
+
+-- --------------------------------------------------------
+
+--
+-- 表的结构 `muucmf_refund`
+--
+DROP TABLE IF EXISTS `muucmf_refund`;
+CREATE TABLE IF NOT EXISTS `muucmf_refund` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `refund_no` varchar(64) NOT NULL DEFAULT '' COMMENT '业务退款单号（幂等键）',
+  `order_no` varchar(128) NOT NULL DEFAULT '' COMMENT '订单号',
+  `order_id` int(11) NOT NULL DEFAULT '0' COMMENT '订单ID',
+  `app` varchar(50) NOT NULL DEFAULT '' COMMENT '应用标识',
+  `shopid` int(11) NOT NULL DEFAULT '0' COMMENT '站点ID',
+  `uid` int(11) NOT NULL DEFAULT '0' COMMENT '用户ID',
+  `type` tinyint(2) NOT NULL DEFAULT '1' COMMENT '1整单退 2部分退',
+  `status` tinyint(2) NOT NULL DEFAULT '0' COMMENT '0待审核 1已同意 2已拒绝 3打款中 4已完成 5已关闭',
+  `order_fee` int(11) NOT NULL DEFAULT '0' COMMENT '订单实付金额',
+  `refund_fee` int(11) NOT NULL DEFAULT '0' COMMENT '本次退款金额',
+  `refund_to` tinyint(2) NOT NULL DEFAULT '0' COMMENT '0退余额 1原路退回 2线下退款 3退积分',
+  `reason` varchar(255) NOT NULL DEFAULT '' COMMENT '退款原因/备注',
+  `source` tinyint(2) NOT NULL DEFAULT '2' COMMENT '1用户申请 2后台手动 3自动退款',
+  `out_refund_no` varchar(64) DEFAULT NULL COMMENT '渠道退款单号（原路退款）',
+  `gateway_result` text COMMENT '渠道返回结果JSON',
+  `complete_time` int(11) NOT NULL DEFAULT '0' COMMENT '完成时间',
+  `create_time` int(11) NOT NULL DEFAULT '0',
+  `update_time` int(11) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_refund_no` (`refund_no`),
+  KEY `idx_order_no` (`order_no`),
+  KEY `idx_order_id` (`order_id`),
+  KEY `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='售后退款单' ROW_FORMAT=COMPACT;
+
+-- --------------------------------------------------------
+
+--
+-- 表的结构 `muucmf_refund_log`
+--
+DROP TABLE IF EXISTS `muucmf_refund_log`;
+CREATE TABLE IF NOT EXISTS `muucmf_refund_log` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `refund_no` varchar(64) NOT NULL DEFAULT '' COMMENT '业务退款单号',
+  `order_no` varchar(128) NOT NULL DEFAULT '' COMMENT '订单号',
+  `from_status` tinyint(2) NOT NULL DEFAULT '0' COMMENT '原状态',
+  `to_status` tinyint(2) NOT NULL DEFAULT '0' COMMENT '新状态',
+  `action` varchar(64) NOT NULL DEFAULT '' COMMENT '动作说明',
+  `operator_type` tinyint(2) NOT NULL DEFAULT '0' COMMENT '0系统 1用户 2管理员',
+  `operator_id` int(11) NOT NULL DEFAULT '0' COMMENT '操作人ID',
+  `remark` varchar(255) NOT NULL DEFAULT '' COMMENT '备注/失败原因',
+  `create_time` int(11) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  KEY `idx_refund_no` (`refund_no`),
+  KEY `idx_order_no` (`order_no`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='售后退款状态流转日志' ROW_FORMAT=COMPACT;
 
 -- --------------------------------------------------------
 
@@ -1596,6 +1654,12 @@ CREATE TABLE IF NOT EXISTS `muucmf_wechat_work_config` (
   `corp_id` varchar(128) NOT NULL COMMENT '企业ID',
   `agent_id` varchar(40) NOT NULL COMMENT '应用ID',
   `secret` varchar(60) NOT NULL COMMENT '应用密匙',
+  `customer_secret` varchar(128) NOT NULL DEFAULT '' COMMENT '客户联系Secret',
+  `customer_token` varchar(64) NOT NULL DEFAULT '' COMMENT '客户联系回调Token',
+  `customer_aes_key` varchar(64) NOT NULL DEFAULT '' COMMENT '客户联系回调EncodingAESKey',
+  `staff_scope` text COMMENT '员工可见范围JSON',
+  `archive_secret` varchar(128) NOT NULL DEFAULT '' COMMENT '会话存档Secret',
+  `archive_status` tinyint(2) NOT NULL DEFAULT '0' COMMENT '会话存档 0关闭 1开启',
   `encoding_aes_key` varchar(64) NOT NULL DEFAULT '' COMMENT '消息加密',
   `token` varchar(64) NOT NULL DEFAULT '' COMMENT '验证token',
   `create_time` int(11) NOT NULL COMMENT '创建日期',

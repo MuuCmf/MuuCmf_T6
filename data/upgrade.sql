@@ -442,3 +442,124 @@ ALTER TABLE `muucmf_orders` ADD `groupbuy_id` INT(11) UNSIGNED NOT NULL DEFAULT 
 ALTER TABLE `muucmf_orders` ADD `group_fee` INT(11) NOT NULL DEFAULT '0' COMMENT '拼团优惠金额（分）' AFTER `groupbuy_id`;
 ALTER TABLE `muucmf_orders` ADD `group_title` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '拼团活动标题快照' AFTER `group_fee`;
 
+
+-- -----------------------------
+-- 企业微信配置表扩展：客户联系独立 secret 与独立回调配置
+-- 客户联系接口必须使用 customer_secret，禁止复用应用 secret
+-- -----------------------------
+SET @col := (SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_wechat_work_config' AND COLUMN_NAME = 'customer_secret');
+SET @sql := IF(@col = 0,
+  'ALTER TABLE `muucmf_wechat_work_config` ADD COLUMN `customer_secret` varchar(128) NOT NULL DEFAULT '''' COMMENT ''客户联系Secret'' AFTER `secret`',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @col := (SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_wechat_work_config' AND COLUMN_NAME = 'customer_token');
+SET @sql := IF(@col = 0,
+  'ALTER TABLE `muucmf_wechat_work_config` ADD COLUMN `customer_token` varchar(64) NOT NULL DEFAULT '''' COMMENT ''客户联系回调Token'' AFTER `customer_secret`',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @col := (SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_wechat_work_config' AND COLUMN_NAME = 'customer_aes_key');
+SET @sql := IF(@col = 0,
+  'ALTER TABLE `muucmf_wechat_work_config` ADD COLUMN `customer_aes_key` varchar(64) NOT NULL DEFAULT '''' COMMENT ''客户联系回调EncodingAESKey'' AFTER `customer_token`',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @col := (SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_wechat_work_config' AND COLUMN_NAME = 'staff_scope');
+SET @sql := IF(@col = 0,
+  'ALTER TABLE `muucmf_wechat_work_config` ADD COLUMN `staff_scope` text COMMENT ''员工可见范围JSON'' AFTER `customer_aes_key`',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @col := (SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_wechat_work_config' AND COLUMN_NAME = 'archive_secret');
+SET @sql := IF(@col = 0,
+  'ALTER TABLE `muucmf_wechat_work_config` ADD COLUMN `archive_secret` varchar(128) NOT NULL DEFAULT '''' COMMENT ''会话存档Secret（P2预留）'' AFTER `staff_scope`',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @col := (SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_wechat_work_config' AND COLUMN_NAME = 'archive_status');
+SET @sql := IF(@col = 0,
+  'ALTER TABLE `muucmf_wechat_work_config` ADD COLUMN `archive_status` tinyint(2) NOT NULL DEFAULT ''0'' COMMENT ''会话存档 0关闭 1开启（P2预留）'' AFTER `archive_secret`',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- ============================================================
+-- 统一售后中心 P1：退款单、状态流转日志、订单退款汇总字段
+-- 注意：执行后必须刷新数据库字段缓存（php think clear 或强制 getSchemaInfo），
+--       否则 fields_cache 会过滤掉 orders 新增的 refund_fee/refund_status。
+-- ============================================================
+CREATE TABLE IF NOT EXISTS `muucmf_refund` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `refund_no` varchar(64) NOT NULL DEFAULT '' COMMENT '业务退款单号（幂等键）',
+  `order_no` varchar(128) NOT NULL DEFAULT '' COMMENT '订单号',
+  `order_id` int(11) NOT NULL DEFAULT '0' COMMENT '订单ID',
+  `app` varchar(50) NOT NULL DEFAULT '' COMMENT '应用标识',
+  `shopid` int(11) NOT NULL DEFAULT '0' COMMENT '站点ID',
+  `uid` int(11) NOT NULL DEFAULT '0' COMMENT '用户ID',
+  `type` tinyint(2) NOT NULL DEFAULT '1' COMMENT '1整单退 2部分退',
+  `status` tinyint(2) NOT NULL DEFAULT '0' COMMENT '0待审核 1已同意 2已拒绝 3打款中 4已完成 5已关闭',
+  `order_fee` int(11) NOT NULL DEFAULT '0' COMMENT '订单实付金额',
+  `refund_fee` int(11) NOT NULL DEFAULT '0' COMMENT '本次退款金额',
+  `refund_to` tinyint(2) NOT NULL DEFAULT '0' COMMENT '0退余额 1原路退回 2线下退款 3退积分',
+  `reason` varchar(255) NOT NULL DEFAULT '' COMMENT '退款原因/备注',
+  `source` tinyint(2) NOT NULL DEFAULT '2' COMMENT '1用户申请 2后台手动 3自动退款',
+  `out_refund_no` varchar(64) DEFAULT NULL COMMENT '渠道退款单号（原路退款）',
+  `gateway_result` text COMMENT '渠道返回结果JSON',
+  `complete_time` int(11) NOT NULL DEFAULT '0' COMMENT '完成时间',
+  `create_time` int(11) NOT NULL DEFAULT '0',
+  `update_time` int(11) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_refund_no` (`refund_no`),
+  KEY `idx_order_no` (`order_no`),
+  KEY `idx_order_id` (`order_id`),
+  KEY `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='售后退款单';
+
+CREATE TABLE IF NOT EXISTS `muucmf_refund_log` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `refund_no` varchar(64) NOT NULL DEFAULT '' COMMENT '业务退款单号',
+  `order_no` varchar(128) NOT NULL DEFAULT '' COMMENT '订单号',
+  `from_status` tinyint(2) NOT NULL DEFAULT '0' COMMENT '原状态',
+  `to_status` tinyint(2) NOT NULL DEFAULT '0' COMMENT '新状态',
+  `action` varchar(64) NOT NULL DEFAULT '' COMMENT '动作说明',
+  `operator_type` tinyint(2) NOT NULL DEFAULT '0' COMMENT '0系统 1用户 2管理员',
+  `operator_id` int(11) NOT NULL DEFAULT '0' COMMENT '操作人ID',
+  `remark` varchar(255) NOT NULL DEFAULT '' COMMENT '备注/失败原因',
+  `create_time` int(11) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  KEY `idx_refund_no` (`refund_no`),
+  KEY `idx_order_no` (`order_no`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='售后退款状态流转日志';
+
+SET @col := (SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_orders' AND COLUMN_NAME = 'refund_fee');
+SET @sql := IF(@col = 0,
+  'ALTER TABLE `muucmf_orders` ADD COLUMN `refund_fee` int(11) NOT NULL DEFAULT ''0'' COMMENT ''已退金额'' AFTER `refund_result`',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @col := (SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_orders' AND COLUMN_NAME = 'refund_status');
+SET @sql := IF(@col = 0,
+  'ALTER TABLE `muucmf_orders` ADD COLUMN `refund_status` tinyint(2) NOT NULL DEFAULT ''0'' COMMENT ''退款状态 0未退 1部分退 2退款中 3已全退'' AFTER `refund_fee`',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- ============================================================
+-- 统一售后中心 P4：用户申请售后、超时自动关闭（默认 12 小时）
+-- ============================================================
+INSERT INTO `muucmf_crontab` (`id`, `shopid`, `title`, `description`, `execute`, `cycle`, `day`, `hour`, `minute`, `status`, `create_time`, `update_time`) VALUES
+(7, 0, '售后退款审核超时自动关闭', '用户申请售后超过 12 小时仍未审核，系统自动关闭退款单并释放订单申请状态', 'app\\common\\crontab\\Refund', 'hour-n', 1, 1, 1, 1, 1793880000, 1793880000)
+ON DUPLICATE KEY UPDATE
+  `title` = VALUES(`title`),
+  `description` = VALUES(`description`),
+  `execute` = VALUES(`execute`),
+  `cycle` = VALUES(`cycle`),
+  `status` = VALUES(`status`);
+

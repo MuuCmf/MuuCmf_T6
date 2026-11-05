@@ -1,0 +1,1 @@
+import{Xn as l,kn as e}from"./element-plus-Ck4Njxin.js";function o(){const o=l(null);return{scrollContainerRef:o,resetScrollTop:()=>{e(()=>{o.value&&(o.value.scrollTop=0)})}}}export{o as t};

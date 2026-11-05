@@ -23,6 +23,8 @@ use think\facade\Log;
  *   - skipPayChannels: 原路退回排除的 pay_channel 数组（material 排除 'score'/'password'）
  *   - inTxHook: 事务内钩子 callable($order, $refundPriceCent)（minishop 回补库存）
  *   - afterTxHook: 事务后钩子 callable($order, $refundPriceCent)（minishop ERP 同步）
+ *
+ * @deprecated 过渡期回退实现：已接入策略的应用统一走 RefundCenter::autoRefund，新代码勿直接调用本类
  */
 class OrderRefund
 {
@@ -53,7 +55,17 @@ class OrderRefund
         try {
             // 持锁后重新读取订单：避免两个并发调用都基于「未退款」的旧快照执行打款
             $fresh = Db::name('orders')->where('id', $orderId)->find();
-            if (empty($fresh) || intval($fresh['refund'] ?? 0) === 4) {
+            if (empty($fresh)) {
+                return true;
+            }
+            if (intval($fresh['refund'] ?? 0) === 4) {
+                // 已退款：幂等返回；顺带修复历史数据中「已退款但仍为已支付」的脏状态，避免权益残留
+                if (intval($fresh['paid'] ?? 0) === 1) {
+                    Db::name('orders')->where('id', $orderId)->where('paid', 1)->update([
+                        'paid'        => 0,
+                        'update_time' => time(),
+                    ]);
+                }
                 return true;
             }
 
@@ -166,12 +178,14 @@ class OrderRefund
                 $inTxHook($order, $refundPrice);
             }
 
-            // 订单标记已退款（refund_to：0 余额 / 1 原路）
+            // 订单标记已退款（refund_to：0 余额 / 1 原路），并置 paid=0 收回权益，防止退款后仍可使用
             Db::name('orders')->where('id', $orderId)->update([
                 'refund'        => 4,
                 'refund_to'     => $refundTo,
                 'refund_no'      => $refundNo,
                 'refund_result'  => $refundResultJson,
+                'paid'          => 0,
+                'update_time'   => time(),
             ]);
             Db::commit();
         } catch (\Throwable $e) {
