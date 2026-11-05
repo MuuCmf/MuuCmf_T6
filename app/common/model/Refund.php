@@ -35,19 +35,36 @@ class Refund extends Base
         $exist = $this->where('refund_no', $refundNo)->find();
         if ($exist) {
             $exist = $exist->toArray();
-            if (intval($exist['status']) === \app\common\service\aftersale\RefundStatus::COMPLETED) {
+            $from = intval($exist['status']);
+            if ($from === \app\common\service\aftersale\RefundStatus::COMPLETED) {
                 return $exist;
             }
-            $from = intval($exist['status']);
-            $this->where('id', intval($exist['id']))->update([
-                'status'         => \app\common\service\aftersale\RefundStatus::PROCESSING,
-                'refund_fee'     => $amount,
-                'refund_to'      => $refundTo,
-                'out_refund_no'  => $outRefundNo ?: null,
-                'gateway_result' => null,
-                'complete_time'  => 0,
-                'update_time'    => $now,
-            ]);
+            // 已拒绝的退款单绝不允许再打款：审核流程可能在读取旧快照后才遇到并发拒绝
+            if ($from === \app\common\service\aftersale\RefundStatus::REJECTED) {
+                throw new \Exception('退款单已拒绝，无法发起打款');
+            }
+            // 调用方要求单据保持在指定状态（审核通过后必须仍为「已同意」），
+            // 防止并发拒绝/关闭在状态校验与打款之间插队，造成「已拒绝仍打款」
+            $requireStatus = intval($refund['require_doc_status'] ?? 0);
+            if ($requireStatus > 0 && $from !== $requireStatus) {
+                throw new \Exception('退款单状态已变更，请刷新后重试');
+            }
+            // 条件更新：状态在被并发改写时不覆盖，直接中止本次打款
+            $affected = $this->where('id', intval($exist['id']))
+                ->where('status', $from)
+                ->update([
+                    'status'         => \app\common\service\aftersale\RefundStatus::PROCESSING,
+                    'refund_fee'     => $amount,
+                    'refund_to'      => $refundTo,
+                    'out_refund_no'  => $outRefundNo ?: null,
+                    'gateway_result' => null,
+                    'complete_time'  => 0,
+                    'update_time'    => $now,
+                ]);
+            if (intval($affected) !== 1
+                && intval($this->where('id', intval($exist['id']))->value('status')) !== $from) {
+                throw new \Exception('退款单状态已变更，请刷新后重试');
+            }
             RefundLog::write($refundNo, (string)($exist['order_no'] ?? ''), $from, \app\common\service\aftersale\RefundStatus::PROCESSING, '重新发起打款', '');
             $exist['status'] = \app\common\service\aftersale\RefundStatus::PROCESSING;
             $exist['refund_fee'] = $amount;

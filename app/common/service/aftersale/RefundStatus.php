@@ -27,4 +27,7 @@ class RefundStatus
 
     /** 已关闭（打款失败/人工关闭） */
     const CLOSED = 5;
+
+    /** 退货中（已同意退货，等待买家寄回商品后打款） */
+    const RETURNING = 6;
 }

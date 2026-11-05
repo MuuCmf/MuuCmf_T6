@@ -38,6 +38,41 @@ class RefundExecutor
     }
 
     /**
+     * 订单级退款锁名（执行器与后台旧退款链路共用，保证同一订单退款串行）
+     */
+    public static function orderLockName(string $orderNo): string
+    {
+        return 'aftersale:' . substr(md5($orderNo), 0, 40);
+    }
+
+    /**
+     * 获取订单级退款锁，抢不到直接抛异常（不等待，避免后台请求长时间阻塞）
+     * @return string 锁名，供 releaseOrderLock 释放
+     * @throws \Exception
+     */
+    public static function acquireOrderLock(string $orderNo): string
+    {
+        $lockName = self::orderLockName($orderNo);
+        $lockResult = Db::query('SELECT GET_LOCK(?, 0) AS locked', [$lockName]);
+        if (empty($lockResult[0]['locked'])) {
+            throw new \Exception('该订单正在退款处理中，请稍后重试');
+        }
+        return $lockName;
+    }
+
+    /**
+     * 释放订单级退款锁（失败仅记录日志，不影响业务结果）
+     */
+    public static function releaseOrderLock(string $lockName): void
+    {
+        try {
+            Db::query('SELECT RELEASE_LOCK(?)', [$lockName]);
+        } catch (\Throwable $e) {
+            Log::warning('[售后] 释放退款锁失败：' . $e->getMessage());
+        }
+    }
+
+    /**
      * 只做策略预演，不产生任何资金与写库动作（供双跑比对使用）
      * @param array $order 订单数据
      * @param array $refund 退款参数：refund_to / refund_fee / remark
@@ -95,7 +130,7 @@ class RefundExecutor
         }
 
         // 订单级互斥：同一订单不同退款单号也只能串行处理，避免重复打款
-        $lockName = 'aftersale:' . substr(md5($orderNo !== '' ? $orderNo : (string)$orderId), 0, 40);
+        $lockName = self::orderLockName($orderNo !== '' ? $orderNo : (string)$orderId);
         $lockResult = Db::query('SELECT GET_LOCK(?, 0) AS locked', [$lockName]);
         if (empty($lockResult[0]['locked'])) {
             throw new \Exception('该订单正在退款处理中，请稍后重试');
@@ -121,6 +156,13 @@ class RefundExecutor
             }
 
             $app = (string)($fresh['app'] ?? '');
+
+            // 调用方期望的订单退款状态（如退货打款必须确认订单仍为「退货中」），
+            // 持锁重读后校验，避免同意退货/关闭等并发操作改变订单意图后仍按原口径打款
+            if (isset($refund['require_order_refund'])
+                && intval($fresh['refund'] ?? 0) !== intval($refund['require_order_refund'])) {
+                throw new \Exception('订单退款状态已变更，请刷新后重试');
+            }
 
             // 已完成退款流水兜底：旧链路已打款但订单未收敛时直接收尾，避免换新单号再次调用网关
             $completedFlow = $this->findCompletedFlow($fresh, $app);
@@ -157,6 +199,10 @@ class RefundExecutor
             // 事务外：外部网关调用，避免长事务占用数据库连接
             try {
                 $transferResult = $channel->transfer($fresh, $refund, $amount);
+            } catch (RefundResultUnknownException $e) {
+                // 结果未知时保留「打款中」状态：此时若按失败关闭，调用方可能改走余额造成重复打款
+                Log::warning('[售后] 原路退回结果未知，退款单保留打款中，order_no=' . $orderNo . '：' . $e->getMessage());
+                throw $e;
             } catch (\Throwable $e) {
                 (new Refund())->markClosed((string)$refund['refund_no'], $e->getMessage());
                 throw $e;
@@ -218,11 +264,7 @@ class RefundExecutor
                 'refund_result' => $refundResultJson,
             ];
         } finally {
-            try {
-                Db::query('SELECT RELEASE_LOCK(?)', [$lockName]);
-            } catch (\Throwable $e) {
-                Log::warning('[售后] 释放退款锁失败，order_no=' . $orderNo . '：' . $e->getMessage());
-            }
+            self::releaseOrderLock($lockName);
         }
     }
 

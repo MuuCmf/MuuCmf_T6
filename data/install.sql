@@ -511,7 +511,7 @@ INSERT INTO `muucmf_crontab` (`id`, `shopid`, `title`, `description`, `execute`,
 (2, 0, '订单自动评价', '订单收货后用户未评价，系统默认7天后自动好评', 'app\\common\\crontab\\Evaluate', 'minute-n', 1, 1, 1, 1, 1645782483, 1645782483),
 (5, 0, '订单24小时自动取消', '订单下单后24小时内未支付，系统自动取消', 'app\\common\\crontab\\Orders', 'hour-n', 1, 1, 1, 1, 1745882710, 1745882794),
 (6, 0, 'Sitemap自动生成', '汇总框架核心页面与已安装应用页面生成 public/sitemap.xml，并同步 robots.txt 的 Sitemap 声明', 'app\\common\\crontab\\Sitemap', 'day', 0, 3, 30, 1, 1759104000, 1759104000),
-(7, 0, '售后退款审核超时自动关闭', '用户申请售后超过配置小时数仍未审核，系统自动关闭退款单并释放订单申请状态', 'app\\common\\crontab\\Refund', 'hour-n', 1, 1, 1, 1, 1793880000, 1793880000);
+(7, 0, '售后退款审核超时关闭与滞留单对账', '用户申请售后超过 12 小时仍未审核，系统自动关闭退款单并释放订单申请状态；打款滞留超过 30 分钟的单据回置为已同意待重试；退货超时 7 天未收到商品自动关闭', 'app\\common\\crontab\\Refund', 'hour-n', 1, 1, 1, 1, 1793880000, 1793880000);
 
 -- --------------------------------------------------------
 
@@ -1278,7 +1278,7 @@ CREATE TABLE IF NOT EXISTS `muucmf_refund` (
   `shopid` int(11) NOT NULL DEFAULT '0' COMMENT '站点ID',
   `uid` int(11) NOT NULL DEFAULT '0' COMMENT '用户ID',
   `type` tinyint(2) NOT NULL DEFAULT '1' COMMENT '1整单退 2部分退',
-  `status` tinyint(2) NOT NULL DEFAULT '0' COMMENT '0待审核 1已同意 2已拒绝 3打款中 4已完成 5已关闭',
+  `status` tinyint(2) NOT NULL DEFAULT '0' COMMENT '0待审核 1已同意 2已拒绝 3打款中 4已完成 5已关闭 6退货中',
   `order_fee` int(11) NOT NULL DEFAULT '0' COMMENT '订单实付金额',
   `refund_fee` int(11) NOT NULL DEFAULT '0' COMMENT '本次退款金额',
   `refund_to` tinyint(2) NOT NULL DEFAULT '0' COMMENT '0退余额 1原路退回 2线下退款 3退积分',

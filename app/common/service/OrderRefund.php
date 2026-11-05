@@ -120,19 +120,32 @@ class OrderRefund
         if ($canRefundOriginal) {
             // 由订单号派生的固定退款单号：重试复用同一 out_refund_no，支付网关幂等去重，避免重复打款
             $refundNo = 'gb' . substr(md5('groupbuy_refund_' . $orderNo), 0, 30);
+            $payService = null;
             try {
                 $config = \app\common\facade\channel\Channel::config($channel, $shopid);
                 if (empty($config['appid'])) {
                     throw new \Exception('支付渠道配置缺失');
                 }
                 $payService = \app\common\facade\channel\Pay::init($config['appid'], $payChannel);
-                $refundResult = $payService->server->refund([
-                    'order_no'   => $orderNo,
-                    'refund_no'  => $refundNo,
-                    'total_fee'  => intval($order['paid_fee'] ?? 0),
-                    'refund_fee' => $refundPrice,
-                    'title'      => $orderNo,
-                ]);
+            } catch (\Throwable $e) {
+                // 渠道未配置/初始化失败：打款尚未发起，回落余额保证退款不丢失
+                Log::warning('[拼团自动退款] 原路退回不可用，回落余额，order_no=' . $orderNo . '：' . $e->getMessage());
+            }
+
+            if (!empty($payService->server)) {
+                try {
+                    $refundResult = $payService->server->refund([
+                        'order_no'   => $orderNo,
+                        'refund_no'  => $refundNo,
+                        'total_fee'  => intval($order['paid_fee'] ?? 0),
+                        'refund_fee' => $refundPrice,
+                        'title'      => $orderNo,
+                    ]);
+                } catch (\Throwable $e) {
+                    // 网关调用已发出但结果未知（可能已打款）：禁止回落余额，等对账/人工确认
+                    Log::error('[拼团自动退款] 原路退回结果未知，跳过余额回落，order_no=' . $orderNo . '：' . $e->getMessage());
+                    return false;
+                }
                 if (!empty($refundResult['return_code']) && $refundResult['return_code'] === 'SUCCESS'
                     && !empty($refundResult['result_code']) && $refundResult['result_code'] === 'SUCCESS') {
                     $refundTo = 1;
@@ -140,9 +153,6 @@ class OrderRefund
                 } else {
                     Log::warning('[拼团自动退款] 原路退回未成功，回落余额，order_no=' . $orderNo . '：' . json_encode($refundResult, JSON_UNESCAPED_UNICODE));
                 }
-            } catch (\Throwable $e) {
-                // 原路退回异常（渠道未配置/接口报错）→ 回落余额，保证退款不丢失
-                Log::warning('[拼团自动退款] 原路退回异常，回落余额，order_no=' . $orderNo . '：' . $e->getMessage());
             }
         }
 

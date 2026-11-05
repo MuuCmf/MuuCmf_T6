@@ -7,6 +7,7 @@ use think\facade\Log;
 use app\common\model\Refund;
 use app\common\model\RefundLog;
 use app\common\service\aftersale\executor\RefundExecutor;
+use app\common\service\aftersale\executor\RefundResultUnknownException;
 use app\common\service\aftersale\policy\PolicyRegistry;
 
 /**
@@ -107,6 +108,10 @@ class RefundCenter
             try {
                 (new RefundExecutor())->execute($fresh, $params + ['refund_to' => 1]);
                 return true;
+            } catch (RefundResultUnknownException $e) {
+                // 网关结果未知（可能已打款）：严禁回落余额，否则会重复打款；退款单留在「打款中」等对账处理
+                Log::error('[售后自动退款] 原路退回结果未知，跳过余额回落，order_no=' . $orderNo . '：' . $e->getMessage());
+                return false;
             } catch (\Throwable $e) {
                 // 网关已受理但落库失败时退款单停在「打款中」，此时回落余额会造成重复打款，交给对账处理
                 if (self::refundInFlight($app, $orderNo)) {
@@ -198,6 +203,10 @@ class RefundCenter
                 if ($from === RefundStatus::PROCESSING) {
                     throw new \Exception('退款正在处理中，请稍后查询');
                 }
+                if ($from === RefundStatus::RETURNING) {
+                    // 退货进行中不可重新申请，否则会覆盖退货单并回退订单状态
+                    throw new \Exception('该订单正在退货处理中，暂不可重复申请');
+                }
                 if ($from === RefundStatus::WAIT_AUDIT) {
                     // 重复申请：幂等返回既有待审核单，避免反复提交
                     Db::commit();
@@ -262,6 +271,19 @@ class RefundCenter
             Db::commit();
         } catch (\Throwable $e) {
             Db::rollback();
+            // 并发双击：另一请求已按唯一键插入同一退款单，按幂等返回既有待审核单
+            if (self::isDuplicateKey($e)) {
+                $exist = Db::name('refund')->where('refund_no', $refundNo)->find();
+                if (!empty($exist) && intval($exist['status']) === RefundStatus::WAIT_AUDIT) {
+                    return [
+                        'refund_no'  => $refundNo,
+                        'order_no'   => (string)$fresh['order_no'],
+                        'status'     => RefundStatus::WAIT_AUDIT,
+                        'refund_to'  => intval($exist['refund_to']),
+                        'refund_fee' => intval($exist['refund_fee']),
+                    ];
+                }
+            }
             throw $e;
         }
 
@@ -285,12 +307,17 @@ class RefundCenter
      * @param string $refundNo 退款单号
      * @param array  $operator 操作人：id / name
      * @param string $remark   审核备注
-     * @param array  $options  附加退款参数（如 minishop 的 restore_stock 库存回补开关）
+     * @param array  $options  附加退款参数（如 minishop 的 restore_stock 库存回补开关；
+     *                          goods_received=true 表示已收到买家退回商品，用于放行「退货中」单据打款）
      * @return array
      * @throws \Exception
      */
     public static function approve(string $refundNo, array $operator = [], string $remark = '', array $options = []): array
     {
+        // 打款意图显式传入，避免并发「同意退货」后按退款口径直接打款
+        $goodsReceived = (bool)($options['goods_received'] ?? false);
+        unset($options['goods_received']);
+
         $row = Db::name('refund')->where('refund_no', $refundNo)->find();
         if (empty($row)) {
             throw new \Exception('退款单不存在');
@@ -316,13 +343,22 @@ class RefundCenter
         if (intval($order['refund'] ?? 0) === 4) {
             throw new \Exception('该订单已完成退款，请刷新后查看');
         }
+        // 退货中（含历史遗留「已同意」但订单仍为退货中）必须先收到商品再打款
+        $waitingReturn = $from === RefundStatus::RETURNING || intval($order['refund'] ?? 0) === 2;
+        if ($waitingReturn && !$goodsReceived) {
+            throw new \Exception('买家尚未退回商品，请收到商品后再确认退款');
+        }
 
         $now = time();
         // 已同意单直接重试打款，无需再次变更状态（避免同秒重试时受影响行数为 0 被误判为状态冲突）
         if ($from !== RefundStatus::AGREED) {
+            // 退货中单据在确认收到商品后同样收敛为「已同意」，与退款单并行审批互斥
+            $fromStatuses = $from === RefundStatus::RETURNING
+                ? [RefundStatus::RETURNING]
+                : [RefundStatus::WAIT_AUDIT, RefundStatus::CLOSED];
             $affected = Db::name('refund')
                 ->where('id', intval($row['id']))
-                ->where('status', 'in', [RefundStatus::WAIT_AUDIT, RefundStatus::CLOSED])
+                ->where('status', 'in', $fromStatuses)
                 ->update(['status' => RefundStatus::AGREED, 'update_time' => $now]);
             if (intval($affected) !== 1) {
                 throw new \Exception('退款单状态已变更，请刷新后重试');
@@ -336,10 +372,21 @@ class RefundCenter
             'refund_fee' => intval($row['refund_fee']),
             'remark'     => $remark !== '' ? $remark : (string)$row['reason'],
             'source'     => intval($row['source']) ?: 1,
+            // 打款前由执行器复核单据仍为「已同意」，避免并发拒绝/关闭后继续打款
+            'require_doc_status' => RefundStatus::AGREED,
         ];
+        // 退货打款须在持锁重读后确认订单仍为「退货中」，防止并发的关单/取消改变订单状态后仍打款
+        if ($waitingReturn) {
+            $params['require_order_refund'] = 2;
+        }
 
         try {
             $result = (new RefundExecutor())->execute($order, $params);
+        } catch (RefundResultUnknownException $e) {
+            // 网关结果未知（可能已打款）：退款单保留「打款中」等待对账，
+            // 既不能回落余额（重复打款），也不能回置「已同意」（会诱导再次打款）
+            Log::error('[售后审核] 原路退回结果未知，保留打款中等待对账，refund_no=' . $refundNo . '：' . $e->getMessage());
+            throw $e;
         } catch (\Throwable $e) {
             // 原路退回失败：网关未受理时回落余额，避免资金挂账
             if ($params['refund_to'] === 1 && !self::refundInFlight((string)$row['app'], (string)$row['order_no'])) {
@@ -356,11 +403,15 @@ class RefundCenter
                         Log::warning('[售后审核] 原路退回失败已回落余额，refund_no=' . $refundNo . '：' . $e->getMessage());
                         return self::approveResult($refundNo, $order, $params, $result);
                     } catch (\Throwable $fallbackError) {
-                        RefundLog::write($refundNo, (string)$row['order_no'], RefundStatus::AGREED, RefundStatus::CLOSED, '退款失败', $fallbackError->getMessage(), 2, self::operatorId($operator));
+                        // 落账/渠道失败后执行器可能留下「处理中」或「已关闭」，回置为「已同意」保留重试入口
+                        self::restoreAgreedAfterFailure($refundNo, $row, $fallbackError->getMessage());
+                        RefundLog::write($refundNo, (string)$row['order_no'], RefundStatus::AGREED, RefundStatus::AGREED, '退款失败，待重试', $fallbackError->getMessage(), 2, self::operatorId($operator));
                         throw new \Exception('退款失败：' . $fallbackError->getMessage());
                     }
                 }
             }
+            // 失败后回置为「已同意」，避免单据残留「处理中/已关闭」导致后台无法再次发起退款
+            self::restoreAgreedAfterFailure($refundNo, $row, $e->getMessage());
             RefundLog::write($refundNo, (string)$row['order_no'], RefundStatus::AGREED, RefundStatus::AGREED, '审核通过后打款失败', $e->getMessage(), 2, self::operatorId($operator));
             throw $e;
         }
@@ -369,7 +420,48 @@ class RefundCenter
     }
 
     /**
-     * 审核拒绝：待审核单或已同意未打款单可拒绝，订单回到未申请状态
+     * 打款失败后将售后单回置为「已同意」，保留后台重试入口
+     *
+     * 执行器落账/渠道失败时会把单据置为「关闭」或停留在「处理中」，
+     * 若不复位，后台会把单据当成已终结并误走旧退款链路。
+     *
+     * @param string $refundNo 退款单号
+     * @param array  $row      审核时的售后单快照
+     * @param string $reason   失败原因
+     * @return void
+     */
+    private static function restoreAgreedAfterFailure(string $refundNo, array $row, string $reason): void
+    {
+        $id = intval($row['id'] ?? 0);
+        if ($id <= 0) {
+            return;
+        }
+        $from = intval(Db::name('refund')->where('id', $id)->value('status'));
+        if (!in_array($from, [RefundStatus::PROCESSING, RefundStatus::CLOSED], true)) {
+            return;
+        }
+        // 订单仍处于退货中时回置为「退货中」，避免单据显示为已同意却被再次直接打款
+        $orderId = intval($row['order_id'] ?? 0);
+        $orderRefund = $orderId > 0
+            ? intval(Db::name('orders')->where('id', $orderId)->value('refund'))
+            : intval(Db::name('orders')->where('order_no', (string)$row['order_no'])->value('refund'));
+        $to = $orderRefund === 2 ? RefundStatus::RETURNING : RefundStatus::AGREED;
+        $affected = Db::name('refund')
+            ->where('id', $id)
+            ->where('status', 'in', [RefundStatus::PROCESSING, RefundStatus::CLOSED])
+            ->update([
+                'status'         => $to,
+                'gateway_result' => json_encode(['last_error' => $reason], JSON_UNESCAPED_UNICODE),
+                'complete_time'  => 0,
+                'update_time'    => time(),
+            ]);
+        if (intval($affected) === 1) {
+            RefundLog::write($refundNo, (string)$row['order_no'], $from, $to, '打款失败，回置待重试', $reason, 2, 0);
+        }
+    }
+
+    /**
+     * 审核拒绝：待审核、退货中或已同意未打款单可拒绝，订单回到未申请状态
      *
      * 已同意单允许改判拒绝，避免渠道持续故障时订单长期卡在退款申请中。
      */
@@ -380,23 +472,30 @@ class RefundCenter
             throw new \Exception('退款单不存在');
         }
         $from = intval($row['status']);
-        if (!in_array($from, [RefundStatus::WAIT_AUDIT, RefundStatus::AGREED], true)) {
+        if (!in_array($from, [RefundStatus::WAIT_AUDIT, RefundStatus::AGREED, RefundStatus::RETURNING], true)) {
             throw new \Exception('该退款单已处理，无法拒绝');
         }
         $now = time();
-        $affected = Db::name('refund')
-            ->where('id', intval($row['id']))
-            ->where('status', 'in', [RefundStatus::WAIT_AUDIT, RefundStatus::AGREED])
-            ->update(['status' => RefundStatus::REJECTED, 'complete_time' => $now, 'update_time' => $now]);
-        if (intval($affected) !== 1) {
-            throw new \Exception('退款单状态已变更，请刷新后重试');
+        Db::startTrans();
+        try {
+            $affected = Db::name('refund')
+                ->where('id', intval($row['id']))
+                ->where('status', 'in', [RefundStatus::WAIT_AUDIT, RefundStatus::AGREED, RefundStatus::RETURNING])
+                ->update(['status' => RefundStatus::REJECTED, 'complete_time' => $now, 'update_time' => $now]);
+            if (intval($affected) !== 1) {
+                throw new \Exception('退款单状态已变更，请刷新后重试');
+            }
+            self::updateOrderRefund($row, 0, [1, 2], $now);
+            RefundLog::write($refundNo, (string)$row['order_no'], $from, RefundStatus::REJECTED, '审核拒绝', $remark, 2, self::operatorId($operator));
+            Db::commit();
+        } catch (\Throwable $e) {
+            Db::rollback();
+            throw $e;
         }
-        self::updateOrderRefund($row, 0, [1, 2], $now);
-        RefundLog::write($refundNo, (string)$row['order_no'], $from, RefundStatus::REJECTED, '审核拒绝', $remark, 2, self::operatorId($operator));
     }
 
     /**
-     * 同意退货（已发货订单）：售后单置「已同意」但不立即打款，订单转为「退货中」
+     * 同意退货（已发货订单）：售后单置「退货中」但不立即打款，订单转为「退货中」
      *
      * 买家退回商品后再由 approve() 执行打款并回补库存，避免未收到货即退款造成货款两失。
      *
@@ -422,23 +521,26 @@ class RefundCenter
         if ($from === RefundStatus::PROCESSING) {
             throw new \Exception('退款正在处理中，请稍后查询');
         }
-        if (!in_array($from, [RefundStatus::WAIT_AUDIT, RefundStatus::AGREED], true)) {
+        if (!in_array($from, [RefundStatus::WAIT_AUDIT, RefundStatus::AGREED, RefundStatus::RETURNING, RefundStatus::CLOSED], true)) {
             throw new \Exception('该退款单状态不支持同意退货');
         }
         $now = time();
         Db::startTrans();
         try {
-            if ($from === RefundStatus::WAIT_AUDIT) {
+            // 转为独立的「退货中」状态：即使单据此前已是「已同意」，也必须让并发的 approve 复核失败，
+            // 否则直接打款会把「等待退货」的意图覆盖掉
+            if ($from !== RefundStatus::RETURNING) {
                 $affected = Db::name('refund')
                     ->where('id', intval($row['id']))
-                    ->where('status', RefundStatus::WAIT_AUDIT)
-                    ->update(['status' => RefundStatus::AGREED, 'update_time' => $now]);
+                    ->where('status', 'in', [RefundStatus::WAIT_AUDIT, RefundStatus::AGREED, RefundStatus::CLOSED])
+                    ->update(['status' => RefundStatus::RETURNING, 'complete_time' => 0, 'update_time' => $now]);
                 if (intval($affected) !== 1) {
                     throw new \Exception('退款单状态已变更，请刷新后重试');
                 }
-                RefundLog::write($refundNo, (string)$row['order_no'], $from, RefundStatus::AGREED, '同意退货，待买家退回商品', $remark, 2, self::operatorId($operator));
+                RefundLog::write($refundNo, (string)$row['order_no'], $from, RefundStatus::RETURNING, '同意退货，待买家退回商品', $remark, 2, self::operatorId($operator));
             }
-            self::updateOrderRefund($row, 2, [1, 2], $now);
+            // 已关闭单的订单侧已回退为「未申请」，重开退货时一并置为「退货中」
+            self::updateOrderRefund($row, 2, $from === RefundStatus::CLOSED ? [0, 1, 2] : [1, 2], $now);
             Db::commit();
         } catch (\Throwable $e) {
             Db::rollback();
@@ -449,33 +551,59 @@ class RefundCenter
     /**
      * 关闭退款单（人工关闭或超时自动关闭）
      *
-     * 允许关闭待审核单与已同意未打款单（如退货流程停滞），订单回到未申请状态。
+     * 允许关闭待审核单、退货中单与已同意未打款单（如退货流程停滞），订单回到未申请状态。
+     *
+     * @param string $refundNo        退款单号
+     * @param string $reason          关闭原因
+     * @param array  $operator        操作人：id / name
+     * @param int    $operatorType    操作人类型（0系统 1用户 2管理员）
+     * @param array  $expect          期望快照（供定时任务使用）：status / create_time，
+     *                                 候选单被选出后若被用户重新申请或审核改写，条件更新失败即放弃关闭
+     * @return void
+     * @throws \Exception
      */
-    public static function close(string $refundNo, string $reason = '', array $operator = [], int $operatorType = 2): void
+    public static function close(string $refundNo, string $reason = '', array $operator = [], int $operatorType = 2, array $expect = []): void
     {
         $row = Db::name('refund')->where('refund_no', $refundNo)->find();
         if (empty($row)) {
             throw new \Exception('退款单不存在');
         }
         $from = intval($row['status']);
-        if (!in_array($from, [RefundStatus::WAIT_AUDIT, RefundStatus::AGREED], true)) {
-            throw new \Exception('仅待审核或已同意未打款的退款单可关闭');
+        if (!in_array($from, [RefundStatus::WAIT_AUDIT, RefundStatus::RETURNING, RefundStatus::AGREED], true)) {
+            throw new \Exception('仅待审核、退货中或已同意未打款的退款单可关闭');
         }
         $now = time();
-        $affected = Db::name('refund')
-            ->where('id', intval($row['id']))
-            ->where('status', 'in', [RefundStatus::WAIT_AUDIT, RefundStatus::AGREED])
-            ->update([
+        $expectCreateTime = intval($expect['create_time'] ?? 0);
+        // WAIT_AUDIT 为 0，需按「是否传入」判断而非按值判断
+        $statuses = array_key_exists('status', $expect)
+            ? [intval($expect['status'])]
+            : [RefundStatus::WAIT_AUDIT, RefundStatus::RETURNING, RefundStatus::AGREED];
+        Db::startTrans();
+        try {
+            $query = Db::name('refund')
+                ->where('id', intval($row['id']))
+                ->where('status', 'in', $statuses);
+            if ($expectCreateTime > 0) {
+                // 申请时间已刷新说明用户已重新提交，本次关闭失效
+                $query->where('create_time', $expectCreateTime);
+            }
+            $affected = $query->update([
                 'status'          => RefundStatus::CLOSED,
                 'gateway_result'  => json_encode(['close_reason' => $reason], JSON_UNESCAPED_UNICODE),
                 'complete_time'   => $now,
                 'update_time'     => $now,
             ]);
-        if (intval($affected) !== 1) {
-            throw new \Exception('退款单状态已变更，请刷新后重试');
+            if (intval($affected) !== 1) {
+                throw new \Exception('退款单状态已变更，请刷新后重试');
+            }
+            // 与申请流程串行：单据行锁持有期间订单回退，避免用户重新申请写入的订单状态被旧任务覆盖
+            self::updateOrderRefund($row, 0, [1, 2], $now);
+            RefundLog::write($refundNo, (string)$row['order_no'], $from, RefundStatus::CLOSED, '关闭退款单', $reason, $operatorType, self::operatorId($operator));
+            Db::commit();
+        } catch (\Throwable $e) {
+            Db::rollback();
+            throw $e;
         }
-        self::updateOrderRefund($row, 0, [1, 2], $now);
-        RefundLog::write($refundNo, (string)$row['order_no'], $from, RefundStatus::CLOSED, '关闭退款单', $reason, $operatorType, self::operatorId($operator));
     }
 
     /**
@@ -521,13 +649,133 @@ class RefundCenter
         $closed = 0;
         foreach ($rows as $row) {
             try {
-                self::close((string)$row['refund_no'], '超时未审核自动关闭', [], 0);
+                // 带上候选快照：被选出后用户重新申请会刷新 create_time，此时不得再关闭新申请
+                self::close((string)$row['refund_no'], '超时未审核自动关闭', [], 0, [
+                    'status'      => RefundStatus::WAIT_AUDIT,
+                    'create_time' => intval($row['create_time']),
+                ]);
                 $closed++;
             } catch (\Throwable $e) {
                 Log::warning('[售后超时关闭] refund_no=' . (string)$row['refund_no'] . '：' . $e->getMessage());
             }
         }
         return $closed;
+    }
+
+    /**
+     * 关闭超时未收到退回商品的售后单
+     *
+     * 已发货订单同意退货后，订单停在「退货中」等待买家寄回商品，
+     * 若长期无人处理会永久卡住订单。仅关闭订单仍为「退货中」的已同意单，
+     * 避免误关「已同意未打款」等待人工重试的单据。
+     *
+     * @param int $days   超过多少天未更新即视为退货超时
+     * @param int $limit  单次处理上限（避免定时任务长时间占用）
+     * @param int $shopid 店铺ID，0 表示全平台
+     * @return int 实际关闭数量
+     */
+    public static function closeReturnTimeout(int $days = 7, int $limit = 200, int $shopid = 0): int
+    {
+        if ($days <= 0) {
+            return 0;
+        }
+        $limit = max(1, min($limit, 500));
+        $map = [
+            ['status', 'in', [RefundStatus::RETURNING, RefundStatus::AGREED]],
+            ['update_time', '<', time() - $days * 86400],
+        ];
+        if ($shopid > 0) {
+            $map[] = ['shopid', '=', $shopid];
+        }
+        $rows = Db::name('refund')->where($map)->order('id asc')->limit($limit)->select()->toArray();
+        $closed = 0;
+        foreach ($rows as $row) {
+            $orderId = intval($row['order_id'] ?? 0);
+            $order = $orderId > 0
+                ? Db::name('orders')->where('id', $orderId)->find()
+                : Db::name('orders')->where('order_no', (string)$row['order_no'])->find();
+            // 仅退货中的单参与退货超时关闭，已同意未打款单保留重试入口
+            if (empty($order) || intval($order['refund'] ?? 0) !== 2) {
+                continue;
+            }
+            try {
+                // 带上候选快照：被选出后若单据被审核/驳回改写，条件更新失败即放弃关闭
+                self::close((string)$row['refund_no'], '退货超时未收到商品，自动关闭', [], 0, [
+                    'status'      => intval($row['status']),
+                    'create_time' => intval($row['create_time']),
+                ]);
+                $closed++;
+            } catch (\Throwable $e) {
+                Log::warning('[售后退货超时] refund_no=' . (string)$row['refund_no'] . '：' . $e->getMessage());
+            }
+        }
+        return $closed;
+    }
+
+    /**
+     * 对账回置：把超时滞留在「打款中 / 已关闭」的退款单恢复为「已同意」或「退货中」
+     *
+     * 执行器在渠道打款成功但本地落账失败时会把单据停在「打款中」，
+     * 该状态下用户无法重新申请、后台也无法再次审核，资金与订单会长期卡住。
+     * 仅回置订单仍处于退款流程（申请中/退货中）的单据，并按订单侧回置为对应状态；
+     * 订单已终结的不处理，避免把人工关闭或已完成收尾的单据重新激活。
+     *
+     * @param int $minutes 单据超过多少分钟未更新即视为滞留
+     * @param int $limit   单次处理上限（避免定时任务长时间占用）
+     * @param int $shopid  店铺ID，0 表示全平台
+     * @return int 实际回置数量
+     */
+    public static function reconcileStuck(int $minutes = 30, int $limit = 200, int $shopid = 0): int
+    {
+        if ($minutes <= 0) {
+            return 0;
+        }
+        $limit = max(1, min($limit, 500));
+        $map = [
+            ['status', 'in', [RefundStatus::PROCESSING, RefundStatus::CLOSED]],
+            ['update_time', '<', time() - $minutes * 60],
+        ];
+        if ($shopid > 0) {
+            $map[] = ['shopid', '=', $shopid];
+        }
+        $rows = Db::name('refund')->where($map)->order('id asc')->limit($limit)->select()->toArray();
+        $reverted = 0;
+        foreach ($rows as $row) {
+            $orderId = intval($row['order_id'] ?? 0);
+            $order = $orderId > 0
+                ? Db::name('orders')->where('id', $orderId)->find()
+                : Db::name('orders')->where('order_no', (string)$row['order_no'])->find();
+            $orderRefund = intval($order['refund'] ?? 0);
+            if (empty($order) || !in_array($orderRefund, [1, 2], true)) {
+                continue;
+            }
+            // 按订单侧意图回置：仍在等待退货的单据必须回到「退货中」，否则会被 approve 当作可直接打款
+            $to = $orderRefund === 2 ? RefundStatus::RETURNING : RefundStatus::AGREED;
+            $now = time();
+            $affected = Db::name('refund')
+                ->where('id', intval($row['id']))
+                ->where('status', 'in', [RefundStatus::PROCESSING, RefundStatus::CLOSED])
+                ->update([
+                    'status'        => $to,
+                    'complete_time' => 0,
+                    'update_time'   => $now,
+                ]);
+            if (intval($affected) !== 1) {
+                continue;
+            }
+            $reverted++;
+            RefundLog::write(
+                (string)$row['refund_no'],
+                (string)$row['order_no'],
+                intval($row['status']),
+                $to,
+                '对账回置，待重试',
+                '处理超过 ' . $minutes . ' 分钟未收敛',
+                3,
+                0
+            );
+        }
+        return $reverted;
     }
 
     /**
@@ -600,6 +848,17 @@ class RefundCenter
     {
         $row = Db::name('refund')->where('refund_no', self::buildRefundNo($app, $orderNo))->find();
         return !empty($row) && intval($row['status'] ?? 0) === RefundStatus::PROCESSING;
+    }
+
+    /**
+     * 是否为唯一键冲突（并发重复提交时由数据库唯一索引抛出）
+     */
+    private static function isDuplicateKey(\Throwable $e): bool
+    {
+        $message = $e->getMessage();
+        return strpos($message, 'Duplicate entry') !== false
+            || strpos($message, '1062') !== false
+            || strpos($message, 'uk_refund_no') !== false;
     }
 
     /**

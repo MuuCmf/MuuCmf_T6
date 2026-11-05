@@ -456,7 +456,7 @@ CREATE TABLE IF NOT EXISTS `muucmf_refund` (
   `shopid` int(11) NOT NULL DEFAULT '0' COMMENT '站点ID',
   `uid` int(11) NOT NULL DEFAULT '0' COMMENT '用户ID',
   `type` tinyint(2) NOT NULL DEFAULT '1' COMMENT '1整单退 2部分退',
-  `status` tinyint(2) NOT NULL DEFAULT '0' COMMENT '0待审核 1已同意 2已拒绝 3打款中 4已完成 5已关闭',
+  `status` tinyint(2) NOT NULL DEFAULT '0' COMMENT '0待审核 1已同意 2已拒绝 3打款中 4已完成 5已关闭 6退货中',
   `order_fee` int(11) NOT NULL DEFAULT '0' COMMENT '订单实付金额',
   `refund_fee` int(11) NOT NULL DEFAULT '0' COMMENT '本次退款金额',
   `refund_to` tinyint(2) NOT NULL DEFAULT '0' COMMENT '0退余额 1原路退回 2线下退款 3退积分',
@@ -505,10 +505,10 @@ SET @sql := IF(@col = 0,
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- ============================================================
--- 统一售后中心 P4：用户申请售后、超时自动关闭（默认 12 小时）
+-- 统一售后中心 P4：用户申请售后、超时自动关闭（默认 12 小时）、打款滞留对账（30 分钟）与退货超时关闭（7 天）
 -- ============================================================
 INSERT INTO `muucmf_crontab` (`id`, `shopid`, `title`, `description`, `execute`, `cycle`, `day`, `hour`, `minute`, `status`, `create_time`, `update_time`) VALUES
-(7, 0, '售后退款审核超时自动关闭', '用户申请售后超过 12 小时仍未审核，系统自动关闭退款单并释放订单申请状态', 'app\\common\\crontab\\Refund', 'hour-n', 1, 1, 1, 1, 1793880000, 1793880000)
+(7, 0, '售后退款审核超时关闭与滞留单对账', '用户申请售后超过 12 小时仍未审核，系统自动关闭退款单并释放订单申请状态；打款滞留超过 30 分钟的单据回置为已同意待重试；退货超时 7 天未收到商品自动关闭', 'app\\common\\crontab\\Refund', 'hour-n', 1, 1, 1, 1, 1793880000, 1793880000)
 ON DUPLICATE KEY UPDATE
   `title` = VALUES(`title`),
   `description` = VALUES(`description`),

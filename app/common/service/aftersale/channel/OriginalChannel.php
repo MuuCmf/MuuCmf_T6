@@ -2,6 +2,8 @@
 
 namespace app\common\service\aftersale\channel;
 
+use app\common\service\aftersale\executor\RefundResultUnknownException;
+
 /**
  * 原路退回渠道
  * 事务外调用支付网关；固定派生退款单号由执行器生成，重试时网关幂等去重
@@ -34,13 +36,18 @@ class OriginalChannel implements RefundChannelInterface
             throw new \Exception('支付渠道初始化失败');
         }
 
-        $result = $payService->server->refund([
-            'order_no'   => $orderNo,
-            'refund_no'  => $refundNo,
-            'total_fee'  => intval($order['paid_fee'] ?? 0),
-            'refund_fee' => $amount,
-            'title'      => $orderNo,
-        ]);
+        try {
+            $result = $payService->server->refund([
+                'order_no'   => $orderNo,
+                'refund_no'  => $refundNo,
+                'total_fee'  => intval($order['paid_fee'] ?? 0),
+                'refund_fee' => $amount,
+                'title'      => $orderNo,
+            ]);
+        } catch (\Throwable $e) {
+            // 网关调用已发出但异常中断，无法判断是否已受理，按「结果未知」交由对账处理
+            throw new RefundResultUnknownException('原路退回结果未知：' . $e->getMessage(), 0, $e);
+        }
         if (empty($result['return_code']) || $result['return_code'] !== 'SUCCESS'
             || empty($result['result_code']) || $result['result_code'] !== 'SUCCESS') {
             $errorMsg = (string)($result['err_code_des'] ?? $result['return_msg'] ?? '未知错误');
