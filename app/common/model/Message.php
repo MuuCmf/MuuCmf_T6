@@ -47,7 +47,7 @@ class Message extends Base
             'type_id' => $type_id,
             'content_id' => $content_id,
             'send_type' => $send_type,
-        ], 0, $queue_name);
+        ], $queue_name);
 
         if ($isPushed !== false) {
             // 更新心跳
@@ -81,7 +81,7 @@ class Message extends Base
             'type_id' => $type_id,
             'content_id' => $content_id,
             'send_type' => $send_type,
-        ], 0, $queue_name);
+        ], $queue_name);
 
         if ($isPushed !== false) {
             // 更新心跳

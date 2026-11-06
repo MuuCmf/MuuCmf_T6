@@ -22,13 +22,14 @@ class Message extends Base
         $MessageModel = new MessageModel();
         $MessageTypeModel = new MessageTypeModel();
         // 查询条件
-        $t_map[] = ['shopid', '=', 0];
+        $t_map[] = ['shopid', '=', $this->shopid];
         $t_map[] = ['status', '=', 1];
         $type_list = $MessageTypeModel->getList($t_map)->toArray();
         foreach($type_list as &$val){
             $val = $MessageTypeModel->formatData($val);
             // 未读消息数量
             $map = [];
+            $map[] = ['shopid', '=', $this->shopid];
             $map[] = ['type_id', '=', $val['id']];
             $map[] = ['is_read', '=', 0];
             $map[] = ['status', '=', 1];

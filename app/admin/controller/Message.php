@@ -42,7 +42,7 @@ class Message extends Admin
     public function type()
     {
         // 查询条件
-        $map[] = ['shopid', '=', 0];
+        $map[] = ['shopid', '=', $this->shopid];
         $map[] = ['status', '>', -1];
         $list = $this->MessageTypeModel->getList($map);
         foreach ($list as &$val) {
@@ -122,12 +122,12 @@ class Message extends Admin
             if (!empty($data['to_uid'])) {
                 $to_uids = intval($data['to_uid']);
                 // 发送消息
-                $res = $this->MessageModel->sendMessageToUid(0, 0, $to_uids, $data['title'], $data['description'], $data['content'], $data['type_id'], $send_type);
+                $res = $this->MessageModel->sendMessageToUid($this->shopid, 0, $to_uids, $data['title'], $data['description'], $data['content'], $data['type_id'], $send_type);
             } else {
                 // 发送至用户组
                 $to_group_ids = $data['user_group'];
                 // 发送消息
-                $res = $this->MessageModel->sendMessageToGroup(0, 0, $to_group_ids, $data['title'], $data['description'], $data['content'], $data['type_id'], $send_type);
+                $res = $this->MessageModel->sendMessageToGroup($this->shopid, 0, $to_group_ids, $data['title'], $data['description'], $data['content'], $data['type_id'], $send_type);
             }
 
             if ($res) {
@@ -144,7 +144,7 @@ class Message extends Admin
     public function list()
     {
         // 查询条件
-        $map[] = ['shopid', '=', 0];
+        $map[] = ['shopid', '=', $this->shopid];
         $map[] = ['status', 'in', [0, 1]];
 
         // 搜索关键字
@@ -245,7 +245,7 @@ class Message extends Admin
     public function content()
     {
         // 查询条件
-        $map[] = ['shopid', '=', 0];
+        $map[] = ['shopid', '=', $this->shopid];
         $map[] = ['status', '>', -1];
 
         // 搜索关键字
@@ -281,6 +281,7 @@ class Message extends Admin
 
         if (request()->isPost()) {
             $data = input();
+            $data['shopid'] = $this->shopid;
             // 数据验证
             try {
                 validate(Common::class)->scene('message')->check([
