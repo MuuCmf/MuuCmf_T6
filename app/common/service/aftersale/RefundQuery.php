@@ -28,7 +28,7 @@ class RefundQuery
     public const TARGET_TEXT = [
         0 => '用户余额',
         1 => '原路退回',
-        2 => '线下处理',
+        2 => '线下已退款（仅登记）',
         3 => '积分',
     ];
 

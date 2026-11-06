@@ -24,7 +24,7 @@ class OriginalChannel implements RefundChannelInterface
         }
         if ($channel === '' || $channel === 'balance'
             || in_array($payChannel, ['balance', 'offline', 'admin', ''], true)) {
-            throw new \Exception('该订单支付渠道不支持原路退回，请选择退回余额或线下处理');
+            throw new \Exception('该订单支付渠道不支持原路退回，请选择退回余额或线下已退款（仅登记）');
         }
 
         $config = \app\common\facade\channel\Channel::config($channel, $shopid);

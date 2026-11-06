@@ -17,30 +17,11 @@ use app\common\service\aftersale\policy\PolicyRegistry;
 class RefundCenter
 {
     /**
-     * 不支持用户端申请售后的应用
-     *
-     * 虚拟商品（课程/直播/试卷/资料）一经购买即发放权益，不支持用户自助申请退款，
-     * 仅保留后台手动退款入口（RefundExecutor::execute / approve）。
-     */
-    public const USER_APPLY_DISABLED_APPS = ['classroom', 'live', 'exam', 'material'];
-
-    /**
      * 指定应用是否已接入售后策略
      */
     public static function supports(string $app): bool
     {
         return PolicyRegistry::supports($app);
-    }
-
-    /**
-     * 指定应用是否禁止用户端申请售后
-     *
-     * @param string $app 应用标识
-     * @return bool
-     */
-    public static function userApplyDisabled(string $app): bool
-    {
-        return in_array($app, self::USER_APPLY_DISABLED_APPS, true);
     }
 
     /**
@@ -197,10 +178,6 @@ class RefundCenter
         $app = (string)($fresh['app'] ?? '');
         if (!RefundExecutor::enabled() || !self::supports($app)) {
             throw new \Exception('该应用暂未接入售后申请流程');
-        }
-        // 虚拟商品不支持用户端申请售后，仅支持后台手动退款
-        if (self::userApplyDisabled($app)) {
-            throw new \Exception('该商品不支持在线申请退款，如需退款请联系客服');
         }
 
         $policy = PolicyRegistry::resolve($app);
