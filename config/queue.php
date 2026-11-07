@@ -36,7 +36,8 @@ return [
         ],
     ],
     'failed'      => [
-        'type'  => 'none',
+        // 失败任务落库，避免失败即静默丢弃（需 failed_jobs 表，见 data/install.sql）
+        'type'  => 'database',
         'table' => 'failed_jobs',
     ],
 ];
