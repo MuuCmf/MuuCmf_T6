@@ -2,12 +2,14 @@
 
 namespace app\common\service;
 
-use think\facade\Db;
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
+use app\common\service\message\ChannelConfigProvider;
 
 class Mail
 {
+    /** @var string 上一次发送的 SMTP 响应（含队列 ID，用于投递排查） */
+    protected $lastReply = '';
 
     /**
      * 用常规方式发送邮件。
@@ -63,7 +65,10 @@ class Mail
             }
 
             $status = $mail->send(); //? true : $mail->ErrorInfo; //返回错误信息
-            
+
+            // 保留 SMTP 最后一次响应（如 250 Data Ok: queued as xxx），供发送记录留存
+            $this->lastReply = (string)$mail->getSMTPInstance()->getLastReply();
+
             if($status) {
                 return true;
             }else{
@@ -75,40 +80,40 @@ class Mail
     }
 
     /**
-     * 获取系统配置数据
+     * 获取上一次发送的 SMTP 响应
+     *
+     * @return string
      */
-    public function getSystmeConfig()
+    public function getLastReply(): string
     {
-        $data = Db::name('Config')->where('status','=',1)->field('type,name,value')->select()->toArray();
-        foreach ($data as &$value) {
-            $sys_config[$value['name']] = self::parse($value['type'], $value['value']);
-        }
-        unset($value);
-
-        return $sys_config;
+        return $this->lastReply;
     }
 
     /**
-     * 根据配置类型解析配置
-     * @param  integer $type  配置类型
-     * @param  string  $value 配置值
+     * 获取邮件相关系统配置
+     *
+     * 复用 ChannelConfigProvider 的系统配置进程内缓存，
+     * 避免每封邮件都把 muucmf_config 全表重读一遍。
+     *
+     * @return array
      */
-    private static function parse($type, $value){
-        switch ($type) {
-            case 'entity': //解析成数组
-                $array = preg_split('/[,;\r\n]+/', trim($value, ",;\r\n"));
-                if(strpos($value,':')){
-                    $value  = array();
-                    foreach ($array as $val) {
-                        list($k, $v) = explode(':', $val);
-                        $value[$k]   = $v;
-                    }
-                }else{
-                    $value =    $array;
-                }
-            break;
-        }
-        return $value;
-    } 
+    public function getSystmeConfig()
+    {
+        $names = [
+            'MAIL_SMTP_HOST',
+            'MAIL_SMTP_PORT',
+            'MAIL_SMTP_USER',
+            'MAIL_SMTP_PASS',
+            'MAIL_SMTP_SSL',
+            'MAIL_SMTP_CE',
+            'WEB_SITE_NAME',
+        ];
 
+        $config = [];
+        foreach ($names as $name) {
+            $config[$name] = ChannelConfigProvider::systemConfig($name, '');
+        }
+
+        return $config;
+    }
 }

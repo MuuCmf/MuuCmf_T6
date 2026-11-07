@@ -782,23 +782,71 @@ if (!function_exists('get_thumb_image')) {
     }
 }
 
+if (!function_exists('get_thumb_image_by_driver')) {
+    /**
+     * 已知存储驱动时获取缩略图（不再回查附件表）
+     *
+     * 列表中每条记录本身已带 driver 字段，直接传入可省去 get_thumb_image() 里的
+     * 反向查询，避免逐行 N+1；driver 为 null 时退回原有实现，保持行为一致。
+     *
+     * @param string      $attachment 附件路径
+     * @param string|null $driver     存储驱动，null 表示未知（内部回查）
+     * @param int         $width      宽
+     * @param int|string  $height     高
+     * @param bool        $replace    是否强制重新生成
+     * @return string
+     */
+    function get_thumb_image_by_driver($attachment, $driver, $width = 100, $height = 'auto', $replace = false)
+    {
+        if ($driver === null) {
+            return get_thumb_image($attachment, $width, $height, $replace);
+        }
+
+        if (empty($attachment)) {
+            return $attachment;
+        }
+
+        // 已是完整 URL，无需处理
+        if (strpos($attachment, 'http://') !== false || strpos($attachment, 'https://') !== false) {
+            return $attachment;
+        }
+
+        $Attachment = new Attachment();
+        $thumb = $Attachment->getThumbImage(
+            ['attachment' => $attachment, 'driver' => $driver],
+            $width,
+            $height,
+            $replace
+        );
+
+        if (is_array($thumb) && !empty($thumb['src'])) {
+            return $thumb['src'];
+        }
+
+        return $attachment;
+    }
+}
+
 if (!function_exists('thumb_group')) {
     /**
      * 生成一组缩微图方法
-     * @param $attachment
-     * @param int $width
-     * @param int $height
-     * @param int $type
-     * @param bool $replace
+     *
+     * @param string      $attachment 附件路径
+     * @param int         $width      基准宽（每档按倍数放大）
+     * @param int         $height     基准高
+     * @param bool        $replace    是否强制重新生成
+     * @param array|null  $sizes      需要的倍数档位，默认 1~8（100~800）；传 [1] 只出最小档
+     * @param string|null $driver     已知存储驱动，传入可避免回查附件表
      * @return array
      */
-    function thumb_group($attachment, $width = 100, $height = 100, $replace = false)
+    function thumb_group($attachment, $width = 100, $height = 100, $replace = false, $sizes = null, $driver = null)
     {
         $thumb = [];
-        for ($i = 1; $i <= 8; $i++) {
-            $thumb["thumb_" . $width * $i] = get_thumb_image($attachment, $width * $i, $height * $i, $replace);
+        $sizes = empty($sizes) ? [1, 2, 3, 4, 5, 6, 7, 8] : (array)$sizes;
+        foreach ($sizes as $i) {
+            $thumb["thumb_" . $width * $i] = get_thumb_image_by_driver($attachment, $driver, $width * $i, $height * $i, $replace);
         }
-        $thumb["origin"] = get_attachment_src($attachment);
+        $thumb["origin"] = get_attachment_src($attachment, $driver);
 
         return $thumb;
     }
@@ -839,49 +887,57 @@ if (!function_exists('get_pic')) {
 if (!function_exists('get_attachment_src')) {
     /**
      * 附件路径
-     * @param $attachment
+     *
+     * @param string      $attachment 附件路径
+     * @param string|null $driver     已知存储驱动；传入后不再回查附件表，
+     *                                列表等已带 driver 字段的场景可借此消除 N+1
      * @return mixed
      */
-    function get_attachment_src($attachment)
+    function get_attachment_src($attachment, $driver = null)
     {
-        $not_http_remote = false;
-        $not_https_remote = false;
-        if (!empty($attachment)) {
-            //不存在http://
-            $not_http_remote = (strpos($attachment, 'http://') === false);
-            //不存在https://
-            $not_https_remote = (strpos($attachment, 'https://') === false);
-        }
-
-        if ($not_http_remote && $not_https_remote) {
-
-            // 获取附件信息
-            $Attachment = new Attachment();
-            $attachment_data = $Attachment->where('attachment', '=', $attachment)->find();
-            
-            if(empty($attachment_data)) {
-                return $attachment;
-            }
-
-            // 初始化上传驱动
-            $driver = $attachment_data['driver'];
-
-            // 获取附件路径
-            if ($driver == 'local' || strtolower($driver) == 'loacal' || $driver == '') {
-                //本地url
-                return request()->domain() . '/attachment/' . str_replace('//', '/', $attachment); //防止双斜杠的出现
-            }
-            // 阿里云OSS
-            if ($driver == 'oss') {
-                return config('extend.OSS_ALIYUN_BUCKET_DOMAIN') . '/attachment/' . $attachment;
-            }
-            // 腾讯云COS
-            if ($driver == 'cos') {
-                return config('extend.COS_TENCENT_BUCKET_DOMAIN') . '/attachment/' . $attachment;
-            }
-        } else {
+        if (empty($attachment)) {
             return $attachment;
         }
+
+        // 已是完整 URL 直接返回
+        if (strpos($attachment, 'http://') !== false || strpos($attachment, 'https://') !== false) {
+            return $attachment;
+        }
+
+        // 请求级内存缓存：同一请求内同一附件路径只查一次库
+        static $driver_cache = [];
+
+        if ($driver === null) {
+            if (array_key_exists($attachment, $driver_cache)) {
+                $driver = $driver_cache[$attachment];
+            } else {
+                $driver = (new Attachment())->where('attachment', '=', $attachment)->value('driver');
+                $driver_cache[$attachment] = $driver;
+            }
+        }
+
+        // 附件记录不存在
+        if ($driver === null) {
+            return $attachment;
+        }
+
+        $driver = strtolower($driver);
+
+        // 本地url（含历史拼写 loacal 与空驱动的老数据）
+        if ($driver == 'local' || $driver == 'loacal' || $driver == '') {
+            return request()->domain() . '/attachment/' . str_replace('//', '/', $attachment); //防止双斜杠的出现
+        }
+        // 阿里云OSS
+        if ($driver == 'oss') {
+            return config('extend.OSS_ALIYUN_BUCKET_DOMAIN') . '/attachment/' . $attachment;
+        }
+        // 腾讯云COS
+        if ($driver == 'cos') {
+            return config('extend.COS_TENCENT_BUCKET_DOMAIN') . '/attachment/' . $attachment;
+        }
+
+        // 其余驱动（如云点播 tcvod）由业务侧另行拼接地址，保持原有返回 null 的语义
+        return null;
     }
 }
 

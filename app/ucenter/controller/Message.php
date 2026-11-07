@@ -24,7 +24,8 @@ class Message extends Base
         // 查询条件
         $t_map[] = ['shopid', '=', $this->shopid];
         $t_map[] = ['status', '=', 1];
-        $type_list = $MessageTypeModel->getList($t_map)->toArray();
+        // 排序值越大越靠前，相同排序值按创建顺序（id 升序）
+        $type_list = $MessageTypeModel->getList($t_map, 100, 'sort desc,id asc')->toArray();
         foreach($type_list as &$val){
             $val = $MessageTypeModel->formatData($val);
             // 未读消息数量

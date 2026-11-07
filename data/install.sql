@@ -154,7 +154,11 @@ CREATE TABLE IF NOT EXISTS `muucmf_attachment` (
   `update_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '更新时间',
   PRIMARY KEY (`id`) USING BTREE,
   KEY `attachment` (`attachment`),
-  KEY `mime` (`mime`)
+  KEY `mime` (`mime`),
+  KEY `idx_shopid_create` (`shopid`, `create_time`),
+  KEY `idx_shopid_driver_create` (`shopid`, `driver`, `create_time`),
+  KEY `idx_shopid_type_create` (`shopid`, `type`, `create_time`),
+  KEY `idx_uid` (`uid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='附件表' ROW_FORMAT=COMPACT;
 
 --
@@ -511,7 +515,9 @@ INSERT INTO `muucmf_crontab` (`id`, `shopid`, `title`, `description`, `execute`,
 (2, 0, '订单自动评价', '订单收货后用户未评价，系统默认7天后自动好评', 'app\\common\\crontab\\Evaluate', 'minute-n', 1, 1, 1, 1, 1645782483, 1645782483),
 (5, 0, '订单24小时自动取消', '订单下单后24小时内未支付，系统自动取消', 'app\\common\\crontab\\Orders', 'hour-n', 1, 1, 1, 1, 1745882710, 1745882794),
 (6, 0, 'Sitemap自动生成', '汇总框架核心页面与已安装应用页面生成 public/sitemap.xml，并同步 robots.txt 的 Sitemap 声明', 'app\\common\\crontab\\Sitemap', 'day', 0, 3, 30, 1, 1759104000, 1759104000),
-(7, 0, '售后退款审核超时关闭与滞留单对账', '用户申请售后超过 12 小时仍未审核，系统自动关闭退款单并释放订单申请状态；打款滞留超过 30 分钟的单据回置为已同意待重试；退货超时 7 天未收到商品自动关闭', 'app\\common\\crontab\\Refund', 'hour-n', 1, 1, 1, 1, 1793880000, 1793880000);
+(7, 0, '售后退款审核超时关闭与滞留单对账', '用户申请售后超过 12 小时仍未审核，系统自动关闭退款单并释放订单申请状态；打款滞留超过 30 分钟的单据回置为已同意待重试；退货超时 7 天未收到商品自动关闭', 'app\\common\\crontab\\Refund', 'hour-n', 1, 1, 1, 1, 1793880000, 1793880000),
+(8, 0, '消息重试与补偿', '重试失败记录、投递到期顺延记录、重置超时未推进的任务', 'app\\common\\crontab\\MessageRetry', 'minute-n', 0, 0, 5, 1, UNIX_TIMESTAMP(), UNIX_TIMESTAMP()),
+(9, 0, '消息数据清理', '清理超过保留期的发送记录、失效黑名单与队列失败任务', 'app\\common\\crontab\\MessageClean', 'day', 0, 4, 0, 1, UNIX_TIMESTAMP(), UNIX_TIMESTAMP());
 
 -- --------------------------------------------------------
 
@@ -625,7 +631,7 @@ CREATE TABLE IF NOT EXISTS `muucmf_extend_config` (
 -- 转存表中的数据 `muucmf_extend_config`
 --
 INSERT INTO `muucmf_extend_config` (`id`, `name`, `type`, `title`, `group`, `extra`, `remark`, `create_time`, `update_time`, `status`, `value`, `sort`) VALUES
-(1, 'GROUP_LIST', 'entity', '扩展分组', 'public', '', '分组后便于管理参数', 0, 1769571772, 1, 'public:公共配置项\r\naliyun_oss:阿里云OSS\r\ntencent_cos:腾讯云COS\r\naliyun_sms:阿里云短信\r\ntencent_sms:腾讯云短信\r\nweixinpay:微信支付\r\nalipay:支付宝支付\r\ntencent_vod:腾讯云点播\r\nstore:存储配置\r\nsms:短信配置\r\nvod:点播配置\r\npay:支付配置\r\nwithdraw:提现配置\r\nmuuagent:MuuAgent', 0),
+(1, 'GROUP_LIST', 'entity', '扩展分组', 'public', '', '分组后便于管理参数', 0, 1769571772, 1, 'public:公共配置项\r\naliyun_oss:阿里云OSS\r\ntencent_cos:腾讯云COS\r\naliyun_sms:阿里云短信\r\ntencent_sms:腾讯云短信\r\nweixinpay:微信支付\r\nalipay:支付宝支付\r\ntencent_vod:腾讯云点播\r\nstore:存储配置\r\nsms:短信配置\r\nvod:点播配置\r\npay:支付配置\r\nwithdraw:提现配置\r\nmuuagent:MuuAgent\r\nmessage:消息推送', 0),
 (3, 'PICTURE_UPLOAD_DRIVER', 'select', '图片上传驱动', 'store', 'local:本地\r\ntencent:腾讯云COS\r\naliyun:阿里云OSS', '', 0, 1649315854, 1, 'local', 0),
 (4, 'FILE_UPLOAD_DRIVER', 'select', '文件上传驱动', 'store', 'local:本地\r\ntencent:腾讯云COS\r\naliyun:阿里云OSS', '', 0, 1649315862, 1, 'local', 0),
 (6, 'OSS_ALIYUN_ACCESSKEYID', 'string', 'AccessKeyID', 'aliyun_oss', '', 'Access Key ID是您访问阿里云API的密钥，具有该账户完全的权限，请您妥善保管.', 1630910114, 1630918767, 1, '', 0),
@@ -637,16 +643,14 @@ INSERT INTO `muucmf_extend_config` (`id`, `name`, `type`, `title`, `group`, `ext
 (14, 'COS_TENCENT_SECRETKEY', 'string', 'SecretKEY', 'tencent_cos', '', 'SecretKEY 是您项目的安全密钥，具有该账户完全的权限，请妥善保管.', 0, 0, 1, '', 0),
 (15, 'COS_TENCENT_BUCKET', 'string', 'Bucket', 'tencent_cos', '', 'Bucket.', 0, 0, 1, '', 0),
 (16, 'COS_TENCENT_REGION', 'string', 'Region', 'tencent_cos', '', 'Bucket所在区域.', 0, 1630985517, 1, 'ap-beijing', 0),
-(17, 'COS_TENCENT_BUCKET_DOMAIN', 'string', 'Bucket域名', 'tencent_cos', '', '腾讯云支持用户自定义访问域名。注：url开头加http://或https://结尾不加 ‘/’例：http://abc.com.', 0, 0, 1, '', 0),
+(17, 'COS_TENCENT_BUCKET_DOMAIN', 'string', 'Bucket域名', 'tencent_cos', '', '腾讯云支持用户自定义访问域名。注：url开头加http://或https://结尾不加 \"/\"例：http://abc.com.', 0, 0, 1, '', 0),
 (18, 'SMS_TENCENT_APPID', 'string', '腾讯云SDKAppID', 'tencent_sms', '', 'SDK AppID是短信应用的唯一标识，调用短信API接口时，需要提供该参数', 0, 0, 1, '', 0),
 (20, 'SMS_TENCENT_SIGN', 'string', '短信签名', 'tencent_sms', '', '请使用真实的已申请的签名，签名参数使用的是`签名内容`，而不是`签名ID`', 0, 0, 1, '', 0),
-(21, 'SMS_TENCENT_TEMPLATEID', 'string', '短信模板', 'tencent_sms', '', '短信模板ID，应严格按\"模板ID\"填写', 0, 0, 1, '', 0),
 (22, 'SMS_SEND_DRIVER', 'select', '短信发送平台', 'sms', 'aliyun:阿里云\r\ntencent:腾讯云', '请选择短信发送第三方平台', 0, 0, 1, 'tencent', 0),
 (23, 'SMS_RESEND', 'num', '验证码有效期', 'sms', '', '验证码有效期', 0, 0, 1, '60', 0),
 (24, 'SMS_ALIYUN_ACCESSKEYID', 'string', 'AccessKeyID', 'aliyun_sms', '', 'Access Key ID是您访问阿里云API的密钥，具有该账户完全的权限，请您妥善保管', 0, 0, 1, '', 0),
 (25, 'SMS_ALIYUN_ACCESSKEYSECRET', 'string', 'AccessKeySecret', 'aliyun_sms', '', 'Access Key Secret是您访问阿里云API的密钥，具有该账户完全的权限，请您妥善保管', 0, 0, 1, '', 0),
 (26, 'SMS_ALIYUN_SIGN', 'string', '短信签名', 'aliyun_sms', '', '应严格按\"签名名称\"填写，请参考: https://dysms.console.aliyun.com/dysms.htm#/develop/sign', 0, 0, 1, '', 0),
-(27, 'SMS_ALIYUN_TEMPLATEID', 'string', '短信模板', 'aliyun_sms', '', '短信模板Code，应严格按\"模板CODE\"填写, 请参考: https://dysms.console.aliyun.com/dysms.htm#/develop/template', 0, 0, 1, '', 0),
 (28, 'SMS_TENCENT_SECRETID', 'string', 'SecretID', 'tencent_sms', '', 'SecretID 是您项目的安全密钥，具有该账户完全的权限，请妥善保管', 0, 0, 1, '', 0),
 (29, 'SMS_TENCENT_SECRETKEY', 'string', 'SecretKEY', 'tencent_sms', '', 'SecretKEY 是您项目的安全密钥，具有该账户完全的权限，请妥善保管', 0, 0, 1, '', 0),
 (30, 'SMS_TENCENT_REGION', 'string', 'Region', 'tencent_sms', '', '地域参数，格式 如：ap-beijing.', 0, 0, 1, 'ap-beijing', 0),
@@ -682,7 +686,18 @@ INSERT INTO `muucmf_extend_config` (`id`, `name`, `type`, `title`, `group`, `ext
 (63, 'MUUAGENT_API_KEY', 'string', 'ApiKey', 'muuagent', '', '请输入应用ApiKey', 1780744943, 1780744943, 1, '', 0),
 (64, 'MUUAGENT_APP_CODE', 'string', '应用标识', 'muuagent', '', '请输入应用唯一标识', 1780744974, 1780744974, 1, '', 0),
 (65, 'MUUAGENT_CLIENT_ID', 'string', '客户端ID', 'muuagent', '', '请输入客户端ID', 1780745009, 1780745009, 1, '', 0),
-(66, 'MUUAGENT_CLIENT_SECRET', 'string', '客户端secret', 'muuagent', '', '请输入客户端secret', 1780745053, 1780745053, 1, '', 0);
+(66, 'MUUAGENT_CLIENT_SECRET', 'string', '客户端secret', 'muuagent', '', '请输入客户端secret', 1780745053, 1780745053, 1, '', 0),
+(67, 'MESSAGE_QUIET_ENABLED', 'radio', '免打扰开关', 'message', '0:关闭\r\n1:开启', '开启后营销消息在免打扰时段顺延发送', 0, 0, 1, '0', 20),
+(68, 'MESSAGE_QUIET_START', 'string', '免打扰开始时间', 'message', '', '格式 HH:MM，支持跨天（如 21:00）', 0, 0, 1, '21:00', 21),
+(69, 'MESSAGE_QUIET_END', 'string', '免打扰结束时间', 'message', '', '格式 HH:MM，起止相同视为关闭', 0, 0, 1, '09:00', 22),
+(70, 'MESSAGE_BATCH_SIZE', 'num', '消息批次大小', 'message', '', '单批处理用户数，默认 500', 0, 0, 1, '500', 23),
+(71, 'MESSAGE_RETRY_MAX', 'num', '消息重试次数', 'message', '', '渠道发送失败后的最大重试次数，默认 3', 0, 0, 1, '3', 24),
+(72, 'MESSAGE_CHANNEL_EMAIL', 'radio', '启用邮件渠道', 'message', '0:关闭\r\n1:开启', '关闭后邮件渠道不再进入发送链路', 0, 0, 1, '1', 25),
+(73, 'MESSAGE_CHANNEL_SMS', 'radio', '启用短信渠道', 'message', '0:关闭\r\n1:开启', '关闭后短信渠道不再进入发送链路', 0, 0, 1, '1', 26),
+(74, 'MESSAGE_DEFAULT_CHAIN', 'string', '默认兜底链', 'message', '', '逗号分隔，如 sms,inbox；仅影响未单独配置兜底链的模板', 0, 0, 1, 'sms', 27),
+(75, 'MESSAGE_FREQ_MAX', 'num', '默认频控次数', 'message', '', '营销消息在同一时间窗口内最多发送次数', 0, 0, 1, '3', 28),
+(76, 'MESSAGE_FREQ_WINDOW', 'num', '默认频控窗口(小时)', 'message', '', '营销消息频控统计窗口', 0, 0, 1, '24', 29),
+(77, 'MESSAGE_RECORD_RETAIN_DAYS', 'num', '发送记录保留天数', 'message', '', '默认 30 天，清理任务按此保留期删除', 0, 0, 1, '30', 30);
 
 -- --------------------------------------------------------
 
@@ -1004,26 +1019,20 @@ INSERT INTO `muucmf_menu` (`id`, `title`, `pid`, `sort`, `url`, `hide`, `type`, 
 ('3C011249-2C51-D40B-19EC-2A8CA4DCFE51', '扩展资料', 'D18841ED-C034-2E7A-D0B2-92D0AC647179', 9, 'admin/field/group', 0, 0, '', '用户管理', 0, 'expand', 'admin'),
 ('40EE3F01-B5B0-9821-D6E9-F327562C5D29', 'Seo规则状态设置', '5962E368-3742-4699-E35A-6D268A73CA2A', 0, 'admin/Seo/status', 0, 0, '', '', 0, '', 'admin'),
 ('4B3DFCDA-258E-0CBC-66D5-BB95CE81B9D5', '跳转小程序列表', 'A4650B98-DAD4-8194-030C-1B2AB4F35CBA', 25, 'admin/tominiprogram/list', 0, 0, '', '微信小程序', 0, 'external-link', 'admin'),
-('4B6E56C7-715A-DEBB-F335-9B290240F781', '消息类型', '8F5C83E0-3753-C731-4EEF-5D004137B11D', 10, 'admin/Message/type', 0, 0, '', '消息管理', 0, 'commenting', 'admin'),
-('4C00F562-3EFB-A592-CD21-4F430BF9079F', '删除', '4862F745-C29C-BEF5-4F35-11328C5ADF51', 0, 'admin/Database/del', 0, 0, '删除备份文件', '', 0, '', 'admin'),
 ('4E0C013B-C00F-449F-324E-473115528F00', '新增、编辑用户组', 'E62328CE-8E20-DD00-E0E8-832D1C8E3B65', 0, 'admin/Auth/groupEdit', 0, 0, '编辑用户组名称和描述', '', 0, '', 'admin'),
-('4EF1FF5B-F390-89DF-B9FE-30030977CC89', '发送消息', '4B6E56C7-715A-DEBB-F335-9B290240F781', 0, 'admin/Message/send', 0, 0, '', '', 0, '', 'admin'),
 ('54C76B51-A313-477E-8FA9-CBD63D456610', '添加、编辑字段', '3C011249-2C51-D40B-19EC-2A8CA4DCFE51', 0, 'admin/field/editField', 0, 0, '', '', 0, '', 'admin'),
 ('5962E368-3742-4699-E35A-6D268A73CA2A', 'Seo规则', 'A4650B98-DAD4-8194-030C-1B2AB4F35CBA', 63, 'admin/Seo/list', 0, 0, '', 'PC管理', 0, 'file-text', 'admin'),
 ('5C72BF11-A945-6D28-D7C2-66FE3D812DA6', '用户导航', 'A4650B98-DAD4-8194-030C-1B2AB4F35CBA', 62, 'admin/Pc/user', 0, 0, '', 'PC管理', 0, 'user-plus', 'admin'),
 ('5DDD95BA-9BB4-1340-5E62-D83C83A9F881', '存储设置', '167253B8-B360-E5C8-3F94-F0502E971DAF', 3, 'admin/extend/store', 0, 0, '', '第三方扩展', 0, 'plus-square', 'admin'),
-('60F1F173-0196-BEEE-7852-00F71939360A', '新增、编辑消息内容', 'D15A9C87-9B85-DE05-ADCF-EAAD05BD94FD', 0, 'admin/Message/contentEdit', 0, 0, '', '', 0, '', 'admin'),
 ('67FFBEB1-E521-A9F6-89C6-EEB5E7020704', '重置用户密码', 'DA4333DF-D814-819B-D657-401FE5153AB4', 0, 'admin/Member/initpass', 1, 0, '', '', 0, '', 'admin'),
 ('68121540-2C69-EAC2-F2EF-B7ADBBE74C09', '状态管理', 'E62328CE-8E20-DD00-E0E8-832D1C8E3B65', 0, 'admin/Auth/groupStatus', 0, 0, '用户组状态管理', '', 0, '', 'admin'),
 ('6B092E46-1EF5-846D-1587-C9E35E0BEF0B', '开始升级', '0DB5F050-66EA-03D0-CE04-895DB8C50982', 0, 'admin/Update/start', 1, 0, '', '', 0, '', 'admin'),
 ('6C28F552-78A7-209F-A6AA-82C7212A6DCA', '访问授权', 'E62328CE-8E20-DD00-E0E8-832D1C8E3B65', 0, 'admin/Auth/access', 0, 0, '\"后台 \\ 用户 \\ 权限管理\"列表页的\"访问授权\"操作按钮', '', 0, '', 'admin'),
 ('6E50C73A-CA2B-7CA8-889E-99B25D578164', '公众号配置', 'A4650B98-DAD4-8194-030C-1B2AB4F35CBA', 0, 'admin/WechatOfficial/config', 0, 0, '', '微信公众号/H5', 0, 'comments', 'admin'),
 ('6E7257F5-44DA-009D-548F-47B895DDC1CB', '系统权限菜单', '167253B8-B360-E5C8-3F94-F0502E971DAF', 80, 'admin/menu/list', 0, 0, '', '权限管理', 0, 'navicon', 'admin'),
-('7571F78A-534D-A2F8-C56E-97CF56A9CEC4', '恢复', '4862F745-C29C-BEF5-4F35-11328C5ADF51', 0, 'admin/Database/import', 0, 0, '数据库恢复', '', 0, '', 'admin'),
 ('7692A0E4-AE15-9632-FD7F-6475E0A29399', '模块安装', '20216DCF-1138-09A3-346A-C92E08E33677', 3, 'admin/Module/install', 0, 0, '', '本地', 0, '', 'admin'),
 ('782D3C8F-D46D-35F2-D778-31FD2DCAB7F5', '自动回复', 'A4650B98-DAD4-8194-030C-1B2AB4F35CBA', 6, 'admin/WechatOfficial/autoReply', 0, 0, '', '微信公众号/H5', 0, 'comment-o', 'admin'),
 ('7BE5FA0B-7009-AB46-FE7B-A9364ACAF687', '应用', '0', 5, 'admin/Module/list', 0, 0, '', '', 0, 'cloud', 'admin'),
-('7D9E934B-1047-3CFE-BD5E-788AA6DB483F', '优化表', '2B76BD2C-80AB-319C-CE6E-1B0E6930B3CC', 0, 'admin/Database/optimize', 0, 0, '优化数据表', '', 0, '', 'admin'),
 ('80310884-97ED-4A43-3AA7-D0F5B32855F8', '导入', '6E7257F5-44DA-009D-548F-47B895DDC1CB', 0, 'admin/Menu/import', 0, 0, '', '', 0, '', 'admin'),
 ('8AEC0A7D-555F-8708-90B0-5528A2542F2F', '新增、编辑', 'D1B92885-12EA-9403-F367-E8978A4650DE', 0, 'admin/extend/edit', 0, 0, '', '', 0, '', 'admin'),
 ('8CE9FEC6-99F2-E8FC-87B6-089E8C17FB93', '成员授权', 'E62328CE-8E20-DD00-E0E8-832D1C8E3B65', 0, 'admin/Auth/user', 0, 0, '\"后台 \\ 用户 \\ 权限管理\"列表页的\"成员授权\"操作按钮', '', 0, '', 'admin'),
@@ -1047,18 +1056,15 @@ INSERT INTO `muucmf_menu` (`id`, `title`, `pid`, `sort`, `url`, `hide`, `type`, 
 ('AD4E0A9E-FD52-2FA9-EC0B-4B6D15D13951', '新增、编辑任务', '9046DAB8-73C9-74CF-B95B-6110A41BF43D', 0, 'admin/crontab/edit', 1, 0, '', '', 0, '', 'admin'),
 ('AD5E02C5-B1C6-7555-D8A7-09189710DD57', '点播配置', '167253B8-B360-E5C8-3F94-F0502E971DAF', 5, 'admin/extend/vod', 0, 0, '', '第三方扩展', 0, 'cloud-upload', 'admin'),
 ('ADFEFF44-F130-2291-C359-7801CDDF6F63', '编辑', '2F0E1A33-6AC2-DDC1-5744-8E3C4FE1F9EB', 0, 'admin/config/edit', 0, 0, '新增编辑和保存配置', '', 0, '', 'admin'),
-('B0798577-F1CB-669D-6DE8-BD04145FFDE9', '行为限制启用、禁用、删除', '05929499-FF7F-7615-C021-EDECADD02115', 0, 'admin/ActionLimit/limitStatus', 1, 0, '', '', 0, '', 'admin'),
 ('B4CCC48C-113F-4A31-9378-F9F77EEA9F4B', '用户反馈', '8F5C83E0-3753-C731-4EEF-5D004137B11D', 90, 'admin/Feedback/list', 0, 0, '', '用户互动', 0, 'exchange', 'admin'),
 ('BD492FD0-4A96-2B3C-6278-9C3FB20DB2AB', '删除', '2F0E1A33-6AC2-DDC1-5744-8E3C4FE1F9EB', 0, 'admin/Config/del', 0, 0, '删除配置', '', 0, '', 'admin'),
 ('C6E01098-793A-2CF1-3873-4B54374774D8', '添加、编辑分组', '3C011249-2C51-D40B-19EC-2A8CA4DCFE51', 0, 'admin/field/editGroup', 0, 0, '', '', 0, '', 'admin'),
 ('C8862310-A0B1-3BF0-3195-D92236CD0A5C', '短信配置', '167253B8-B360-E5C8-3F94-F0502E971DAF', 4, 'admin/extend/sms', 0, 0, '', '第三方扩展', 0, 'mobile', 'admin'),
-('D15A9C87-9B85-DE05-ADCF-EAAD05BD94FD', '消息发送记录', '8F5C83E0-3753-C731-4EEF-5D004137B11D', 11, 'admin/Message/list', 0, 0, '', '消息管理', 0, 'comments', 'admin'),
 ('D18841ED-C034-2E7A-D0B2-92D0AC647179', '用户', '0', 2, 'admin/member/list', 0, 0, '', '', 0, 'user', 'admin'),
 ('D1B92885-12EA-9403-F367-E8978A4650DE', '扩展配置参数', '167253B8-B360-E5C8-3F94-F0502E971DAF', 999, 'admin/extend/list', 0, 0, '', '第三方扩展', 0, 'list-ul', 'admin'),
 ('D273258A-2842-7AF2-802C-6AC91C98CB9A', '权限菜单', '20216DCF-1138-09A3-346A-C92E08E33677', 8, 'admin/Module/menu', 0, 0, '', '本地', 0, '', 'admin'),
 ('D70961D9-8B55-4608-70DB-DD18FA89D866', '卸载模块', '20216DCF-1138-09A3-346A-C92E08E33677', 7, 'admin/module/uninstall', 0, 0, '', '本地', 0, '', 'admin'),
 ('D792BB36-9033-4A54-F4D4-1B14854CDB0E', '新增', '6E7257F5-44DA-009D-548F-47B895DDC1CB', 0, 'admin/Menu/add', 0, 0, '', '系统设置', 0, '', 'admin'),
-('D7AC6473-7E00-7B96-9361-511E06A89F27', '新增、编辑消息类型', '4B6E56C7-715A-DEBB-F335-9B290240F781', 0, 'admin/Message/typeEdit', 0, 0, '', '', 0, '', 'admin'),
 ('DA4333DF-D814-819B-D657-401FE5153AB4', '用户信息', 'D18841ED-C034-2E7A-D0B2-92D0AC647179', 2, 'admin/member/list', 0, 0, '', '用户管理', 0, 'user', 'admin'),
 ('DA900619-B54E-49E7-8027-21C94ECD6FAC', '控制台', '0', 1, 'admin/index/index', 0, 0, '后台首页', '', 0, 'home', 'admin'),
 ('DABA8BF4-83F7-9354-895B-DAAC65A11CB1', '新增、编辑权限菜单', '20216DCF-1138-09A3-346A-C92E08E33677', 9, 'admin/module/menuEdit', 0, 0, '', '本地', 0, '', 'admin'),
@@ -1072,11 +1078,9 @@ INSERT INTO `muucmf_menu` (`id`, `title`, `pid`, `sort`, `url`, `hide`, `type`, 
 ('ED10E1E1-ECB7-CC4C-BC81-C6D77ACED85B', '系统配置', '167253B8-B360-E5C8-3F94-F0502E971DAF', 1, 'admin/Config/group', 0, 0, '', '系统配置', 0, 'cog', 'admin'),
 ('EF0B4FAF-6F3E-7212-A8A1-F59138D95EBA', '保存', '2F0E1A33-6AC2-DDC1-5744-8E3C4FE1F9EB', 0, 'admin/Config/save', 0, 0, '保存配置', '', 0, '', 'admin'),
 ('F66F609F-AB60-31E2-77EA-9214069E9D2A', '新增/编辑类型', 'AABA580B-E97E-69C3-BA9B-34694408DDBA', 0, 'admin/Score/typeEdit', 1, 0, '', '', 0, '', 'admin'),
-('F67EED4F-4F43-1002-BCE3-FF76E698928E', '修复表', '2B76BD2C-80AB-319C-CE6E-1B0E6930B3CC', 0, 'admin/Database/repair', 0, 0, '修复数据表', '', 0, '', 'admin'),
 ('F8C08807-1339-95ED-FDEC-8E5D853FC1D8', '菜单管理', 'A4650B98-DAD4-8194-030C-1B2AB4F35CBA', 1, 'admin/WechatOfficial/menu', 0, 0, '', '微信公众号/H5', 0, 'bars', 'admin'),
 ('F8D89EF4-792E-B14F-8456-09394EDE7C72', '编辑模块', '20216DCF-1138-09A3-346A-C92E08E33677', 0, 'admin/Module/edit', 1, 0, '', '模块管理', 0, '', 'admin'),
 ('FAD7E420-2621-D50C-48AF-BAEEA2F361F5', '应用商店', '7BE5FA0B-7009-AB46-FE7B-A9364ACAF687', 0, 'admin/Appcloud/index', 0, 0, '', '云端', 0, 'cloud', 'admin'),
-('FD6493CE-98CB-A5A7-3236-080E11318831', '备份', '2B76BD2C-80AB-319C-CE6E-1B0E6930B3CC', 0, 'admin/Database/export', 0, 0, '备份数据库', '', 0, '', 'admin'),
 ('8553C20D-7FCB-4252-15F4-5ECFC0A56092', '角色类型', 'D18841ED-C034-2E7A-D0B2-92D0AC647179', 4, 'admin/Role/group', 0, 0, '', '角色管理', 0, 'window-restore', 'admin'),
 ('8BBDA16F-8A60-47CE-F4BD-0C3AC4AC7677', '添加、编辑分组', '8553C20D-7FCB-4252-15F4-5ECFC0A56092', 0, 'admin/Role/groupEdit', 0, 0, '', '', 0, '', 'admin'),
 ('7472E236-A4ED-6AC7-712E-3479158D5E21', '抖音小程序配置', 'A4650B98-DAD4-8194-030C-1B2AB4F35CBA', 30, 'admin/DouyinMiniprogram/config', 0, 0, '', '抖音小程序', 0, '', 'admin'),
@@ -1087,8 +1091,6 @@ INSERT INTO `muucmf_menu` (`id`, `title`, `pid`, `sort`, `url`, `hide`, `type`, 
 ('7C934436-0EFC-A814-C5FB-521A764E75BA', '清空日志', 'A53BEFBB-17F7-56CD-ADF9-3D6754061E70', 0, 'admin/Score/clear', 0, 0, '', '', 0, '', 'admin'),
 ('44C36AB5-BF84-8C51-B097-FE7730A22BC3', '公告状态管理', 'DAF83BB8-F5C2-0CBB-AD8B-FEBB44D12FA3', 0, 'admin/Announce/status', 0, 0, '', '', 0, '', 'admin'),
 ('72483346-528E-3DFD-C1F6-5054030E78C7', '关键字状态管理', '1E10322E-B5A4-6CFE-6F33-F629B1D72A6F', 0, 'admin/Keywords/status', 0, 0, '', '', 0, '', 'admin'),
-('1AF87B7B-BCC4-4493-39EE-F726D6A8DB0E', '状态管理', '4B6E56C7-715A-DEBB-F335-9B290240F781', 0, 'admin/Message/typeStatus', 0, 0, '', '', 0, '', 'admin'),
-('83FB02F1-F7B5-E5B9-2D40-DED038ABE5EE', '消息状态管理', 'D15A9C87-9B85-DE05-ADCF-EAAD05BD94FD', 0, 'admin/Message/messageStatus', 0, 0, '', '', 0, '', 'admin'),
 ('E8197AF4-11D1-F0B1-0153-AD74521C3283', '状态管理', 'B4CCC48C-113F-4A31-9378-F9F77EEA9F4B', 0, 'admin/Feedback/status', 0, 0, '', '', 0, '', 'admin'),
 ('759FD998-08F4-A420-337C-55C0D5C31B0A', '状态管理', '1B23C61A-3B9E-07DC-6FC8-DA8A2F7A80D0', 0, 'admin/History/status', 0, 0, '', '', 0, '', 'admin'),
 ('D3E5BCC8-BAED-D970-9E40-6EB17CAFF94A', '用户详情', 'DA4333DF-D814-819B-D657-401FE5153AB4', 0, 'admin/Member/detail', 0, 0, '', '', 0, '', 'admin'),
@@ -1104,7 +1106,27 @@ INSERT INTO `muucmf_menu` (`id`, `title`, `pid`, `sort`, `url`, `hide`, `type`, 
 ('BDE6A6B2-3EA1-BD31-A9D4-44B442156839', '上传用户头像', 'DA4333DF-D814-819B-D657-401FE5153AB4', 0, 'admin/Member/avatar', 0, 0, '', '', 0, '', 'admin'),
 ('30DC271B-AFF8-467F-5A1D-B54B7D0C52A3', 'MuuAgent', '167253B8-B360-E5C8-3F94-F0502E971DAF', 10, 'admin/extend/muuagent', 0, 0, 'MuuAgent配置项', '第三方扩展', 0, 'microchip', 'admin'),
 ('E1F2A3B4-C5D6-4E7F-8A9B-0C1D2E3F4A5B', 'Sitemap生成', 'A4650B98-DAD4-8194-030C-1B2AB4F35CBA', 64, 'admin/sitemap/index', 0, 0, '', 'PC管理', 0, 'sitemap', 'admin'),
-('F2A3B4C5-D6E7-4F8A-9B0C-1D2E3F4A5B6C', '手动生成Sitemap', 'E1F2A3B4-C5D6-4E7F-8A9B-0C1D2E3F4A5B', 0, 'admin/sitemap/generate', 1, 0, '', '', 0, '', 'admin');
+('F2A3B4C5-D6E7-4F8A-9B0C-1D2E3F4A5B6C', '手动生成Sitemap', 'E1F2A3B4-C5D6-4E7F-8A9B-0C1D2E3F4A5B', 0, 'admin/sitemap/generate', 1, 0, '', '', 0, '', 'admin'),
+('A4C1D2E3-F405-4A16-8B27-C3D8E9FA1023', '消息模板', '8F5C83E0-3753-C731-4EEF-5D004137B11D', 20, 'admin/messagecenter/template', 0, 0, '', '消息中心', 0, 'commenting', 'admin'),
+('B5D2E3F4-0516-4B27-9C38-D4E9FA0B2134', '发送任务', '8F5C83E0-3753-C731-4EEF-5D004137B11D', 21, 'admin/messagecenter/task', 0, 0, '', '消息中心', 0, 'send', 'admin'),
+('C6E3F405-1627-4C38-8D49-E5FA0B1C3245', '发送记录', '8F5C83E0-3753-C731-4EEF-5D004137B11D', 22, 'admin/messagecenter/record', 0, 0, '', '消息中心', 0, 'list-alt', 'admin'),
+('F9162738-495A-4F6B-9A7C-182D3E4F6578', '触达设置', '8F5C83E0-3753-C731-4EEF-5D004137B11D', 23, 'admin/messagecenter/setting', 0, 0, '', '消息中心', 0, 'sliders', 'admin'),
+('0A273849-5A6B-4A7C-8B8D-293E4F5A7689', '模板详情', 'A4C1D2E3-F405-4A16-8B27-C3D8E9FA1023', 0, 'admin/messagecenter/templatedetail', 1, 0, '', '消息中心', 0, '', 'admin'),
+('1B38495A-6B7C-4B8D-9C9E-3A4F5A6B879A', '模板保存', 'A4C1D2E3-F405-4A16-8B27-C3D8E9FA1023', 1, 'admin/messagecenter/templatesave', 1, 0, '', '消息中心', 0, '', 'admin'),
+('2C495A6B-7C8D-4C9E-8DAF-4B5A6B7C98AB', '模板启停', 'A4C1D2E3-F405-4A16-8B27-C3D8E9FA1023', 2, 'admin/messagecenter/templatestatus', 1, 0, '', '消息中心', 0, '', 'admin'),
+('3D5A6B7C-8D9E-4DAF-9EB0-5C6B7C8D9ABC', '模板复制', 'A4C1D2E3-F405-4A16-8B27-C3D8E9FA1023', 3, 'admin/messagecenter/templatecopy', 1, 0, '', '消息中心', 0, '', 'admin'),
+('4E6B7C8D-9EAF-4EB0-8FC1-6D7C8D9EABCD', '模板测试发送', 'A4C1D2E3-F405-4A16-8B27-C3D8E9FA1023', 4, 'admin/messagecenter/templatetest', 1, 0, '', '消息中心', 0, '', 'admin'),
+('FA273849-5A6B-4A7C-8B8D-293E4F5A7690', '新建任务', 'B5D2E3F4-0516-4B27-9C38-D4E9FA0B2134', 5, 'admin/messagecenter/taskcreate', 1, 0, '', '消息中心', 0, '', 'admin'),
+('5F7C8D9E-AFB0-4FC1-9AD2-7E8D9EAFBCDE', '任务详情', 'B5D2E3F4-0516-4B27-9C38-D4E9FA0B2134', 6, 'admin/messagecenter/taskdetail', 1, 0, '', '消息中心', 0, '', 'admin'),
+('6A8D9EAF-B0C1-4AD2-8BE3-8F9EAFB0CDEF', '任务取消', 'B5D2E3F4-0516-4B27-9C38-D4E9FA0B2134', 7, 'admin/messagecenter/taskcancel', 1, 0, '', '消息中心', 0, '', 'admin'),
+('7B9EAFB0-C1D2-4BE3-9CF4-9A0FB0C1DEFA', '任务重试', 'B5D2E3F4-0516-4B27-9C38-D4E9FA0B2134', 8, 'admin/messagecenter/taskretry', 1, 0, '', '消息中心', 0, '', 'admin'),
+('8CAFB0C1-D2E3-4CF4-8A05-0B10C1D2EFAB', '单条重试', 'C6E3F405-1627-4C38-8D49-E5FA0B1C3245', 9, 'admin/messagecenter/recordretry', 1, 0, '', '消息中心', 0, '', 'admin'),
+('0B38495A-6B7C-4B8D-9C9E-3A4F5A6B879B', '记录导出', 'C6E3F405-1627-4C38-8D49-E5FA0B1C3245', 10, 'admin/messagecenter/recordexport', 1, 0, '', '消息中心', 0, '', 'admin'),
+('AEB1C2D3-F405-4E16-8C27-2D32E3F4ABCD', '设置保存', 'F9162738-495A-4F6B-9A7C-182D3E4F6578', 11, 'admin/messagecenter/settingsave', 1, 0, '', '消息中心', 0, '', 'admin'),
+('BFC2D3E4-0516-4F27-9D38-3E43F4A5BCDE', '黑名单管理', 'F9162738-495A-4F6B-9A7C-182D3E4F6578', 12, 'admin/messagecenter/blacklist', 1, 0, '', '消息中心', 0, '', 'admin'),
+('C1D2E3F4-1627-4B38-9E5A-6F0B1C2D3E4F', '消息类型', '8F5C83E0-3753-C731-4EEF-5D004137B11D', 24, 'admin/messagecenter/type', 0, 0, '', '消息中心', 0, 'tags', 'admin'),
+('D2E3F4A5-2738-4C49-AF6B-7A1C2D3E4F50', '类型保存', 'C1D2E3F4-1627-4B38-9E5A-6F0B1C2D3E4F', 0, 'admin/messagecenter/typesave', 1, 0, '', '消息中心', 0, '', 'admin'),
+('E3F4A5B6-3849-4D5A-B07C-8B2D3E4F5061', '类型启停', 'C1D2E3F4-1627-4B38-9E5A-6F0B1C2D3E4F', 1, 'admin/messagecenter/typestatus', 1, 0, '', '消息中心', 0, '', 'admin');
 
 -- --------------------------------------------------------
 
@@ -1124,7 +1146,11 @@ CREATE TABLE IF NOT EXISTS `muucmf_message` (
   `status` tinyint(2) NOT NULL DEFAULT '0' COMMENT '状态',
   `create_time` int(11) UNSIGNED NOT NULL COMMENT '创建时间',
   `update_time` int(11) UNSIGNED NOT NULL COMMENT '更新时间',
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  KEY `idx_shop_to_uid` (`shopid`,`to_uid`,`status`),
+  KEY `idx_shop_type` (`shopid`,`type_id`,`status`),
+  KEY `idx_shop_uid_read` (`shopid`,`to_uid`,`is_read`),
+  KEY `idx_content_id` (`content_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息表';
 
 -- --------------------------------------------------------
@@ -1140,10 +1166,14 @@ CREATE TABLE IF NOT EXISTS `muucmf_message_content` (
   `description` varchar(128) NOT NULL COMMENT '简短描述',
   `content` text NOT NULL COMMENT '消息内容',
   `args` text NULL COMMENT '消息参数 json格式',
+  `link` varchar(500) NOT NULL DEFAULT '' COMMENT '跳转链接',
+  `template_code` varchar(64) NOT NULL DEFAULT '' COMMENT '模板编码',
+  `variables` text NULL COMMENT '渲染变量JSON',
   `status` tinyint(2) NOT NULL DEFAULT '0' COMMENT '状态',
   `create_time` int(11) UNSIGNED NOT NULL COMMENT '创建时间',
   `update_time` int(11) UNSIGNED NOT NULL COMMENT '更新时间',
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  KEY `idx_shop_template` (`shopid`,`template_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息内容';
 
 -- --------------------------------------------------------
@@ -1159,11 +1189,259 @@ CREATE TABLE IF NOT EXISTS `muucmf_message_type` (
   `title` varchar(64) NOT NULL COMMENT '类型标题',
   `description` varchar(255) NOT NULL COMMENT '类型描述',
   `icon` varchar(255) NULL COMMENT '类型图标',
+  `code` varchar(32) NOT NULL DEFAULT '' COMMENT '类型编码 system/order/marketing',
+  `sort` smallint(5) UNSIGNED NOT NULL DEFAULT '0' COMMENT '排序',
   `status` tinyint(2) NOT NULL DEFAULT '0' COMMENT '状态',
   `create_time` int(11) UNSIGNED NOT NULL COMMENT '创建时间',
   `update_time` int(11) UNSIGNED NOT NULL COMMENT '更新时间',
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_shop_code` (`shopid`,`code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息类型';
+
+--
+-- 表的数据 `muucmf_message_type`（平台默认类型，店铺级由 MessageSeed 按 shopid 补齐）
+--
+
+INSERT INTO `muucmf_message_type` (`id`, `shopid`, `title`, `description`, `icon`, `code`, `sort`, `status`, `create_time`, `update_time`) VALUES
+(1, 0, '系统通知', '系统公告与账号相关通知', '', 'system', 1, 1, 1767196800, 1767196800),
+(2, 0, '订单通知', '订单、支付、退款等交易通知', '', 'order', 2, 1, 1767196800, 1767196800),
+(3, 0, '营销活动', '活动、优惠券与会员提醒', '', 'marketing', 3, 1, 1767196800, 1767196800);
+
+-- --------------------------------------------------------
+
+--
+-- 表的结构 `muucmf_message_template`（消息模板主表）
+--
+
+DROP TABLE IF EXISTS `muucmf_message_template`;
+CREATE TABLE IF NOT EXISTS `muucmf_message_template` (
+  `id` int(11) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `shopid` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '店铺ID，0为平台模板',
+  `code` varchar(64) NOT NULL DEFAULT '' COMMENT '模板编码 app.scene',
+  `app` varchar(32) NOT NULL DEFAULT 'common' COMMENT '归属应用',
+  `scene` varchar(64) NOT NULL DEFAULT '' COMMENT '业务场景',
+  `name` varchar(64) NOT NULL DEFAULT '' COMMENT '模板名称',
+  `description` varchar(255) NOT NULL DEFAULT '' COMMENT '模板说明',
+  `level` varchar(16) NOT NULL DEFAULT 'marketing' COMMENT 'transaction事务 marketing营销 security安全',
+  `variables` text NULL COMMENT '变量声明JSON',
+  `default_vars` text NULL COMMENT '默认变量JSON',
+  `fallback` varchar(255) NOT NULL DEFAULT 'inbox' COMMENT '兜底渠道链JSON，系统强制追加inbox',
+  `always_inbox` tinyint(2) NOT NULL DEFAULT '0' COMMENT '1站内信必发（链首额外发送）',
+  `frequency_rule` text NULL COMMENT '频控规则JSON对象 max_times/window_hours',
+  `is_system` tinyint(2) NOT NULL DEFAULT '0' COMMENT '1系统预置',
+  `version` int(11) UNSIGNED NOT NULL DEFAULT '1' COMMENT '模板版本',
+  `status` tinyint(2) NOT NULL DEFAULT '1' COMMENT '1启用 0停用',
+  `sort` smallint(5) UNSIGNED NOT NULL DEFAULT '0' COMMENT '排序',
+  `create_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '创建时间',
+  `update_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_shop_code` (`shopid`,`code`),
+  KEY `idx_shop_app_status` (`shopid`,`app`,`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息模板表';
+
+--
+-- 表的数据 `muucmf_message_template`（平台默认模板，店铺级由 MessageSeed 按 shopid 补齐）
+-- 验证码模板的 site_name 默认值由运行时按站点名称补齐，避免安装时写死
+--
+
+INSERT INTO `muucmf_message_template` (`id`, `shopid`, `code`, `app`, `scene`, `name`, `description`, `level`, `variables`, `default_vars`, `fallback`, `always_inbox`, `frequency_rule`, `is_system`, `version`, `status`, `sort`, `create_time`, `update_time`) VALUES
+(1, 0, 'common.custom_message', 'common', 'custom_message', '自定义消息', '后台自由编辑标题与正文的通用消息，供旧入口复用', 'transaction', '["title","description","content"]', '[]', '["inbox"]', 1, NULL, 1, 1, 1, 0, 1767196800, 1767196800),
+(2, 0, 'common.verify_code', 'common', 'verify_code', '验证码', '登录、注册、改密、绑定手机号/邮箱验证码，安全级别，不参与免打扰与频控', 'security', '["code","site_name","expire_minutes"]', '{"expire_minutes":"15"}', '["sms"]', 0, NULL, 1, 1, 1, 0, 1767196800, 1767196800),
+(3, 0, 'order.pay_success', 'order', 'pay_success', '支付成功通知', '订单支付成功站内信', 'transaction', '["order_no","amount","product_name","paid_time"]', '[]', '["inbox"]', 1, NULL, 1, 1, 1, 0, 1767196800, 1767196800),
+(4, 0, 'order.pay_success_admin', 'order', 'pay_success_admin', '支付成功运营通知', '支付成功后通知店铺运营', 'transaction', '["order_no","amount","paid_time"]', '[]', '["inbox"]', 1, NULL, 1, 1, 1, 0, 1767196800, 1767196800),
+(5, 0, 'order.refund_success', 'order', 'refund_success', '退款到账通知', '售后退款成功后通知用户', 'transaction', '["order_no","amount"]', '[]', '["inbox"]', 1, NULL, 1, 1, 1, 0, 1767196800, 1767196800),
+(6, 0, 'svip.expire_remind', 'svip', 'expire_remind', '会员到期提醒', '会员到期前 7/3/1 天提醒', 'marketing', '["nickname","expire_time"]', '[]', '["inbox"]', 1, '{"max_times":2,"window_hours":168}', 1, 1, 1, 0, 1767196800, 1767196800);
+
+-- --------------------------------------------------------
+
+--
+-- 表的结构 `muucmf_message_template_channel`（模板渠道内容）
+--
+
+DROP TABLE IF EXISTS `muucmf_message_template_channel`;
+CREATE TABLE IF NOT EXISTS `muucmf_message_template_channel` (
+  `id` int(11) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `shopid` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '店铺ID',
+  `template_id` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '模板ID',
+  `template_code` varchar(64) NOT NULL DEFAULT '' COMMENT '模板编码冗余',
+  `channel` varchar(16) NOT NULL DEFAULT '' COMMENT 'inbox/email/sms（P1：wechat_oa/wechat_mp）',
+  `title` varchar(255) NULL COMMENT '标题/主题；NULL=未配置',
+  `content` text NULL COMMENT '正文内容，含{{变量}}；NULL=未配置',
+  `extra` text NULL COMMENT '渠道扩展JSON：服务商模板ID/字段映射/跳转/签名等',
+  `third_template_id` varchar(64) NOT NULL DEFAULT '' COMMENT '单服务商兼容模板ID（新模板用extra.provider_template_id）',
+  `var_map` text NULL COMMENT '渠道变量映射JSON',
+  `status` tinyint(2) NOT NULL DEFAULT '1' COMMENT '1启用 0停用',
+  `create_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '创建时间',
+  `update_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_tpl_channel` (`template_id`,`channel`),
+  KEY `idx_shop_code_channel` (`shopid`,`template_code`,`channel`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息模板渠道内容表';
+
+--
+-- 表的数据 `muucmf_message_template_channel`
+-- 短信服务商模板 ID 留空，升级场景由运行时从旧全局配置回填
+--
+
+INSERT INTO `muucmf_message_template_channel` (`id`, `shopid`, `template_id`, `template_code`, `channel`, `title`, `content`, `extra`, `third_template_id`, `var_map`, `status`, `create_time`, `update_time`) VALUES
+(1, 0, 1, 'common.custom_message', 'inbox', '{{title}}', '{{content}}', '{"type_code":"system"}', '', NULL, 1, 1767196800, 1767196800),
+(2, 0, 1, 'common.custom_message', 'email', '{{title}}', '{{content}}', '[]', '', NULL, 1, 1767196800, 1767196800),
+(3, 0, 1, 'common.custom_message', 'sms', '', '{{content}}', '[]', '', '{"content":"content"}', 1, 1767196800, 1767196800),
+(4, 0, 2, 'common.verify_code', 'sms', '', '验证码：{{code}}', '{"provider_template_id":{"aliyun":"","tencent":""},"sign_name":""}', '', '{"code":"code"}', 1, 1767196800, 1767196800),
+(5, 0, 2, 'common.verify_code', 'email', '【{{site_name}}】验证码', '<p>{{site_name}} 验证码：<strong>{{code}}</strong></p><p>该验证码 {{expire_minutes}} 分钟内有效，请勿泄露给他人。如非本人操作，请忽略本邮件。</p>', '[]', '', NULL, 1, 1767196800, 1767196800),
+(6, 0, 3, 'order.pay_success', 'inbox', '支付成功', '<p>您的订单 {{order_no}} 已支付成功。</p><p>商品：{{product_name}}</p><p>金额：{{amount}} 元</p><p>支付时间：{{paid_time}}</p>', '{"type_code":"order","description":"订单 {{order_no}} 支付成功"}', '', NULL, 1, 1767196800, 1767196800),
+(7, 0, 4, 'order.pay_success_admin', 'inbox', '有新的支付订单', '<p>订单 {{order_no}} 支付成功，金额 {{amount}} 元，时间 {{paid_time}}。</p>', '{"type_code":"order"}', '', NULL, 1, 1767196800, 1767196800),
+(8, 0, 5, 'order.refund_success', 'inbox', '退款到账', '<p>订单 {{order_no}} 的退款 {{amount}} 元已到账，请注意查收。</p>', '{"type_code":"order"}', '', NULL, 1, 1767196800, 1767196800),
+(9, 0, 6, 'svip.expire_remind', 'inbox', '会员即将到期', '<p>{{nickname}}，您的会员将于 {{expire_time}} 到期，续费可继续享受会员权益。</p>', '{"type_code":"marketing"}', '', NULL, 1, 1767196800, 1767196800);
+
+-- --------------------------------------------------------
+
+--
+-- 表的结构 `muucmf_message_task`（发送任务）
+--
+
+DROP TABLE IF EXISTS `muucmf_message_task`;
+CREATE TABLE IF NOT EXISTS `muucmf_message_task` (
+  `id` int(11) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `shopid` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '店铺ID',
+  `template_code` varchar(64) NOT NULL DEFAULT '' COMMENT '模板编码',
+  `template_version` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '模板版本',
+  `title` varchar(128) NOT NULL DEFAULT '' COMMENT '任务标题',
+  `level` varchar(16) NOT NULL DEFAULT '' COMMENT '消息级别',
+  `channels` varchar(128) NOT NULL DEFAULT '' COMMENT '渠道集合JSON',
+  `target_type` varchar(16) NOT NULL DEFAULT 'uids' COMMENT 'uids/groups',
+  `target_payload` mediumtext NULL COMMENT '目标定义JSON（可序列化，含批次游标）',
+  `target_hash` char(32) NOT NULL DEFAULT '' COMMENT '目标摘要MD5，审计与去重',
+  `user_total` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '目标用户数（去重）',
+  `user_done` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '已处理用户数',
+  `user_success` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '成功用户数（任一渠道成功）',
+  `user_failed` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '失败用户数（全部渠道失败）',
+  `user_blocked` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '策略拦截用户数',
+  `record_total` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '渠道记录总数',
+  `record_success` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '渠道记录成功数',
+  `record_failed` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '渠道记录失败数',
+  `record_blocked` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '渠道记录拦截数',
+  `status` varchar(16) NOT NULL DEFAULT 'pending' COMMENT 'pending/running/scheduled/finished/partial/failed/canceled',
+  `send_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '计划发送时间，0立即',
+  `start_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '开始时间',
+  `finish_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '结束时间',
+  `operator_uid` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '操作人UID',
+  `remark` varchar(255) NOT NULL DEFAULT '' COMMENT '备注',
+  `create_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '创建时间',
+  `update_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_shop_status` (`shopid`,`status`),
+  KEY `idx_shop_code_time` (`shopid`,`template_code`,`create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息发送任务表';
+
+-- --------------------------------------------------------
+
+--
+-- 表的结构 `muucmf_message_record`（发送记录：用户×渠道）
+--
+
+DROP TABLE IF EXISTS `muucmf_message_record`;
+CREATE TABLE IF NOT EXISTS `muucmf_message_record` (
+  `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `shopid` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '店铺ID',
+  `task_id` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '任务ID',
+  `template_code` varchar(64) NOT NULL DEFAULT '' COMMENT '模板编码',
+  `template_version` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '模板版本',
+  `channel` varchar(16) NOT NULL DEFAULT '' COMMENT '渠道',
+  `channel_index` tinyint(2) UNSIGNED NOT NULL DEFAULT '0' COMMENT '渠道链序号，0为链首',
+  `from_channel` varchar(16) NOT NULL DEFAULT '' COMMENT '由哪个渠道降级而来',
+  `scheduled_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '顺延/定时发送时间',
+  `uid` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '接收用户UID',
+  `inbox_id` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '站内信ID',
+  `biz_key` varchar(64) NOT NULL DEFAULT '' COMMENT '业务幂等键',
+  `title` varchar(255) NOT NULL DEFAULT '' COMMENT '渲染后标题',
+  `content_digest` varchar(255) NOT NULL DEFAULT '' COMMENT '渲染内容摘要（摘要，不落全文）',
+  `third_msg_id` varchar(128) NOT NULL DEFAULT '' COMMENT '第三方消息ID',
+  `status` varchar(16) NOT NULL DEFAULT 'pending' COMMENT 'pending/delayed/success/failed/blocked/canceled',
+  `block_reason` varchar(32) NOT NULL DEFAULT '' COMMENT '拦截/顺延原因',
+  `delay_to` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '顺延目标时间（block_reason=quiet 时）',
+  `error_code` varchar(64) NOT NULL DEFAULT '' COMMENT '错误码',
+  `error_msg` varchar(500) NOT NULL DEFAULT '' COMMENT '错误信息',
+  `attempts` tinyint(2) UNSIGNED NOT NULL DEFAULT '0' COMMENT '尝试次数',
+  `is_test` tinyint(2) NOT NULL DEFAULT '0' COMMENT '是否测试发送',
+  `send_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '发送时间',
+  `receipt_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '回执时间',
+  `create_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '创建时间',
+  `update_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_shop_code_uid_biz_channel` (`shopid`,`template_code`,`uid`,`biz_key`,`channel`),
+  KEY `idx_shop_task` (`shopid`,`task_id`),
+  KEY `idx_shop_uid_time` (`shopid`,`uid`,`create_time`),
+  KEY `idx_shop_status_time` (`shopid`,`status`,`create_time`),
+  KEY `idx_status_scheduled` (`status`,`scheduled_time`),
+  KEY `idx_shop_channel_time` (`shopid`,`channel`,`create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息发送记录表';
+
+-- --------------------------------------------------------
+
+--
+-- 表的结构 `muucmf_message_subscription`（用户订阅偏好）
+--
+
+DROP TABLE IF EXISTS `muucmf_message_subscription`;
+CREATE TABLE IF NOT EXISTS `muucmf_message_subscription` (
+  `id` int(11) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `shopid` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '店铺ID',
+  `uid` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '用户UID',
+  `template_code` varchar(64) NOT NULL DEFAULT '' COMMENT '模板编码，*表示整店',
+  `app` varchar(32) NOT NULL DEFAULT '' COMMENT '应用',
+  `channel` varchar(16) NOT NULL DEFAULT '' COMMENT '渠道，*表示全部',
+  `subscribed` tinyint(2) NOT NULL DEFAULT '1' COMMENT '1订阅 0退订',
+  `unsubscribe_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '退订时间',
+  `create_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '创建时间',
+  `update_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_shop_app_uid_code_channel` (`shopid`,`app`,`uid`,`template_code`,`channel`),
+  KEY `idx_shop_uid` (`shopid`,`uid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户消息订阅偏好表';
+
+-- --------------------------------------------------------
+
+--
+-- 表的结构 `muucmf_message_suppression`（黑名单）
+--
+
+DROP TABLE IF EXISTS `muucmf_message_suppression`;
+CREATE TABLE IF NOT EXISTS `muucmf_message_suppression` (
+  `id` int(11) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `shopid` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '店铺ID',
+  `uid` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '用户UID',
+  `type` varchar(16) NOT NULL DEFAULT 'manual' COMMENT 'manual手动/refund纠纷/complaint投诉',
+  `reason` varchar(255) NOT NULL DEFAULT '' COMMENT '原因',
+  `operator_uid` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '操作人',
+  `status` tinyint(2) NOT NULL DEFAULT '1' COMMENT '1生效 0已解黑（保留痕迹）',
+  `expire_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '失效时间，0永久',
+  `release_uid` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '解黑人UID',
+  `release_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '解黑时间',
+  `create_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '创建时间',
+  `update_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_shop_uid` (`shopid`,`uid`),
+  KEY `idx_shop_status_expire` (`shopid`,`status`,`expire_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息黑名单表';
+
+-- --------------------------------------------------------
+
+--
+-- 表的结构 `muucmf_failed_jobs`（队列失败任务，字段对齐 think-queue failed/Database）
+--
+
+DROP TABLE IF EXISTS `muucmf_failed_jobs`;
+CREATE TABLE IF NOT EXISTS `muucmf_failed_jobs` (
+  `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `connection` varchar(255) NOT NULL DEFAULT '' COMMENT '队列连接',
+  `queue` varchar(255) NOT NULL DEFAULT '' COMMENT '队列名',
+  `payload` longtext NULL COMMENT '原始任务载荷',
+  `exception` longtext NULL COMMENT '异常堆栈',
+  `fail_time` datetime DEFAULT NULL COMMENT '失败时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_queue_time` (`queue`,`fail_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='队列失败任务表';
 
 -- --------------------------------------------------------
 
@@ -1689,3 +1967,5 @@ CREATE TABLE IF NOT EXISTS `muucmf_withdraw` (
   `update_time` int(11) UNSIGNED NOT NULL COMMENT '更新时间',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='提现表' ROW_FORMAT=COMPACT;
+
+

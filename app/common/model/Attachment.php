@@ -1234,10 +1234,13 @@ class Attachment extends Base
      * 根据用户ID设置用户信息，若uid为0则设置为系统信息，否则查询用户信息
      * 同时格式化创建时间和更新时间
      * 
-     * @param array $data 附件数据数组
+     * @param array $data    附件数据数组
+     * @param array $options 处理选项：
+     *                       - thumb_sizes array|null 需要的缩略图倍率档位，默认 1~8（100~800）
+     *                       - thumb       bool       是否生成缩略图，默认 true
      * @return array 处理后的附件数据
      */
-    public function handle($data)
+    public function handle($data, array $options = [])
     {
         if ($data['uid'] == 0) {
             $avatar = request()->domain() . '/static/common/images/message_icon/system.png';
@@ -1255,12 +1258,22 @@ class Attachment extends Base
             $data['user_info'] = query_user($data['uid'], ['nickname', 'avatar']);
         }
 
-        // 根据驱动类型获取完整URL
-        $data['url'] = get_attachment_src($data['attachment']);
+        // 记录本身已带 driver（列表查询场景），直接复用可省去逐行回查附件表
+        $driver = array_key_exists('driver', $data) ? $data['driver'] : null;
 
-        // 图片类型附件生成一组缩略图
-        if ($data['type'] == 'image') {
-            $data['thumb'] = thumb_group($data['attachment']);
+        // 根据驱动类型获取完整URL
+        $data['url'] = get_attachment_src($data['attachment'], $driver);
+
+        // 图片类型附件生成缩略图（列表页可按需只生成实际使用的档位）
+        if ($data['type'] == 'image' && ($options['thumb'] ?? true)) {
+            $data['thumb'] = thumb_group(
+                $data['attachment'],
+                100,
+                100,
+                false,
+                $options['thumb_sizes'] ?? null,
+                $driver
+            );
         }
 
         // 根据driver的值返回driver的文字描述值

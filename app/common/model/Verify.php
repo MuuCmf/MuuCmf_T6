@@ -4,18 +4,6 @@ namespace app\common\model;
 
 use think\Model;
 
-use AlibabaCloud\Client\AlibabaCloud;
-use AlibabaCloud\Client\Exception\ClientException;
-use AlibabaCloud\Client\Exception\ServerException;
-use TencentCloud\Sms\V20210111\SmsClient;
-// 导入要请求接口对应的Request类
-use TencentCloud\Sms\V20210111\Models\SendSmsRequest;
-use TencentCloud\Common\Exception\TencentCloudSDKException;
-use TencentCloud\Common\Credential;
-// 导入可选配置类
-use TencentCloud\Common\Profile\ClientProfile;
-use TencentCloud\Common\Profile\HttpProfile;
-
 class Verify extends Model
 {
     protected $tableName = 'verify';
@@ -84,116 +72,86 @@ class Verify extends Model
 
     /**
      * 发送短信
+     *
+     * 统一转调消息中心（模板 common.verify_code，安全级别）：
+     * 走同一套模板渲染、服务商适配与发送记录。
+     *
+     * 服务商模板 ID 只来自消息模板的短信渠道配置，不再读取扩展配置里的全局「短信模板」。
+     * 返回值保持历史结构（Message / SendStatusSet），兼容既有调用方。
+     *
+     * @param string $PhoneNumbers 手机号
+     * @param string $code         验证码
+     * @return array
      */
     public function sendSms($PhoneNumbers, $code)
     {
-        $smsDriver = config('extend.SMS_SEND_DRIVER');
-
-        // 通过阿里云发送短信
-        if ($smsDriver == 'aliyun') {
-            $result = $this->aliyun($PhoneNumbers, $code);
-            return $result;
-        }
-
-        // 通过腾讯云发送短信
-        if ($smsDriver == 'tencent') {
-            $result = $this->tencent($PhoneNumbers, $code);
-            return $result;
-        }
-
-        return false;
-    }
-
-    /**
-     * 通过阿里云发送短信
-     */
-    public function aliyun($PhoneNumbers, $code)
-    {
-        $access_key_id = config('extend.SMS_ALIYUN_ACCESSKEYID');
-        $access_key_secret = config('extend.SMS_ALIYUN_ACCESSKEYSECRET');
-        $region = config('extend.SMS_ALIYUN_REGION');
-        AlibabaCloud::accessKeyClient($access_key_id, $access_key_secret)->regionId($region)->asDefaultClient();
-
-        $params = [
-            'code' => $code
-        ];
-        $params = json_encode($params);
-        // 短信签名
-        $smsSign = config('extend.SMS_ALIYUN_SIGN');
-        // 短信模板
-        $smsTemplateId = config('extend.SMS_ALIYUN_TEMPLATEID');
         try {
-            $result = AlibabaCloud::rpc()
-                ->product('Dysmsapi')
-                // ->scheme('https') // https | http
-                ->version('2017-05-25')
-                ->action('SendSms')
-                ->method('POST')
-                ->host('dysmsapi.aliyuncs.com')
-                ->options([
-                    'query' => [
-                        'PhoneNumbers' => $PhoneNumbers,
-                        'SignName' => $smsSign,
-                        'TemplateParam' => $params,
-                        'TemplateCode' => $smsTemplateId,
-                    ],
-                ])
-                ->request();
-            // print_r($result->toArray());
-            $result = $result->toArray();
-            return $result;
-        } catch (ClientException $e) {
-            // echo $e->getErrorMessage() . PHP_EOL;
-            return $e->getErrorMessage() . PHP_EOL;
-        } catch (ServerException $e) {
-            // echo $e->getErrorMessage() . PHP_EOL;
-            return $e->getErrorMessage() . PHP_EOL;
-        }
-    }
-
-    /**
-     * 通过腾讯云发送短信
-     */
-    public function tencent($PhoneNumbers, $code)
-    {
-        $SecretId = config('extend.SMS_TENCENT_SECRETID');
-        $SecretKey = config('extend.SMS_TENCENT_SECRETKEY');
-        $SdkAppId = config('extend.SMS_TENCENT_APPID');
-        $Sign = config('extend.SMS_TENCENT_SIGN');
-        // 短信模板
-        $TemplateId = config('extend.SMS_TENCENT_TEMPLATEID');
-        // 区域参数
-        $region = config('extend.SMS_TENCENT_REGION');
-        try {
-            $cred = new Credential($SecretId, $SecretKey);
-            $httpProfile = new HttpProfile();
-            $httpProfile->setEndpoint("sms.tencentcloudapi.com");
-
-            $clientProfile = new ClientProfile();
-            $clientProfile->setHttpProfile($httpProfile);
-            $client = new SmsClient($cred, $region, $clientProfile);
-
-            $req = new SendSmsRequest();
-
-            $params = array(
-                "PhoneNumberSet" => array($PhoneNumbers),
-                "SmsSdkAppId" => $SdkAppId,
-                "SignName" => $Sign,
-                "TemplateId" => $TemplateId,
-                "TemplateParamSet" => array($code)
+            $res = \app\common\service\message\MessageCenter::sendNowToMobile(
+                'common.verify_code',
+                (string)$PhoneNumbers,
+                ['code' => (string)$code],
+                ['channels' => ['sms'], 'is_test' => 0]
             );
-            $req->fromJsonString(json_encode($params));
+        } catch (\Throwable $e) {
+            trace('[verify] sendSms failed: ' . $e->getMessage(), 'error');
+            $res = [
+                'success'    => false,
+                'error_code' => 'send_failed',
+                'error_msg'  => $e->getMessage(),
+            ];
+        }
 
-            $resp = $client->SendSms($req);
+        if (!is_array($res)) {
+            $res = [
+                'success'    => false,
+                'error_code' => 'send_failed',
+                'error_msg'  => '短信发送失败',
+            ];
+        }
 
-            //print_r($resp->toJsonString());
-            //dump($resp);exit;
-            $resp = $resp->toJsonString();
-            $resp = json_decode($resp, true);
-            return $resp;
-        } catch (TencentCloudSDKException $e) {
-            // echo $e;
-            return $e->getErrorCode();
+        // 兼容历史调用方：按服务商响应结构补齐 Message / SendStatusSet
+        if (!array_key_exists('Message', $res)) {
+            $res['Message'] = !empty($res['success'])
+                ? 'OK'
+                : ((string)($res['error_msg'] ?? '') ?: '短信发送失败');
+        }
+        if (!array_key_exists('SendStatusSet', $res)) {
+            $res['SendStatusSet'] = [[
+                'Code'     => !empty($res['success']) ? 'Ok' : ((string)($res['error_code'] ?? '') ?: 'Failed'),
+                'Message'  => $res['Message'],
+                'SerialNo' => '',
+            ]];
+        }
+
+        return $res;
+    }
+
+    /**
+     * 发送邮箱验证码
+     *
+     * 统一转调消息中心（模板 common.verify_code，邮件渠道）：
+     * 与短信验证码共用模板渲染、发送记录与失败口径。
+     *
+     * @param string $email 收件邮箱
+     * @param string $code  验证码
+     * @return array
+     */
+    public function sendEmail($email, $code)
+    {
+        try {
+            return \app\common\service\message\MessageCenter::sendNowToEmail(
+                'common.verify_code',
+                (string)$email,
+                ['code' => (string)$code],
+                ['channels' => ['email'], 'is_test' => 0]
+            );
+        } catch (\Throwable $e) {
+            trace('[verify] sendEmail failed: ' . $e->getMessage(), 'error');
+            return [
+                'success'    => false,
+                'error_code' => 'send_failed',
+                'error_msg'  => $e->getMessage(),
+            ];
         }
     }
 }

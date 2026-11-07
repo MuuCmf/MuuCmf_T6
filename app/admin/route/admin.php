@@ -180,11 +180,6 @@ Route::group('menu', function () {
 });
 
 Route::group('message', function () {
-    // 消息类型管理
-    Route::get('type', 'admin/Message/type');
-    Route::post('type/edit', 'admin/Message/typeEdit');
-    Route::post('type/status', 'admin/Message/typeStatus');
-    
     // 消息发送管理
     Route::post('send', 'admin/Message/send');
     Route::get('list', 'admin/Message/list');
@@ -194,6 +189,41 @@ Route::group('message', function () {
     Route::get('content', 'admin/Message/content');
     Route::post('content/edit', 'admin/Message/contentEdit');
     Route::post('content/status', 'admin/Message/contentStatus');
+});
+
+// 统一消息推送中心
+Route::group('messagecenter', function () {
+    // 模板
+    Route::get('template', 'admin/MessageCenter/template');
+    Route::get('templatedetail', 'admin/MessageCenter/templateDetail');
+    Route::post('templatesave', 'admin/MessageCenter/templateSave');
+    Route::post('templatestatus', 'admin/MessageCenter/templateStatus');
+    Route::post('templatecopy', 'admin/MessageCenter/templateCopy');
+    Route::post('templatetest', 'admin/MessageCenter/templateTest');
+
+    // 任务
+    Route::get('task', 'admin/MessageCenter/task');
+    Route::get('taskcreate', 'admin/MessageCenter/taskCreate');
+    Route::post('taskcreate', 'admin/MessageCenter/taskCreate');
+    Route::post('taskpreview', 'admin/MessageCenter/taskPreview');
+    Route::get('taskdetail', 'admin/MessageCenter/taskDetail');
+    Route::post('taskcancel', 'admin/MessageCenter/taskCancel');
+    Route::post('taskretry', 'admin/MessageCenter/taskRetry');
+
+    // 记录
+    Route::get('record', 'admin/MessageCenter/record');
+    Route::post('recordretry', 'admin/MessageCenter/recordRetry');
+    Route::get('recordexport', 'admin/MessageCenter/recordExport');
+
+    // 消息类型
+    Route::get('type', 'admin/MessageCenter/type');
+    Route::post('typesave', 'admin/MessageCenter/typeSave');
+    Route::post('typestatus', 'admin/MessageCenter/typeStatus');
+
+    // 设置与黑名单
+    Route::get('setting', 'admin/MessageCenter/setting');
+    Route::post('settingsave', 'admin/MessageCenter/settingSave');
+    Route::any('blacklist', 'admin/MessageCenter/blacklist');
 });
 
 // 模块管理路由配置

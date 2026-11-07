@@ -2,7 +2,6 @@
 
 namespace app\common\model;
 
-use think\facade\Queue;
 use app\common\model\Member as MemberModel;
 use app\common\model\MessageType;
 use app\common\model\MessageContent;
@@ -22,74 +21,99 @@ class Message extends Base
     ];
 
     /**
-     * 发送消息至用户
+     * 发送消息至用户（兼容入口）
+     *
+     * 内部转调统一消息中心（模板 common.custom_message），站内信与外部渠道都会落 message_record；
+     * 旧版消息队列已移除，统一中心不可用（未执行升级脚本）时返回 false 并记录日志。
+     *
      * send_type array msg站内信 email邮件 sms短信
-     * 
      */
     public function sendMessageToUid($shopid = 0, $uid = 0, $to_uids = [], $title = '您有新的消息', $description = '', $content = '', $type_id = 1, $send_type = ['msg', 'email'])
     {
         // 指定用户ID
         $to_uids = is_array($to_uids) ? $to_uids : explode(',', $to_uids);
+        $to_uids = array_values(array_unique(array_filter(array_map('intval', $to_uids))));
         if (!count($to_uids)) {
             return false;
         }
 
-        // 写入消息内容
-        $content_id = (new MessageContent())->addMessageContent($shopid, $title, $description, $content);
+        $channels = $this->mapSendType($send_type);
 
-        // 消息队列名称
-        $queue_name = config('queue')['connections']['redis']['queue'] ?? 'default';
-        // 发送至消息队列
-        $isPushed = Queue::push('\app\common\queue\Message@sendToUids', [
-            'shopid' => $shopid,
-            'uid' => $uid,
-            'to_uids' => $to_uids,
-            'type_id' => $type_id,
-            'content_id' => $content_id,
-            'send_type' => $send_type,
-        ], $queue_name);
-
-        if ($isPushed !== false) {
-            // 更新心跳
+        try {
+            \app\common\service\message\MessageCenter::send(
+                'common.custom_message',
+                ['type' => 'uids', 'value' => $to_uids],
+                ['title' => $title, 'description' => $description, 'content' => $content],
+                [
+                    'shopid'         => (int)$shopid,
+                    'channels'       => $channels,
+                    'inbox_type_id'  => (int)$type_id,
+                    'operator_uid'   => (int)$uid,
+                    'biz_key'        => 'legacy_' . substr(md5($shopid . $type_id . $title . microtime(true) . mt_rand()), 0, 24),
+                ]
+            );
             $this->updateHeartbeat();
             return true;
+        } catch (\Throwable $e) {
+            trace('[message] sendMessageToUid failed: ' . $e->getMessage(), 'error');
         }
 
         return false;
     }
 
     /**
-     * 发送消息至用户组
+     * 发送消息至用户组（兼容入口）
      */
     public function sendMessageToGroup($shopid = 0, $uid = 0, $to_groud_ids = [], $title = '您有新的消息', $description = '', $content = '', $type_id = 1, $send_type = ['msg', 'email'])
     {
         // 指定用户ID
         $to_groud_ids = is_array($to_groud_ids) ? $to_groud_ids : explode(',', $to_groud_ids);
+        $to_groud_ids = array_values(array_unique(array_filter(array_map('intval', $to_groud_ids))));
         if (!count($to_groud_ids)) {
             return false;
         }
 
-        // 写入消息内容
-        $content_id = (new MessageContent())->addMessageContent($shopid, $title, $description, $content);
-        // 消息队列名称
-        $queue_name = config('queue')['connections']['redis']['queue'] ?? 'default';
-        // 发送至消息队列
-        $isPushed = Queue::push('\app\common\queue\Message@sendToGroups', [
-            'shopid' => $shopid,
-            'uid' => $uid,
-            'to_groud_ids' => $to_groud_ids,
-            'type_id' => $type_id,
-            'content_id' => $content_id,
-            'send_type' => $send_type,
-        ], $queue_name);
+        $channels = $this->mapSendType($send_type);
 
-        if ($isPushed !== false) {
-            // 更新心跳
+        try {
+            \app\common\service\message\MessageCenter::send(
+                'common.custom_message',
+                ['type' => 'groups', 'value' => $to_groud_ids],
+                ['title' => $title, 'description' => $description, 'content' => $content],
+                [
+                    'shopid'        => (int)$shopid,
+                    'channels'      => $channels,
+                    'inbox_type_id' => (int)$type_id,
+                    'operator_uid'  => (int)$uid,
+                    'biz_key'       => 'legacy_' . substr(md5($shopid . $type_id . $title . microtime(true) . mt_rand()), 0, 24),
+                ]
+            );
             $this->updateHeartbeat();
             return true;
+        } catch (\Throwable $e) {
+            trace('[message] sendMessageToGroup failed: ' . $e->getMessage(), 'error');
         }
 
         return false;
+    }
+
+    /**
+     * 旧渠道标识映射到统一渠道
+     *
+     * @param array $send_type
+     * @return array
+     */
+    protected function mapSendType($send_type): array
+    {
+        $map = ['msg' => 'inbox', 'message' => 'inbox', 'inbox' => 'inbox', 'email' => 'email', 'sms' => 'sms'];
+        $channels = [];
+        foreach ((array)$send_type as $type) {
+            $channel = $map[strtolower((string)$type)] ?? '';
+            if ($channel !== '') {
+                $channels[] = $channel;
+            }
+        }
+        return array_values(array_unique($channels)) ?: ['inbox'];
     }
 
     /**
@@ -118,8 +142,9 @@ class Message extends Base
             $redis->expire($heartbeatKey, 600); // 10分钟过期
 
             $redis->close();
-        } catch (\Exception $e) {
-            // 心跳更新失败不影响任务执行
+        } catch (\Throwable $e) {
+            // 心跳更新失败不影响发送结果：redis 扩展缺失时抛的是 Error 而非 Exception，
+            // 只捕获 Exception 会让已经发出的消息被误报为失败
         }
     }
 
@@ -163,6 +188,7 @@ class Message extends Base
             $data['content']['title'] = $content->title;
             $data['content']['description'] = $content->description;
             $data['content']['content'] = $content->content;
+            $data['content']['link'] = (string)$content->getData('link');
         } else {
             $data['content']['title'] = '内容已删除';
             $data['content']['description'] = '';
@@ -178,22 +204,32 @@ class Message extends Base
     }
 
     /**
-     * 去除一个月没有登录的用户
-     * @param $to_uids
+     * 按渠道过滤可触达用户
+     *
+     * 站内信不受登录活跃度限制（用户下次登录仍可见），只有外部触达渠道（短信/邮件/微信）
+     * 才剔除一个月未登录的用户，避免把成本花在沉默用户上。
+     *
+     * @param array|string $to_uids 目标用户
+     * @param string       $channel inbox 站内信 / email 邮件 / sms 短信
      * @return array
      */
-    public function _removeOldUser($to_uids)
+    public function _removeOldUser($to_uids, $channel = 'inbox')
     {
-        $to_uids = is_array($to_uids) ? implode(',', $to_uids) : $to_uids;
-        if (!empty($to_uids)) {
-            $map[] = ['uid', 'in', $to_uids];
+        $to_uids = is_array($to_uids) ? $to_uids : explode(',', (string)$to_uids);
+        $to_uids = array_values(array_unique(array_filter(array_map('intval', $to_uids))));
+        if (empty($to_uids)) {
+            return [];
         }
 
+        $map[] = ['uid', 'in', $to_uids];
         $map[] = ['status', '=', 1];
-        $map[] = ['last_login_time', '>', get_time_ago('month')];
+        // 站内信不做活跃度过滤；外部渠道才剔除长期未登录用户
+        if (!in_array(strtolower((string)$channel), ['inbox', 'msg', 'message'], true)) {
+            $map[] = ['last_login_time', '>', get_time_ago('month')];
+        }
 
-        $uids = (new MemberModel())->where($map)->field('uid')->select()->toArray();
-        $uids = array_column($uids, 'uid');
-        return $uids;
+        $uids = (new MemberModel())->where($map)->column('uid');
+
+        return array_map('intval', $uids);
     }
 }

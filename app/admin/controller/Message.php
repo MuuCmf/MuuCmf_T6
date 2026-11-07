@@ -3,7 +3,6 @@
 namespace app\admin\controller;
 
 use app\common\model\MessageContent as MessageContentModel;
-use app\common\model\MessageType as MessageTypeModel;
 use app\common\model\Message as MessageModel;
 
 use app\admin\validate\Common;
@@ -16,7 +15,6 @@ class Message extends Admin
 {
     protected MessageModel $MessageModel;
     protected MessageContentModel $MessageContentModel;
-    protected MessageTypeModel $MessageTypeModel;
 
     /**
      * 构造方法
@@ -30,74 +28,8 @@ class Message extends Admin
         $this->MessageModel = new MessageModel();
         // 消息内容
         $this->MessageContentModel = new MessageContentModel();
-        // 消息类型
-        $this->MessageTypeModel = new MessageTypeModel();
         // 设置页面title
         $this->setTitle('消息管理');
-    }
-
-    /**
-     * 消息类型
-     */
-    public function type()
-    {
-        // 查询条件
-        $map[] = ['shopid', '=', $this->shopid];
-        $map[] = ['status', '>', -1];
-        $list = $this->MessageTypeModel->getList($map);
-        foreach ($list as &$val) {
-            $val = $this->MessageTypeModel->formatData($val);
-        }
-        unset($val);
-
-
-        return $this->success('success', $list);
-    }
-
-    /**
-     * 类型编辑、新增
-     */
-    public function typeEdit()
-    {
-        $id = input('id', 0, 'intval');
-        $title = $id ? "编辑" : "新建";
-
-        if (request()->isPost()) {
-            $data = input();
-            $data['shopid'] = $this->shopid;
-            // 数据验证
-            try {
-                validate(Common::class)->scene('message_type')->check([
-                    'title'  => $data['title'],
-                    'description'  => $data['description'],
-                    'icon'  => $data['icon'],
-                ]);
-            } catch (ValidateException $e) {
-                // 验证失败 输出错误信息
-                return $this->error($e->getError());
-            }
-            $res = $this->MessageTypeModel->edit($data);
-
-            if ($res) {
-                return $this->success($title . '成功', $res, cookie('__forward__'));
-            } else {
-                return $this->error($title . '失败');
-            }
-        } else {
-            if (!empty($id)) {
-                $data = $this->MessageTypeModel->getDataById($id);
-            } else {
-                // 初始化数据
-                $data = [];
-                $data['id'] = 0;
-                $data['title'] = '';
-                $data['description'] = '';
-                $data['icon'] = '';
-                $data['status'] = 1;
-            }
-
-            return $this->success('success', $data);
-        }
     }
 
     /**
@@ -147,10 +79,17 @@ class Message extends Admin
         $map[] = ['shopid', '=', $this->shopid];
         $map[] = ['status', 'in', [0, 1]];
 
-        // 搜索关键字
+        // 搜索关键字（message 表无 title 字段，标题存在 message_content 中）
         $keyword = input('keyword', '', 'text');
         if (!empty($keyword)) {
-            $map[] = ['title', 'like', '%' . $keyword . '%'];
+            $content_ids = $this->MessageContentModel->where('shopid', $this->shopid)
+                ->where('title', 'like', '%' . $keyword . '%')
+                ->limit(5000)
+                ->column('id');
+            if (empty($content_ids)) {
+                return $this->success('success', ['data' => [], 'total' => 0, 'page' => 1, 'rows' => 0]);
+            }
+            $map[] = ['content_id', 'in', $content_ids];
         }
 
         // 消息类型
@@ -159,10 +98,10 @@ class Message extends Admin
             $map[] = ['type_id', '=', $type_id];
         }
 
-        // 已读未读
-        $is_read = input('is_read', '', 'intval');
-        if (isset($is_read)) {
-            $map[] = ['is_read', '=', $is_read];
+        // 已读未读（必须区分「未传」和「传了 0」，否则只会查出未读）
+        $is_read = trim((string)input('is_read', '', 'trim'));
+        if ($is_read === '0' || $is_read === '1') {
+            $map[] = ['is_read', '=', (int)$is_read];
         }
 
         $fields = '*';
@@ -210,34 +149,6 @@ class Message extends Admin
         }
     }
 
-
-    /**
-     * 消息类型状态管理
-     */
-    public function typeStatus()
-    {
-        $ids = input('ids/a');
-        !is_array($ids) && $ids = explode(',', (string)$ids);
-        $status = input('status', 0, 'intval');
-        $title = '更新';
-        if ($status == 0) {
-            $title = '禁用';
-        }
-        if ($status == 1) {
-            $title = '启用';
-        }
-        if ($status == -1) {
-            $title = '删除';
-        }
-        $data['status'] = $status;
-
-        $res = $this->MessageTypeModel->where('id', 'in', $ids)->update($data);
-        if ($res) {
-            return $this->success($title . '成功');
-        } else {
-            return $this->error($title . '失败');
-        }
-    }
 
     /**
      * 消息内容列表

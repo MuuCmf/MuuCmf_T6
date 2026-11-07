@@ -4,125 +4,76 @@ namespace app\common\queue;
 
 use think\facade\Db;
 use think\queue\Job;
-use app\common\model\AuthGroup;
-use app\common\service\Mail;
-use app\common\model\Message as MessageModel;
-use app\common\model\MessageContent as MessageContentModel;
+use app\common\service\message\Dispatcher;
+use app\common\model\MessageTask;
 
-// # 建议开发测试时使用
-//php think queue:listen
-// # 建议生产环境使用
-//php think queue:work --daemon（不加--daemon为执行单个任务）
+/**
+ * 统一消息推送中心队列任务
+ *
+ * 粒度：一批（默认 500 用户）一个 job，批次之间用 Queue::later 串行推进；
+ * job 级失败由 failed.type=database 记录 failed_jobs，业务失败落 message_record。
+ */
 class Message
 {
     /**
-     * 发送至用户
+     * @param Job   $job
+     * @param array $data ['task_id' => int]
+     * @return void
      */
-    public function sendToUids(Job $job, $data)
+    public function handle(Job $job, $data)
     {
-        set_time_limit(0); //不限制程序执行时间
-        $to_uids = $data['to_uids'];
-        // 排除流失用户
-        $to_uids = (new MessageModel())->_removeOldUser($to_uids);
-        // 发送类型
-        $send_type = $data['send_type'];
-        if (in_array('email', $send_type)) {
-            $content = (new MessageContentModel())->find($data['content_id']);
+        $taskId = (int)($data['task_id'] ?? 0);
+        if ($taskId <= 0) {
+            $job->delete();
+            return;
         }
-        // 开始发送
-        foreach ($to_uids as $i => $to_uid) {
-            // 发送站内信
-            if (in_array('msg', $send_type)) {
-                $msg['shopid'] = $data['shopid'];
-                $msg['uid'] = $data['uid'];
-                $msg['to_uid'] = $to_uid;
-                $msg['type_id'] = $data['type_id'];
-                $msg['content_id'] = $data['content_id'];
-                $msg['is_read'] = 0;
-                $msg['status'] = 1;
-                (new MessageModel())->save($msg);
-            }
 
-            // 发送邮件
-            if (in_array('email', $send_type)) {
-                $user = query_user($to_uid, ['email']);
-                if (!empty($user) && !empty($user['email'])) {
-                    (new Mail())->sendMailLocal($user['email'], $content['title'], $content['content']);
-                }
+        try {
+            $result = (new Dispatcher())->runBatch($taskId);
+            if (($result['reason'] ?? '') === 'batch_locked') {
+                // 同一任务已有批次在跑：稍后重投，不能直接丢弃，否则任务会停在中途
+                $job->release(30);
+                return;
             }
-
-            if ($i > 0 && $i % 100 == 0) {
-                sleep(5);
+            trace('[message] dispatch task ' . $taskId . ' done: ' . json_encode($result, JSON_UNESCAPED_UNICODE), 'info');
+        } catch (\Throwable $e) {
+            trace('[message] dispatch task ' . $taskId . ' exception: ' . $e->getMessage(), 'error');
+            // 交给队列重投（幂等键保证不会重复触达）
+            if ($job->attempts() < 3) {
+                $job->release(60);
+                return;
             }
         }
 
-        //如果任务执行成功后 记得删除任务，不然这个任务会重复执行，直到达到最大重试次数后失败后，执行failed方法
         $job->delete();
     }
 
     /**
-     * 发送至用户组
-     */
-    public function sendToGroups(Job $job, $data)
-    {
-        set_time_limit(0); //不限制程序执行时间
-
-        $to_groud_ids = $data['to_groud_ids'];
-        $to_groud_ids = implode(',', $to_groud_ids);
-        // 获取选择的用户组用户ID
-        $prefix = config('database.connections.mysql.prefix');
-        $l_table = $prefix . (AuthGroup::MEMBER);
-        $r_table = $prefix . (AuthGroup::AUTH_GROUP_ACCESS);
-        $where = [
-            ['a.group_id', 'in', $to_groud_ids],
-            ['status', '>=', 0]
-        ];
-        $user_list = Db::table($l_table . ' m')->join($r_table . ' a ', ' m.uid=a.uid')->where($where)->field('m.uid')->select()->toArray();
-        // 转为一维并去重
-        $to_uids = array_unique(array_column($user_list, 'uid'));
-        // 排除流失用户
-        $to_uids = (new MessageModel())->_removeOldUser($to_uids);
-        // 发送类型
-        $send_type = $data['send_type'];
-        if (in_array('email', $send_type)) {
-            $content = (new MessageContentModel())->find($data['content_id']);
-        }
-        // 开始发送
-        foreach ($to_uids as $i => $to_uid) {
-            // 发送站内信
-            if (in_array('msg', $send_type)) {
-                $msg['shopid'] = $data['shopid'];
-                $msg['uid'] = $data['uid'];
-                $msg['to_uid'] = $to_uid;
-                $msg['type_id'] = $data['type_id'];
-                $msg['content_id'] = $data['content_id'];
-                $msg['is_read'] = 0;
-                $msg['status'] = 1;
-                (new MessageModel())->save($msg);
-            }
-
-            // 发送邮件
-            if (in_array('email', $send_type)) {
-                $user = query_user($to_uid, ['email']);
-                if (!empty($user) && !empty($user['email'])) {
-                    (new Mail())->sendMailLocal($user['email'], $content['title'], $content['content']);
-                }
-            }
-
-            if ($i > 0 && $i % 100 == 0) {
-                sleep(5);
-            }
-        }
-        //如果任务执行成功后 记得删除任务，不然这个任务会重复执行，直到达到最大重试次数后失败后，执行failed方法
-        $job->delete();
-    }
-
-    /**
-     * 任务失败处理
+     * 队列级失败
+     *
+     * @param array $data
+     * @return void
      */
     public function failed($data)
     {
+        try {
+            trace('[message] dispatch job failed: ' . json_encode($data, JSON_UNESCAPED_UNICODE), 'error');
 
-        // ...任务达到最大重试次数后，失败了
+            // 队列级失败后任务不会再被推进，直接置 failed，
+            // 避免长期停在 running 让运营误以为还在发（补偿会重投非终态任务）
+            $taskId = (int)($data['task_id'] ?? 0);
+            if ($taskId > 0) {
+                Db::name('message_task')
+                    ->where('id', $taskId)
+                    ->whereNotIn('status', MessageTask::TERMINAL_STATUS)
+                    ->update([
+                        'status'      => MessageTask::STATUS_FAILED,
+                        'finish_time' => time(),
+                        'update_time' => time(),
+                    ]);
+            }
+        } catch (\Throwable $e) {
+            // 忽略
+        }
     }
 }

@@ -1,0 +1,1 @@
+import{An as l,Zn as e}from"./element-plus-mq4TzR5a.js";function o(){const o=e(null);return{scrollContainerRef:o,resetScrollTop:()=>{l(()=>{o.value&&(o.value.scrollTop=0)})}}}export{o as t};

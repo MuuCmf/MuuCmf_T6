@@ -1,148 +1,341 @@
 <div class="message">
     <div class="message-body">
-      <div class="left-navigation">
-        <h4>消息通知</h4>
-        <ul id="myTab" class="nav-tabs">
-          {foreach $type_list as $key=>$val}
-          <li class="">
-            <a href="#" data-toggle="tab" data-type-id="{$val.id}" data-type-title="{$val.title}">{$val.title}</a>
-            {if $val.unread > 0}
-            <span class="information-quantity">{$val.unread}</span>
-            {/if}
-          </li>
-          {/foreach}
-        </ul>
-      </div>
-  
-      <div  class="right-content" id="myTabContent">
-        <div class="system-notice tab-pane" id="system-notice">
-          <div class="content-head clearfix">
-            <h4>系统通知</h4>
-            
-            <button class="close"data-dismiss="modal">×</button>
-            <div class="isread">全部标记为已读</div>
-          </div>
-          <div class="system-notice-list">
-            <ul>
-                <div class="empty">
-                    还没有消息哦~
-                </div>
+        <aside class="left-navigation">
+            <h4 class="navigation-title">消息通知</h4>
+            <ul id="myTab" class="nav-tabs">
+                {foreach $type_list as $key=>$val}
+                <li>
+                    <a href="javascript:;" data-type-id="{$val.id}" data-type-title="{$val.title}">
+                        <span class="nav-text">{$val.title}</span>
+                        {if $val.unread > 0}
+                        <span class="information-quantity">{$val.unread}</span>
+                        {/if}
+                    </a>
+                </li>
+                {/foreach}
             </ul>
-          </div>
-        </div>
-        <div class="paper-section">
-            <ul id="messagePager" class="pager" data-ride="pager" data-elements="prev_icon,nav,next_icon"></ul>
-        </div>
-      </div>
+            {if empty($type_list)}
+            <div class="navigation-empty">暂无消息分类</div>
+            {/if}
+        </aside>
+
+        <section class="right-content" id="myTabContent">
+            <header class="content-head">
+                <div class="content-title">
+                    <h4 id="messageTypeTitle">消息通知</h4>
+                    <span class="content-subtitle" id="messageTypeCount"></span>
+                </div>
+                <div class="content-actions">
+                    <button type="button" class="isread" id="markAllRead">
+                        <i class="fa fa-check-circle-o" aria-hidden="true"></i>
+                        <span>全部标记为已读</span>
+                    </button>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="关闭">&times;</button>
+                </div>
+            </header>
+
+            <div class="system-notice-list" id="messageListScroll">
+                <ul id="messageList"></ul>
+            </div>
+
+            <footer class="paper-section hidden">
+                <ul id="messagePager" class="pager" data-ride="pager" data-elements="prev_icon,nav,next_icon"></ul>
+            </footer>
+        </section>
     </div>
-  </div>
-  <script>
-  
-  $(function(){
-    var shopid = 0;
-    var type_id = 0;
-    var type_title = '';
-    // 手动进行初始化
-    $('#messagePager').pager({
-        page: 1,
-    });
+</div>
 
-    // 获取分页器实例对象
-    var messagePager = $('#messagePager').data('zui.pager');
-
-    // 点击消息类型事件
-    $('.message-modal .message .nav-tabs a').click(function(){
-      $('.message .nav-tabs li').removeClass('active');
-      $(this).parent().addClass('active');
-      type_id = $(this).data('type-id');
-      type_title = $(this).data('type-title');
-      $('.message .content-head h4').text(type_title);
-      getList(shopid, type_id, 1);
-    });
-
-    $('#messagePager').on('onPageChange', function(e, state, oldState) {
-      if (state.page !== oldState.page) {
-          getList(shopid, type_id, state.page)
-      }
-    });
-
-    $(".message-modal").on('click', '.operate',function() {
-      $(this).parent().toggleClass("operate-Invert");
-      $(this).parent().nextAll(".operate").removeClass("operate-Invert");
-      $(this).parent().next().slideToggle();
-      $(this).parent().prevAll(".operate").slideUp("slow");
-      $(this).parent().next().nextAll(".operate").slideUp("slow");
-      return false;
-    });
-
-    $('.message-modal .isread').click(function(){
-      var url = "{:url('api/message/isread')}";
-      $.post(url, {}, function (res) {
-        console.log(res)
-        if(res.code == 200){
-          $('.information-quantity').addClass('hidden');
-        }
-      });
-    });
-
-    // 默认点击第一个消息类型
-    $('.message-modal .message .nav-tabs a').first().click();
-
-    function getList(shopid, type_id, page){
-        toast.showLoading()
-        var url = "{:url('api/message/lists')}";
-            url = url + '?page=' + page
-        $.post(url, {
-            type_id : type_id,
-            shopid : 0,
-        }, function (res) {
-            console.log(res);
-            if(res.data.data.length > 0){
-                var html = '';
-                $.each(res.data.data,function(i,n){
-                    html += '<li>'
-                    html += '    <div class="avatar">'
-                    html += '    <img src="'+n.form_user.avatar64+'" alt="">'
-                    html += '    </div>'
-                    html += '    <div class="message-content">'
-                    html += '        <div class="message-types">'
-                    html += '        <h4> '+n.content.title+' </h4>'
-                    html += '        <span class="time">'+n.create_time_str+'</span>'
-                    html += '        </div>'
-                    html += '         <div class="content-detail">'
-                    html += '         <div class="detail">' + n.content.content + '</div>'
-                    html += '         <div class="operate">'
-                    html += '             <span class="expand">展开</span>'
-                    html += '             <span class="put-away">收起</span>'
-                    html += '             <i class="iconfont">&#xeabc;</i>'
-                    html += '         </div>'
-                    html += '         </div>'
-                    html += '    </div>'
-                    html += '</li>'
-                });
-
-                //写入DOM
-                $('.message-body .right-content .system-notice-list ul').html(html);
-
-                // 设置当前页码为 4，并同时设置记录总数为 100， 每页记录数目为 30
-                messagePager.set({
-                    page: res.data.current_page,
-                    recTotal: res.data.total,
-                    recPerPage: res.data.per_page
-                });
-            }else{
-                var html = '';
-                    html += '<div class="empty">'
-                    html += '<div class="image"><img src="__STATIC__/common/images/empty.png" /></div>'
-                    html += '<div class="text">还没有消息哦~</div>'
-                    html += '</div>'
-
-                //写入DOM
-                $('.message-modal .message-body .right-content .system-notice-list ul').html(html);
-            }
-            toast.hideLoading()
-        })
+<script>
+$(function () {
+    var $pager = $('#messagePager');
+    var $more = $pager.closest('.modal');
+    if (!$more.length) {
+        $more = $('.message-modal');
     }
-  
-  });
-  </script>
+    if (!$more.length) {
+        return;
+    }
+
+    var $list = $more.find('#messageList');
+    var $listScroll = $more.find('#messageListScroll');
+    var $pagerBox = $more.find('.paper-section');
+    var $title = $more.find('#messageTypeTitle');
+    var $subtitle = $more.find('#messageTypeCount');
+
+    var pager = null;
+    var shopid = 0;
+    var typeId = 0;
+    var requestSeq = 0;
+    var syncingPager = false;
+    var loading = false;
+
+    $pager.pager({ page: 1 });
+    pager = $pager.data('zui.pager');
+
+    function escapeHtml(text) {
+        return String(text === undefined || text === null ? '' : text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function safeUrl(url) {
+        var value = String(url || '').trim();
+        if (!value) {
+            return '';
+        }
+        if (/^https?:\/\//i.test(value) || value.charAt(0) === '/') {
+            return value;
+        }
+        return '';
+    }
+
+    function setSubtitle(total) {
+        $subtitle.text(total > 0 ? '共 ' + total + ' 条' : '');
+    }
+
+    function showSkeleton() {
+        var html = '';
+        for (var i = 0; i < 3; i++) {
+            html += '<li class="message-skeleton">' +
+                '<span class="sk-avatar"></span>' +
+                '<span class="sk-main">' +
+                '<span class="sk-line sk-line-title"></span>' +
+                '<span class="sk-line"></span>' +
+                '<span class="sk-line sk-line-short"></span>' +
+                '</span>' +
+                '</li>';
+        }
+        $list.html(html);
+        $pagerBox.addClass('hidden');
+        $listScroll.scrollTop(0);
+    }
+
+    function showEmpty(text, retry) {
+        var html = '<li class="message-empty">' +
+            '<div class="image"><img src="__STATIC__/common/images/empty.png" alt=""></div>' +
+            '<div class="text">' + escapeHtml(text) + '</div>' +
+            (retry ? '<button type="button" class="retry" data-retry="1">重新加载</button>' : '') +
+            '</li>';
+        $list.html(html);
+        $pagerBox.addClass('hidden');
+    }
+
+    function buildItem(item) {
+        var content = item.content || {};
+        var formUser = item.form_user || {};
+        var title = content.title || '无标题消息';
+        var body = content.content || content.description || '';
+        var link = safeUrl(content.link);
+        var avatar = safeUrl(formUser.avatar64);
+        var isUnread = String(item.is_read) === '0';
+        var time = item.create_time_str || '';
+
+        var titleHtml = link
+            ? '<a href="' + escapeHtml(link) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(title) + '</a>'
+            : escapeHtml(title);
+
+        return '<li class="message-item' + (isUnread ? ' is-unread' : '') + '">' +
+            '<div class="avatar">' +
+            '<img src="' + escapeHtml(avatar) + '" alt="" loading="lazy" onerror="this.style.visibility=\'hidden\'">' +
+            '</div>' +
+            '<div class="message-content">' +
+            '<div class="message-types">' +
+            '<h4>' + titleHtml + '</h4>' +
+            (isUnread ? '<span class="unread-dot" title="未读"></span>' : '') +
+            '<span class="time">' + escapeHtml(time) + '</span>' +
+            '</div>' +
+            '<div class="content-detail">' +
+            '<div class="detail">' + body + '</div>' +
+            '<button type="button" class="operate" aria-expanded="false">' +
+            '<span class="txt-expand">展开</span>' +
+            '<span class="txt-collapse">收起</span>' +
+            '<i class="iconfont" aria-hidden="true">&#xeabc;</i>' +
+            '</button>' +
+            '</div>' +
+            '</div>' +
+            '</li>';
+    }
+
+    // 仅当内容被截断时才显示「展开」
+    // 弹窗淡入、字体加载期间 scrollHeight 尚不准确，故在多个时间点校验，
+    // 任一次检测到溢出即标记（只加不减，避免按钮闪烁）
+    function measureOverflow() {
+        $list.find('.message-item').each(function () {
+            var $item = $(this);
+            var el = $item.find('.detail').get(0);
+            if (!el || el.clientHeight <= 0) {
+                return;
+            }
+            if (el.scrollHeight > el.clientHeight + 2) {
+                $item.addClass('can-expand');
+            }
+        });
+    }
+
+    function markExpandable() {
+        $.each([0, 200, 600, 1200, 2000], function (index, delay) {
+            window.setTimeout(measureOverflow, delay);
+        });
+
+        if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
+            document.fonts.ready.then(measureOverflow);
+        }
+    }
+
+    function syncPager(page, total, perPage) {
+        if (!pager) {
+            return;
+        }
+        syncingPager = true;
+        pager.set({
+            page: page,
+            recTotal: total,
+            recPerPage: perPage
+        });
+        window.setTimeout(function () {
+            syncingPager = false;
+        }, 0);
+    }
+
+    function getList(page) {
+        var seq = ++requestSeq;
+        loading = true;
+        showSkeleton();
+
+        $.ajax({
+            url: "{:url('api/message/lists')}",
+            type: 'POST',
+            dataType: 'json',
+            timeout: 15000,
+            data: {
+                page: page,
+                type_id: typeId,
+                shopid: shopid
+            }
+        }).done(function (res) {
+            if (seq !== requestSeq) {
+                return;
+            }
+            var data = res && res.data ? res.data : null;
+            var rows = data && data.data ? data.data : [];
+
+            if (rows.length > 0) {
+                var html = '';
+                $.each(rows, function (i, item) {
+                    html += buildItem(item);
+                });
+                $list.html(html);
+
+                var total = data.total || rows.length;
+                var perPage = data.per_page || rows.length;
+                // 只有一页时不必显示分页器
+                if (total > perPage) {
+                    $pagerBox.removeClass('hidden');
+                    syncPager(data.current_page || page, total, perPage);
+                } else {
+                    $pagerBox.addClass('hidden');
+                }
+
+                setSubtitle(total);
+                markExpandable();
+            } else {
+                showEmpty('还没有消息哦~', false);
+                setSubtitle(0);
+            }
+        }).fail(function () {
+            if (seq !== requestSeq) {
+                return;
+            }
+            showEmpty('加载失败，请稍后重试', true);
+            setSubtitle(0);
+        }).always(function () {
+            if (seq === requestSeq) {
+                loading = false;
+            }
+        });
+    }
+
+    // 消息类型切换
+    $more.on('click', '.nav-tabs a', function (e) {
+        e.preventDefault();
+        var $link = $(this);
+
+        $more.find('.nav-tabs li').removeClass('active');
+        $link.closest('li').addClass('active');
+
+        typeId = $link.data('type-id') || 0;
+        $title.text($link.data('type-title') || '消息通知');
+        $subtitle.text('');
+
+        getList(1);
+    });
+
+    // 分页切换
+    $pager.on('onPageChange', function (e, state, oldState) {
+        if (syncingPager || loading) {
+            return;
+        }
+        if (state.page !== oldState.page) {
+            getList(state.page);
+        }
+    });
+
+    // 展开 / 收起
+    $more.on('click', '.message-item .operate', function (e) {
+        e.preventDefault();
+        var $btn = $(this);
+        var $item = $btn.closest('.message-item');
+        var expanded = !$item.hasClass('is-expanded');
+
+        $item.toggleClass('is-expanded', expanded);
+        $btn.attr('aria-expanded', expanded ? 'true' : 'false');
+    });
+
+    // 加载失败重试
+    $more.on('click', '.message-empty .retry', function () {
+        getList(1);
+    });
+
+    // 全部标记为已读
+    $more.on('click', '#markAllRead', function () {
+        var $btn = $(this);
+        if ($btn.hasClass('is-loading')) {
+            return;
+        }
+        $btn.addClass('is-loading');
+
+        $.ajax({
+            url: "{:url('api/message/isread')}",
+            type: 'POST',
+            dataType: 'json',
+            timeout: 15000,
+            data: {
+                shopid: shopid
+            }
+        }).done(function (res) {
+            if (res && res.code == 200) {
+                $more.find('.information-quantity').remove();
+                $list.find('.message-item').removeClass('is-unread').find('.unread-dot').remove();
+                toast.success('已全部标记为已读');
+            } else {
+                toast.error((res && (res.msg || res.message)) || '操作失败，请稍后重试');
+            }
+        }).fail(function () {
+            toast.error('网络异常，请稍后重试');
+        }).always(function () {
+            $btn.removeClass('is-loading');
+        });
+    });
+
+    // 默认加载第一个消息类型
+    var $firstLink = $more.find('.nav-tabs a').first();
+    if ($firstLink.length) {
+        $firstLink.trigger('click');
+    } else {
+        showEmpty('暂无消息分类', false);
+    }
+});
+</script>

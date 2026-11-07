@@ -4,7 +4,6 @@ namespace app\api\controller;
 
 use app\common\model\Member as MemberModel;
 use app\common\model\Verify as VerifyModel;
-use app\common\service\Mail;
 use app\common\controller\Common;
 use think\facade\Log;
 
@@ -15,7 +14,6 @@ class Verify extends Common
 {
     protected $MemberModel;
     protected $VerifyModel;
-    protected $MailService;
 
     /**
      * 构造方法
@@ -26,7 +24,6 @@ class Verify extends Common
         parent::__construct();
         $this->MemberModel = new MemberModel();
         $this->VerifyModel = new VerifyModel();
-        $this->MailService = new Mail();
     }
     
     /**
@@ -133,62 +130,26 @@ class Verify extends Common
         // 发送验证码
         switch ($type) {
             case 'mobile':
-                $res = $this->VerifyModel->sendSMS($account, $verify);
-                $smsDriver = config('extend.SMS_SEND_DRIVER');
-                // 通过阿里云发送短信
-                if ($smsDriver == 'aliyun') {
-                    if (is_array($res) && $res['Message'] == 'OK') {
-                        $log_msg = "Verify API: SMS sent successfully - Account: {$account}, Type: {$type}, IP: {$ip}";
-                        return $this->handleVerifySuccess($account, $type, $ip, $time, $log_msg);
-                    } else {
-                        Log::record("Verify API: SMS sent failed - Account: {$account}, Type: {$type}, IP: {$ip}, Error: {$res['Message']}", 'error');
-                        return $this->error($res['Message']);
-                    }
+                $res = $this->VerifyModel->sendSms($account, $verify);
+                // 消息中心已抹平服务商差异，统一按 Message 判断，无需再区分阿里云/腾讯云
+                if (is_array($res) && ($res['Message'] ?? '') === 'OK') {
+                    $log_msg = "Verify API: SMS sent successfully - Account: {$account}, Type: {$type}, IP: {$ip}";
+                    return $this->handleVerifySuccess($account, $type, $ip, $time, $log_msg);
                 }
-                // 通过腾讯云发送短信
-                // array:2 [
-                //     "SendStatusSet" => array:1 [
-                //       0 => array:7 [
-                //         "SerialNo" => "2433:204780860416317002348678043"
-                //         "PhoneNumber" => "+8618618380435"
-                //         "Fee" => 1
-                //         "SessionContext" => ""
-                //         "Code" => "Ok"
-                //         "Message" => "send success"
-                //         "IsoCode" => "CN"
-                //       ]
-                //     ]
-                //     "RequestId" => "750b9dcf-0a96-4251-84f8-c554a1cd4760"
-                //   ]
-                if ($smsDriver == 'tencent') {
-                    if (is_array($res) && $res['SendStatusSet'][0]['Code'] == 'Ok') {
-                        $log_msg = "Verify API: Tencent SMS sent successfully - Account: {$account}, Type: {$type}, IP: {$ip}";
-                        return $this->handleVerifySuccess($account, $type, $ip, $time, $log_msg);
-                    } else {
-                        $error_msg = is_array($res) ? $res['SendStatusSet'][0]['Code'] : $res;
-                        Log::record("Verify API: Tencent SMS sent failed - Account: {$account}, Type: {$type}, IP: {$ip}, Error: {$error_msg}", 'error');
-                        if (is_array($res)) {
-                            return $this->error($res['SendStatusSet'][0]['Code']);
-                        }
-                        return $this->error($res);
-                    }
-                }
-                break;
+                $error_msg = is_array($res) ? ((string)($res['Message'] ?? '') ?: '短信发送失败') : (string)$res;
+                Log::record("Verify API: SMS sent failed - Account: {$account}, Type: {$type}, IP: {$ip}, Error: {$error_msg}", 'error');
+                return $this->error($error_msg);
             case 'email':
-                //发送验证邮箱
-                $subject = config('system.WEB_SITE_NAME');
-                $body = "您的验证码为{$verify}验证码，账号为{$account}。";
-
-                $res = $this->MailService->sendMailLocal($account, $subject, $body);
-                if ($res === true) {
+                $res = $this->VerifyModel->sendEmail($account, $verify);
+                if (is_array($res) && !empty($res['success'])) {
                     $log_msg = "Verify API: Email sent successfully - Account: {$account}, Type: {$type}, IP: {$ip}";
                     return $this->handleVerifySuccess($account, $type, $ip, $time, $log_msg);
                 }
-                Log::record("Verify API: Email sent failed - Account: {$account}, Type: {$type}, IP: {$ip}, Error: {$res}", 'error');
-                return $this->error($res);
-                break;
+                $error_msg = is_array($res) ? ((string)($res['error_msg'] ?? '') ?: '邮件发送失败') : '邮件发送失败';
+                Log::record("Verify API: Email sent failed - Account: {$account}, Type: {$type}, IP: {$ip}, Error: {$error_msg}", 'error');
+                return $this->error($error_msg);
         }
 
-        return $this->error($res);
+        return $this->error('不支持的验证码类型');
     }
 }

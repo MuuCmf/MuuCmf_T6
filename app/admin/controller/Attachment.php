@@ -22,6 +22,25 @@ class Attachment extends Admin
     }
 
     /**
+     * 初始化
+     *
+     * 本控制器为纯 JSON 接口，跳过父类为模板渲染而做的后台菜单、系统配置、
+     * 模块信息等查询，避免每次请求产生与业务无关的数据库与文件开销。
+     */
+    public function initialize()
+    {
+        // 非接口请求（如权限不足时的 HTML 错误页）仍走父类完整初始化，保持模板变量可用
+        if (!request()->isJson() && !request()->isAjax()) {
+            parent::initialize();
+            return;
+        }
+
+        $this->setRoot();
+        $this->setTitle();
+        $this->app_name = strtolower(app('http')->getName());
+    }
+
+    /**
      * 附件列表
      */
     public function list()
@@ -74,7 +93,8 @@ class Attachment extends Admin
         $lists = $lists->toArray();
 
         foreach ($lists['data'] as &$val) {
-            $val = $this->AttachmentModel->handle($val);
+            // 列表页仅展示最小档缩略图（thumb_100），无需逐条生成 8 档尺寸
+            $val = $this->AttachmentModel->handle($val, ['thumb_sizes' => [1]]);
 
             if ($val['driver'] == 'tcvod') {
                 $data = $this->AttachmentModel->vodMediaHandle($val['file_id'], $val['attachment']);
