@@ -12,7 +12,7 @@ use app\common\service\aftersale\policy\PolicyRegistry;
 
 /**
  * 售后中心门面
- * 已接入策略的应用走公共执行器；未接入或开关关闭时回退到旧链路，保证过渡期可用
+ * 已接入策略的应用统一走公共执行器；未接入策略的应用明确拒绝，不再回退旧链路
  */
 class RefundCenter
 {
@@ -25,18 +25,17 @@ class RefundCenter
     }
 
     /**
-     * 执行退款，未接入策略时回退旧链路
+     * 执行退款（后台手动退款统一入口）
      * @param array $order 订单数据
      * @param array $refund 退款参数：refund_to / refund_fee / remark / source
-     * @param callable $legacy 旧链路回调，仅在回退时执行，需返回同样的结果结构
      * @return array
      * @throws \Exception
      */
-    public static function execute(array $order, array $refund, callable $legacy): array
+    public static function execute(array $order, array $refund): array
     {
         $app = (string)($refund['app'] ?? ($order['app'] ?? ''));
-        if (!RefundExecutor::enabled() || !self::supports($app)) {
-            return (array)$legacy();
+        if (!self::supports($app)) {
+            throw new \Exception('该应用暂未接入售后流程');
         }
         return (new RefundExecutor())->execute($order, $refund);
     }
@@ -45,21 +44,18 @@ class RefundCenter
      * 自动退款（拼团失败、超时取消、支付后业务校验失败等场景）
      *
      * 与后台手动退款的差异：原路退回失败时自动回落用户余额，保证资金不挂账。
-     * 已接入策略的应用走公共执行器；未接入或开关关闭时回退旧状态机。
+     * 未接入策略的应用不做自动退款，交由后台人工处理。
      *
      * @param array $order 订单数据
-     * @param array $opts  业务差异参数（app/skipPayChannels/restore_stock 供新链路策略读取；inTxHook/afterTxHook 仅旧链路回退时使用）
+     * @param array $opts  业务差异参数（app/restore_stock/remark 由策略读取）
      * @return bool 是否退款成功或已处于已退款状态
      */
     public static function autoRefund(array $order, array $opts = []): bool
     {
         $app = (string)($opts['app'] ?? ($order['app'] ?? ''));
-        if (!RefundExecutor::enabled() || !self::supports($app)) {
-            // 旧链路不处理积分退回（会把积分数额当作金额退回余额），积分订单仅在新链路生效
-            if ((string)($order['pay_channel'] ?? '') === 'score') {
-                return false;
-            }
-            return \app\common\service\OrderRefund::autoRefund($order, $opts);
+        if (!self::supports($app)) {
+            Log::warning('[售后自动退款] 该应用未接入售后策略，跳过，app=' . $app . '，order_no=' . (string)($order['order_no'] ?? ''));
+            return false;
         }
 
         $orderId = intval($order['id'] ?? 0);
@@ -176,7 +172,7 @@ class RefundCenter
         }
 
         $app = (string)($fresh['app'] ?? '');
-        if (!RefundExecutor::enabled() || !self::supports($app)) {
+        if (!self::supports($app)) {
             throw new \Exception('该应用暂未接入售后申请流程');
         }
 
@@ -334,7 +330,7 @@ class RefundCenter
             return null;
         }
         $app = (string)($fresh['app'] ?? '');
-        if (!RefundExecutor::enabled() || !self::supports($app)) {
+        if (!self::supports($app)) {
             return null;
         }
         // 仅申请中/退货中的历史订单需要补建，其他状态说明没有在途售后

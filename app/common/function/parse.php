@@ -507,49 +507,6 @@ if (!function_exists('array_subtract')) {
     }
 }
 
-if (!function_exists('array_column')) {
-    /**
-     * 从多维数组中取出指定列并生成新数组
-     * 
-     * @param array $input 需要取出数据的多维数组
-     * @param mixed $columnKey 需要返回值的列的键名
-     * @param mixed $indexKey 作为返回数组的索引/键名的列
-     * @return array 取出的结果数组
-     *
-     * 用法示例:
-     * $array = [
-     *     ['id' => 1, 'name' => 'John'],
-     *     ['id' => 2, 'name' => 'Jane']
-     * ];
-     * array_column($array, 'name', 'id') 
-     * // 返回: [1 => 'John', 2 => 'Jane']
-     */
-    function array_column(array $input, $columnKey, $indexKey = null)
-    {
-        $result = array();
-        if (null === $indexKey) {
-            if (null === $columnKey) {
-                $result = array_values($input);
-            } else {
-                foreach ($input as $row) {
-                    $result[] = $row[$columnKey];
-                }
-            }
-        } else {
-            if (null === $columnKey) {
-                foreach ($input as $row) {
-                    $result[$row[$indexKey]] = $row;
-                }
-            } else {
-                foreach ($input as $row) {
-                    $result[$row[$indexKey]] = $row[$columnKey];
-                }
-            }
-        }
-        return $result;
-    }
-}
-
 if (!function_exists('is_json')) {
     /**
      * 判断字符串是否为 Json 格式

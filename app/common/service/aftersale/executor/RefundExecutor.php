@@ -25,20 +25,7 @@ use app\common\service\aftersale\channel\ScoreChannel;
 class RefundExecutor
 {
     /**
-     * 售后执行器总开关
-     */
-    public const AFTERSALE_EXECUTOR = true;
-
-    /**
-     * 是否启用新执行器
-     */
-    public static function enabled(): bool
-    {
-        return self::AFTERSALE_EXECUTOR;
-    }
-
-    /**
-     * 订单级退款锁名（执行器与后台旧退款链路共用，保证同一订单退款串行）
+     * 订单级退款锁名（执行器与后台退款入口共用，保证同一订单退款串行）
      */
     public static function orderLockName(string $orderNo): string
     {
@@ -70,48 +57,6 @@ class RefundExecutor
         } catch (\Throwable $e) {
             Log::warning('[售后] 释放退款锁失败：' . $e->getMessage());
         }
-    }
-
-    /**
-     * 只做策略预演，不产生任何资金与写库动作（供双跑比对使用）
-     * @param array $order 订单数据
-     * @param array $refund 退款参数：refund_to / refund_fee / remark
-     * @return array 预演结果
-     * @throws \Exception
-     */
-    public function preview(array $order, array $refund): array
-    {
-        $orderNo = (string)($order['order_no'] ?? '');
-        if ($orderNo === '') {
-            throw new \Exception('订单参数错误');
-        }
-        $app = (string)($order['app'] ?? '');
-        $policy = PolicyRegistry::resolve($app);
-        $policy->validate($order, $refund);
-
-        $refundTo = intval($refund['refund_to'] ?? 0);
-        $targets = $policy->allowedTargets($order);
-        if (!in_array($refundTo, $targets, true)) {
-            throw new \Exception('该订单不支持此退款方式');
-        }
-        $amount = $policy->refundableAmount($order, (array)($refund['items'] ?? []));
-        if ($amount < 0) {
-            throw new \Exception('退款金额异常');
-        }
-        // 与 execute 保持同一口径：余额/原路退款必须有金额
-        if ($amount === 0 && in_array($refundTo, [0, 1], true)) {
-            throw new \Exception('订单实付金额为 0，无需退款');
-        }
-        if (isset($refund['refund_fee']) && intval($refund['refund_fee']) !== $amount) {
-            throw new \Exception('退款金额与应退金额不一致，请刷新后重试');
-        }
-
-        return [
-            'app'        => $app,
-            'refund_to'  => $refundTo,
-            'refund_fee' => $amount,
-            'refund_no'  => self::buildRefundNo($app, $orderNo),
-        ];
     }
 
     /**
@@ -387,26 +332,6 @@ class RefundExecutor
             'refund_no'     => $flowNo,
             'refund_result' => $refundResultJson,
         ];
-    }
-
-    /**
-     * 双跑比对：用新执行器的策略预演结果与旧实现实际结果对比
-     * 只记录日志，不产生资金动作
-     */
-    public static function shadowCompare(string $tag, array $order, array $refund, int $oldAmount, string $oldRefundNo): void
-    {
-        try {
-            $preview = (new self())->preview($order, $refund);
-        } catch (\Throwable $e) {
-            Log::warning('[售后双跑][' . $tag . '] 预演失败，order_no=' . (string)($order['order_no'] ?? '') . '：' . $e->getMessage());
-            return;
-        }
-        $matched = intval($preview['refund_fee']) === $oldAmount;
-        Log::info('[售后双跑][' . $tag . '] order_no=' . (string)($order['order_no'] ?? '')
-            . ' target=' . intval($refund['refund_to'] ?? 0) . '/' . intval($preview['refund_to'])
-            . ' amount=' . $oldAmount . '/' . intval($preview['refund_fee'])
-            . ' refund_no=' . $oldRefundNo . '/' . (string)$preview['refund_no']
-            . ' matched=' . ($matched ? 1 : 0));
     }
 
     /**
