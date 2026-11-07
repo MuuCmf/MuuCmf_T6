@@ -388,6 +388,129 @@ class RefundCenter
     }
 
     /**
+     * 自动退款失败 / 定时补偿转人工：事务内补建待审核售后单并标记订单申请中
+     *
+     * 取代调用方直接写 orders.refund=1，保证「订单状态」与「售后单」同时产生，
+     * 后台可见、可审核；同一订单按固定单号幂等，重复触发不产生第二张单。
+     * 本方法只建单，绝不触发打款。
+     *
+     * @param array  $order  订单数据（需含 id 或 order_no）
+     * @param string $reason 转入队列原因（自动退款失败原因 / 业务说明）
+     * @param int    $source 来源：1用户申请 2后台手动 3自动退款
+     * @return array refund_no / status / created / order_refund
+     * @throws \Exception
+     */
+    public static function enqueueManual(array $order, string $reason = '', int $source = 3): array
+    {
+        $orderId = intval($order['id'] ?? 0);
+        $orderNo = (string)($order['order_no'] ?? '');
+        if ($orderId <= 0 && $orderNo === '') {
+            throw new \Exception('订单参数错误');
+        }
+
+        $fresh = $orderId > 0
+            ? Db::name('orders')->where('id', $orderId)->find()
+            : Db::name('orders')->where('order_no', $orderNo)->find();
+        if (empty($fresh)) {
+            throw new \Exception('订单不存在');
+        }
+
+        $current = intval($fresh['refund'] ?? 0);
+        if ($current === 4) {
+            throw new \Exception('该订单已完成退款');
+        }
+
+        $app = (string)($fresh['app'] ?? '');
+        $orderNo = (string)$fresh['order_no'];
+        $refundNo = self::buildRefundNo($app, $orderNo);
+        $now = time();
+        $remark = mb_substr($reason !== '' ? $reason : '自动退款失败转人工处理', 0, 255);
+
+        Db::startTrans();
+        try {
+            $exist = Db::name('refund')->where('refund_no', $refundNo)->lock(true)->find();
+            if (!empty($exist)) {
+                $from = intval($exist['status']);
+                if (in_array($from, [RefundStatus::COMPLETED, RefundStatus::PROCESSING, RefundStatus::RETURNING], true)) {
+                    throw new \Exception('该订单退款正在处理中或已完成，请勿重复转入人工队列');
+                }
+                // 已有可审核单据：不覆盖审核结论，按幂等返回
+                Db::commit();
+                return [
+                    'refund_no'    => $refundNo,
+                    'status'       => $from,
+                    'created'      => false,
+                    'order_refund' => $current,
+                ];
+            }
+
+            $amount = 0;
+            $target = 0;
+            if (self::supports($app)) {
+                $policy = PolicyRegistry::resolve($app);
+                $amount = $policy->refundableAmount($fresh);
+                $target = self::decideTarget($fresh, $policy, $amount);
+            } else {
+                // 未接入策略时仍补建单据保证后台可见，后续审核由执行器按策略解析结果决定
+                Log::warning('[售后] 应用未接入售后策略，仅补建人工待审单，order_no=' . $orderNo . '，app=' . $app);
+            }
+
+            (new Refund())->edit([
+                'refund_no'     => $refundNo,
+                'order_no'      => $orderNo,
+                'order_id'      => intval($fresh['id'] ?? 0),
+                'app'           => $app,
+                'shopid'        => intval($fresh['shopid'] ?? 0),
+                'uid'           => intval($fresh['uid'] ?? 0),
+                'type'          => 1,
+                'status'        => RefundStatus::WAIT_AUDIT,
+                'order_fee'     => intval($fresh['paid_fee'] ?? 0),
+                'refund_fee'    => $amount,
+                'refund_to'     => $target,
+                'reason'        => $remark,
+                'source'        => in_array($source, [1, 2, 3], true) ? $source : 3,
+                'complete_time' => 0,
+                'create_time'   => $now,
+                'update_time'   => $now,
+            ]);
+            RefundLog::write($refundNo, $orderNo, 0, RefundStatus::WAIT_AUDIT, '转入后台退款队列', $remark, 0, 0);
+
+            // 仅在「未申请/已拒绝」时置申请中，避免覆盖退货中/已退货等在途状态
+            $affected = Db::name('orders')
+                ->where('id', intval($fresh['id']))
+                ->where('refund', 'in', [0, -1])
+                ->update(['refund' => 1, 'update_time' => $now]);
+            $orderRefund = intval($affected) === 1 ? 1 : $current;
+
+            Db::commit();
+        } catch (\Throwable $e) {
+            Db::rollback();
+            // 并发补建：唯一键冲突说明另一方已建单，按幂等返回
+            if (self::isDuplicateKey($e)) {
+                $exist = Db::name('refund')->where('refund_no', $refundNo)->find();
+                if (!empty($exist)) {
+                    return [
+                        'refund_no'    => $refundNo,
+                        'status'       => intval($exist['status']),
+                        'created'      => false,
+                        'order_refund' => $current,
+                    ];
+                }
+            }
+            throw $e;
+        }
+
+        Log::info('[售后] 转入后台退款队列，order_no=' . $orderNo . '，refund_no=' . $refundNo . '，reason=' . $remark);
+
+        return [
+            'refund_no'    => $refundNo,
+            'status'       => RefundStatus::WAIT_AUDIT,
+            'created'      => true,
+            'order_refund' => $orderRefund,
+        ];
+    }
+
+    /**
      * 重新处理已结束的售后单（后台人工重开）
      *
      * 拒绝/打款失败关闭的售后单在订单侧已恢复为未申请状态，后台没有入口再次处理，
@@ -1086,6 +1209,181 @@ class RefundCenter
             );
         }
         return $reverted;
+    }
+
+    /**
+     * 历史订单与售后单对账补建（只补记录，不触发打款）
+     *
+     * 处理口径：
+     *   - orders.refund IN (1,2) 且无售后单 → ensureDoc() 补建待审核/退货中单
+     *   - orders.refund=4 且无售后单：有已完成退款流水时按流水补记完成单；
+     *     无流水（线下/积分/口令或更早数据）时只出人工复核清单，不伪造完成态
+     *   - orders.refund=4 且 paid=1 的脏状态 → 修复为 paid=0
+     *   - 售后单在途/已完成但订单状态不符 → 只出人工复核清单，不自动收敛
+     *
+     * 默认 dry_run=true，不写任何数据；按 id 升序分批，after_id 可续跑。
+     *
+     * @param array $options shopid / app / limit / after_id / dry_run
+     * @return array{summary:array, rows:array, last_id:int}
+     */
+    public static function reconcileLegacy(array $options = []): array
+    {
+        $shopid = max(0, intval($options['shopid'] ?? 0));
+        $app = trim((string)($options['app'] ?? ''));
+        $limit = max(1, min(intval($options['limit'] ?? 200), 500));
+        $afterId = max(0, intval($options['after_id'] ?? 0));
+        $dryRun = (bool)($options['dry_run'] ?? true);
+
+        $summary = [
+            'dry_run'       => $dryRun,
+            'scanned'       => 0,
+            'pending_doc'   => 0,
+            'completed_doc' => 0,
+            'paid_fixed'    => 0,
+            'manual'        => 0,
+            'skipped'       => 0,
+            'failed'        => 0,
+        ];
+        $rows = [];
+        $lastId = $afterId;
+
+        // 只扫描非「未申请」状态；refund=0 的反向异常需另行 SQL 巡检
+        $query = Db::name('orders')
+            ->where('id', '>', $afterId)
+            ->where('refund', 'in', [1, 2, 3, 4])
+            ->order('id asc')
+            ->limit($limit);
+        if ($shopid > 0) {
+            $query->where('shopid', $shopid);
+        }
+        if ($app !== '') {
+            $query->where('app', $app);
+        }
+        $orders = $query->select()->toArray();
+
+        foreach ($orders as $o) {
+            $lastId = intval($o['id']);
+            $summary['scanned']++;
+
+            $orderRefund = intval($o['refund'] ?? 0);
+            $orderNo = (string)($o['order_no'] ?? '');
+            $appName = (string)($o['app'] ?? '');
+            $doc = Db::name('refund')->where('order_no', $orderNo)->order('id desc')->find();
+            $docStatus = empty($doc) ? null : intval($doc['status']);
+
+            $action = 'skipped';
+            $detail = '';
+            $paidFixed = false;
+
+            if ($docStatus === RefundStatus::COMPLETED && $orderRefund !== 4) {
+                $action = 'manual';
+                $detail = '售后单已完成但 orders.refund=' . $orderRefund . '，需人工核实';
+            } elseif (in_array($orderRefund, [1, 2], true)) {
+                if (empty($doc)) {
+                    if (!self::supports($appName)) {
+                        $action = 'manual';
+                        $detail = '应用未接入售后策略，需先补 Policy 再补建';
+                    } else {
+                        $action = 'pending_doc';
+                        $detail = '补建' . ($orderRefund === 2 ? '退货中' : '待审核') . '售后单';
+                        if (!$dryRun) {
+                            try {
+                                self::ensureDoc($o);
+                            } catch (\Throwable $e) {
+                                $action = 'failed';
+                                $detail = '补建失败：' . $e->getMessage();
+                            }
+                        }
+                    }
+                }
+            } elseif ($orderRefund === 3 && empty($doc)) {
+                $action = 'manual';
+                $detail = '订单已退货但无售后单，需人工核实';
+            } elseif ($orderRefund === 4) {
+                // 已退款仍为已支付：与 autoRefund 的脏状态修复同口径
+                if (intval($o['paid'] ?? 0) === 1) {
+                    $paidFixed = true;
+                    $detail = '修复已退款但仍为已支付（paid=0）';
+                    if (!$dryRun) {
+                        Db::name('orders')->where('id', intval($o['id']))->where('paid', 1)
+                            ->update(['paid' => 0, 'update_time' => time()]);
+                    }
+                }
+
+                if ($docStatus !== RefundStatus::COMPLETED) {
+                    if (!empty($doc)) {
+                        $action = 'manual';
+                        $detail = ($detail !== '' ? $detail . '；' : '')
+                            . '已有售后单但非完成态(status=' . $docStatus . ')，结果未知不可自动收敛';
+                    } else {
+                        // 与 RefundExecutor::findCompletedFlow 同口径：排除分账/佣金收入流水，
+                        // 避免把「服务人员收入」误判为已退款而静默收敛订单
+                        $flow = (array)(Db::name('capital_flow')
+                            ->where('order_no', $orderNo)
+                            ->where('shopid', intval($o['shopid'] ?? 0))
+                            ->where('app', $appName)
+                            ->where('uid', intval($o['uid'] ?? 0))
+                            ->where('type', 2)
+                            ->where('status', 1)
+                            ->where('remark', 'not like', '%的收入%')
+                            ->where('remark', 'not like', '%佣金%')
+                            ->find() ?: []);
+
+                        if (!empty($flow)) {
+                            $action = 'completed_doc';
+                            $detail = ($detail !== '' ? $detail . '；' : '') . '按已完成流水补记完成态售后单（不重新打款）';
+                            if (!$dryRun) {
+                                try {
+                                    (new Refund())->recordCompleted(
+                                        self::buildRefundNo($appName, $orderNo),
+                                        $o,
+                                        ['remark' => '历史数据补记', 'source' => 2],
+                                        intval($flow['price'] ?? 0),
+                                        (string)($flow['channel'] ?? '') === 'balance' ? 0 : 1,
+                                        [
+                                            'channel' => (string)($flow['channel'] ?? ''),
+                                            'flow_no' => (string)($flow['flow_no'] ?? ''),
+                                            'legacy'  => true,
+                                        ]
+                                    );
+                                } catch (\Throwable $e) {
+                                    $action = 'failed';
+                                    $detail = '补记失败：' . $e->getMessage();
+                                }
+                            }
+                        } else {
+                            $action = 'manual';
+                            $detail = ($detail !== '' ? $detail . '；' : '')
+                                . '无已完成退款流水（线下/积分/口令或更早数据），需人工确认是否已打款';
+                        }
+                    }
+                }
+            }
+
+            if ($paidFixed && $action === 'skipped') {
+                $action = 'paid_fixed';
+            }
+            // paid_fixed 是附加统计维度，避免同一行被 action 与 paid_fixed 重复计数
+            if ($action !== 'paid_fixed' && isset($summary[$action])) {
+                $summary[$action]++;
+            }
+            if ($paidFixed) {
+                $summary['paid_fixed']++;
+            }
+
+            $rows[] = [
+                'order_no'     => $orderNo,
+                'app'          => $appName,
+                'shopid'       => intval($o['shopid'] ?? 0),
+                'order_refund' => $orderRefund,
+                'doc_status'   => $docStatus,
+                'action'       => $action,
+                'paid_fixed'   => $paidFixed ? 1 : 0,
+                'detail'       => $detail,
+            ];
+        }
+
+        return ['summary' => $summary, 'rows' => $rows, 'last_id' => $lastId];
     }
 
     /**

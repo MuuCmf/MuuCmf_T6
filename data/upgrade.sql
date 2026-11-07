@@ -184,10 +184,12 @@ SET @sql := IF(@col = 0,
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- ============================================================
--- 统一售后中心 P4：用户申请售后、超时自动关闭（默认 12 小时）、打款滞留对账（30 分钟）与退货超时关闭（7 天）
+-- 统一售后中心 P4/P5：用户申请售后、超时自动关闭（默认 12 小时）、打款滞留对账（30 分钟）、
+-- 退货超时关闭（7 天），以及遗留订单只读巡检（dry-run 对账，不自动补建、不触发打款）
+-- 说明：巡检只覆盖 id 升序单批 200 单；全量对账用 php think refund:reconcile 按 --after-id 续跑
 -- ============================================================
 INSERT INTO `muucmf_crontab` (`id`, `shopid`, `title`, `description`, `execute`, `cycle`, `day`, `hour`, `minute`, `status`, `create_time`, `update_time`) VALUES
-(7, 0, '售后退款审核超时关闭与滞留单对账', '用户申请售后超过 12 小时仍未审核，系统自动关闭退款单并释放订单申请状态；打款滞留超过 30 分钟的单据回置为已同意待重试；退货超时 7 天未收到商品自动关闭', 'app\\common\\crontab\\Refund', 'hour-n', 1, 1, 1, 1, 1793880000, 1793880000)
+(7, 0, '售后退款超时关闭、滞留对账与遗留巡检', '申请售后超过 12 小时未审核自动关闭退款单；打款滞留超过 30 分钟回置为已同意待重试；退货超时 7 天未收到商品自动关闭；遗留订单只读巡检（dry-run 对账 orders.refund 与 muucmf_refund，不一致只告警，不自动补建、不触发打款，补建需人工确认后执行 php think refund:reconcile --apply）', 'app\\common\\crontab\\Refund', 'hour-n', 1, 1, 1, 1, 1793880000, 1793880000)
 ON DUPLICATE KEY UPDATE
   `title` = VALUES(`title`),
   `description` = VALUES(`description`),

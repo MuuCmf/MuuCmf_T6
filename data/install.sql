@@ -515,7 +515,7 @@ INSERT INTO `muucmf_crontab` (`id`, `shopid`, `title`, `description`, `execute`,
 (2, 0, '订单自动评价', '订单收货后用户未评价，系统默认7天后自动好评', 'app\\common\\crontab\\Evaluate', 'minute-n', 1, 1, 1, 1, 1645782483, 1645782483),
 (5, 0, '订单24小时自动取消', '订单下单后24小时内未支付，系统自动取消', 'app\\common\\crontab\\Orders', 'hour-n', 1, 1, 1, 1, 1745882710, 1745882794),
 (6, 0, 'Sitemap自动生成', '汇总框架核心页面与已安装应用页面生成 public/sitemap.xml，并同步 robots.txt 的 Sitemap 声明', 'app\\common\\crontab\\Sitemap', 'day', 0, 3, 30, 1, 1759104000, 1759104000),
-(7, 0, '售后退款审核超时关闭与滞留单对账', '用户申请售后超过 12 小时仍未审核，系统自动关闭退款单并释放订单申请状态；打款滞留超过 30 分钟的单据回置为已同意待重试；退货超时 7 天未收到商品自动关闭', 'app\\common\\crontab\\Refund', 'hour-n', 1, 1, 1, 1, 1793880000, 1793880000),
+(7, 0, '售后退款超时关闭、滞留对账与遗留巡检', '申请售后超过 12 小时未审核自动关闭退款单；打款滞留超过 30 分钟回置为已同意待重试；退货超时 7 天未收到商品自动关闭；遗留订单只读巡检（dry-run 对账 orders.refund 与 muucmf_refund，不一致只告警，不自动补建、不触发打款，补建需人工确认后执行 php think refund:reconcile --apply）', 'app\\common\\crontab\\Refund', 'hour-n', 1, 1, 1, 1, 1793880000, 1793880000),
 (8, 0, '消息重试与补偿', '重试失败记录、投递到期顺延记录、重置超时未推进的任务', 'app\\common\\crontab\\MessageRetry', 'minute-n', 0, 0, 5, 1, UNIX_TIMESTAMP(), UNIX_TIMESTAMP()),
 (9, 0, '消息数据清理', '清理超过保留期的发送记录、失效黑名单与队列失败任务', 'app\\common\\crontab\\MessageClean', 'day', 0, 4, 0, 1, UNIX_TIMESTAMP(), UNIX_TIMESTAMP());
 
@@ -1507,7 +1507,7 @@ CREATE TABLE IF NOT EXISTS `muucmf_orders` (
   `logistic` text NULL COMMENT '物流数据 json',
   `logistic_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '发货时间',
   `address_id` int(11) NOT NULL DEFAULT '0' COMMENT '收货地址',
-  `refund` tinyint(2) NOT NULL DEFAULT '0' COMMENT '收货退款状态',
+  `refund` tinyint(2) NOT NULL DEFAULT '0' COMMENT '订单侧退款标记 0未申请 1申请中 -1拒绝 2退货中 3已同意 4已退款；由统一售后中心（common/service/aftersale）维护，业务模块禁止直写，售后单据与资金动作以 muucmf_refund 为准',
   `refund_to` tinyint(4) NOT NULL DEFAULT '1' COMMENT '退款至 0：用户余额 1：原路退回',
   `refund_no` varchar(128) DEFAULT NULL COMMENT '退款单号',
   `refund_result` TEXT NULL COMMENT '退款成功平台返回数据',
