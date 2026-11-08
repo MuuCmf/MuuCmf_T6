@@ -337,7 +337,13 @@ class Pay extends Api
             } catch (\Throwable $e) {
                 return $this->error($e->getMessage());
             }
-            return $this->success('退款申请已提交，请等待商家审核', $result);
+            // 通用入口与模块用户端保持同一返回契约：{id, order_no, refund, refund_apply}
+            return $this->success('退款申请已提交，请等待商家审核', [
+                'id'           => intval($refund_order['id'] ?? 0),
+                'order_no'     => (string)($refund_order['order_no'] ?? ''),
+                'refund'       => 1,
+                'refund_apply' => $result,
+            ], 'refresh');
         }
     }
 

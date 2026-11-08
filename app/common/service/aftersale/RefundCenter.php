@@ -163,6 +163,11 @@ class RefundCenter
         if (empty($fresh)) {
             throw new \Exception('订单不存在');
         }
+        // 用户主动申请统一拦截已删除订单：status=-1 的订单仍可能收到支付回调，
+        // 但那条链路走 autoRefund / enqueueManual，不经过 apply。
+        if (intval($fresh['status'] ?? 0) === -1) {
+            throw new \Exception('该订单已删除，无法申请退款');
+        }
         $orderRefundFlag = intval($fresh['refund'] ?? 0);
         if ($orderRefundFlag === 4) {
             throw new \Exception('该订单已完成退款');
@@ -177,6 +182,11 @@ class RefundCenter
         }
 
         $policy = PolicyRegistry::resolve($app);
+        // 可选策略能力：虚拟商品等业务可关闭用户端自助申请，仅保留后台人工退款。
+        // 使用 method_exists 兼容未实现该方法的策略，且不改 RefundPolicyInterface。
+        if (method_exists($policy, 'allowUserApply') && !$policy->allowUserApply()) {
+            throw new \Exception('该订单不支持在线申请退款，请联系商家处理');
+        }
         $items = (array)($params['items'] ?? []);
         $amount = $policy->refundableAmount($fresh, $items);
         if ($amount < 0) {
@@ -725,7 +735,9 @@ class RefundCenter
      * @param array  $operator 操作人：id / name
      * @param string $remark   审核备注
      * @param array  $options  附加退款参数（如 minishop 的 restore_stock 库存回补开关；
-     *                          goods_received=true 表示已收到买家退回商品，用于放行「退货中」单据打款）
+     *                          goods_received=true 表示已收到买家退回商品，用于放行「退货中」单据打款；
+     *                          fallback_to_balance=false 表示原路失败时不自动回落余额，交由管理员改选；
+     *                          其余键如 refund_to / force / source / items 透传给执行器）
      * @return array
      * @throws \Exception
      */
@@ -734,6 +746,10 @@ class RefundCenter
         // 打款意图显式传入，避免并发「同意退货」后按退款口径直接打款
         $goodsReceived = (bool)($options['goods_received'] ?? false);
         unset($options['goods_received']);
+        // 原路退回失败是否自动回落余额：默认回落（与原有行为一致），
+        // 后台审核可显式传 false，把失败交回管理员改选退款方式，避免静默降级。
+        $allowFallback = (bool)($options['fallback_to_balance'] ?? true);
+        unset($options['fallback_to_balance']);
 
         $row = Db::name('refund')->where('refund_no', $refundNo)->find();
         if (empty($row)) {
@@ -822,7 +838,8 @@ class RefundCenter
             throw $e;
         } catch (\Throwable $e) {
             // 原路退回失败：网关未受理时回落余额，避免资金挂账
-            if ($params['refund_to'] === 1 && !self::refundInFlight((string)$row['app'], (string)$row['order_no'])) {
+            if ($params['refund_to'] === 1 && $allowFallback
+                && !self::refundInFlight((string)$row['app'], (string)$row['order_no'])) {
                 $policy = PolicyRegistry::resolve((string)$row['app']);
                 if (in_array(0, $policy->allowedTargets($order), true)) {
                     try {

@@ -10,6 +10,7 @@ use think\Exception;
 use think\facade\Db;
 use think\Request;
 use app\common\validate\Orders as OrdersValidate;
+use app\common\service\aftersale\RefundQuery;
 use think\exception\ValidateException;
 
 class Orders extends Api
@@ -170,6 +171,10 @@ class Orders extends Api
         } else {
             $return_url = url($order_data['app'] . '/' . $order_data['products']['link']['url'], $order_data['products']['link']['param']);
         }
+
+        // 售后进度以售后单为事实来源：orders.refund 在拒绝/关闭后会回置 0，仅靠订单字段无法展示
+        $refundInfo = RefundQuery::latestByOrderNo((string)($order_data['order_no'] ?? ''));
+        $order_data['refund_info'] = $refundInfo ? RefundQuery::decorate($refundInfo, $order_data) : null;
 
         return $this->success('success', $order_data, $return_url);
     }
