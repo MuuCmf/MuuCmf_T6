@@ -13,6 +13,7 @@ use app\common\service\aftersale\channel\OriginalChannel;
 use app\common\service\aftersale\channel\BalanceChannel;
 use app\common\service\aftersale\channel\OfflineChannel;
 use app\common\service\aftersale\channel\ScoreChannel;
+use app\common\service\message\MessageCenter;
 
 /**
  * 退款执行器（唯一实现）
@@ -208,6 +209,25 @@ class RefundExecutor
                 $policy->onRefundedAfterTx($fresh, $refund);
             } catch (\Throwable $e) {
                 Log::warning('[售后] 事务后钩子失败，order_no=' . $orderNo . '：' . $e->getMessage());
+            }
+
+            // 退款到账通知：售后中心是唯一触发点，biz_key 保证同一次退款只通知一次
+            try {
+                $uid = (int)($fresh['uid'] ?? 0);
+                if ($uid > 0) {
+                    MessageCenter::send('order.refund_success', [
+                        'type'  => 'uids',
+                        'value' => [$uid],
+                    ], [
+                        'order_no' => $orderNo,
+                        'amount'   => sprintf('%.2f', $amount / 100),
+                    ], [
+                        'shopid'  => (int)($fresh['shopid'] ?? 0),
+                        'biz_key' => 'refund_' . (string)$refund['refund_no'],
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('[售后] 退款到账通知发送失败，order_no=' . $orderNo . '：' . $e->getMessage());
             }
 
             Log::info('[售后] 退款完成，order_no=' . $orderNo . '，refund_to=' . $refundTo . '，refund_no=' . $finalRefundNo);

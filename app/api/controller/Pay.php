@@ -16,6 +16,7 @@ use app\common\facade\wechat\MiniProgram as WeixinMiniProgramServer;
 use app\common\facade\bytedance\MiniProgram as DouyinMiniProgramServer;
 use app\common\facade\baidu\MiniProgram as BaiduMiniProgramServer;
 use app\common\service\aftersale\RefundCenter;
+use app\common\service\message\MessageCenter;
 
 
 class Pay extends Api
@@ -522,6 +523,11 @@ class Pay extends Api
         //消息通知（并发重复回调未抢到订单状态迁移时，业务未重复执行，跳过模板消息避免重复推送）
         if (!is_array($result) || empty($result['already_paid'])) {
             $this->sendPaySuccessTmplmsg($order_info['channel'], $order_info);
+            // 统一消息中心：仅接管站内信，微信模板消息分支保持原样；
+            // 模块订单服务已自行接入通知（如 classroom::notifyPaid）时跳过，避免同一次支付重复推送
+            if (!method_exists($OrderService, 'notifyPaid')) {
+                $this->sendPaySuccessMessage($order_info);
+            }
         }
 
         // SCRM 业务事件接入：支付成功后回流订单事件，失败不影响支付主流程
@@ -577,6 +583,53 @@ class Pay extends Api
             }
         } catch (\Throwable $e) {
             Log::write('SCRM业务事件推送失败 scene=' . $scene . '：' . $e->getMessage());
+        }
+    }
+
+    /**
+     * 发送支付成功站内信（统一消息推送中心）
+     *
+     * 只接管站内信，微信模板消息仍由 sendPaySuccessTmplmsg 发送；
+     * 调用点在支付业务事务提交之后，异常一律吞掉，不影响支付结果。
+     *
+     * @param array $order_info 订单数据
+     * @return void
+     */
+    protected function sendPaySuccessMessage(array $order_info)
+    {
+        try {
+            $uid = (int)($order_info['uid'] ?? 0);
+            $orderNo = (string)($order_info['order_no'] ?? '');
+            if ($uid <= 0 || $orderNo === '') {
+                return;
+            }
+
+            $products = $order_info['products'] ?? [];
+            if (!is_array($products)) {
+                $products = json_decode((string)$products, true) ?: [];
+            }
+
+            // 支付回调拿到的订单是支付前快照，paid_time 以库内最新值为准
+            $paidTime = (int)($order_info['paid_time'] ?? 0);
+            if ($paidTime <= 0) {
+                $paidTime = (int)$this->OrderModel->where('order_no', $orderNo)->value('paid_time');
+            }
+
+            MessageCenter::send('order.pay_success', [
+                'type'  => 'uids',
+                'value' => [$uid],
+            ], [
+                'order_no'     => $orderNo,
+                'amount'       => sprintf('%.2f', (int)($order_info['paid_fee'] ?? 0) / 100),
+                'product_name' => (string)($products['title'] ?? '商品'),
+                'paid_time'    => $paidTime > 0 ? time_format($paidTime, 'Y-m-d H:i:s') : '',
+            ], [
+                'shopid'   => (int)($order_info['shopid'] ?? 0),
+                'biz_key'  => $orderNo,
+                'channels' => ['inbox'],
+            ]);
+        } catch (\Throwable $e) {
+            Log::write('[message] 支付成功站内信发送失败 order_no=' . ($order_info['order_no'] ?? '') . '：' . $e->getMessage());
         }
     }
 
