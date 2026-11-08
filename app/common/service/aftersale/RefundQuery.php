@@ -121,6 +121,52 @@ class RefundQuery
     }
 
     /**
+     * 在途售后单状态：存在这些状态的单据时，订单不应继续推进确认收货/发放佣金等生命周期动作
+     */
+    public const ACTIVE_STATUSES = [
+        RefundStatus::WAIT_AUDIT,
+        RefundStatus::AGREED,
+        RefundStatus::PROCESSING,
+        RefundStatus::RETURNING,
+    ];
+
+    /**
+     * 订单是否存在在途售后单
+     *
+     * 以售后单为事实来源；同时兼容接入前 orders.refund=1/2/3 但尚无售后单的历史订单。
+     *
+     * @param string $orderNo 订单号
+     * @param array  $order   订单数据（用于历史标记回退判断）
+     */
+    public static function hasActive(string $orderNo, array $order = []): bool
+    {
+        $latest = self::latestByOrderNo($orderNo);
+        if ($latest && in_array(intval($latest['status']), self::ACTIVE_STATUSES, true)) {
+            return true;
+        }
+        return in_array(intval($order['refund'] ?? 0), [1, 2, 3], true);
+    }
+
+    /**
+     * 批量取在途售后单的订单号（供定时任务批量排除）
+     *
+     * @param int    $shopid 店铺ID，0 表示不限店铺
+     * @param string $app    应用标识，空表示不限应用
+     * @return string[]
+     */
+    public static function activeOrderNos(int $shopid = 0, string $app = ''): array
+    {
+        $query = Db::name('refund')->whereIn('status', self::ACTIVE_STATUSES);
+        if ($shopid > 0) {
+            $query->where('shopid', $shopid);
+        }
+        if ($app !== '') {
+            $query->where('app', $app);
+        }
+        return array_values(array_unique(array_map('strval', $query->column('order_no'))));
+    }
+
+    /**
      * 售后单输出格式化
      */
     private static function format(array $row): array
