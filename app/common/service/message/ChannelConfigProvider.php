@@ -128,6 +128,10 @@ class ChannelConfigProvider
         ];
         $emailConfigured = $email['host'] !== '' && $email['user'] !== '' && $email['pass'] !== '';
 
+        // 微信渠道凭证来自公众平台/小程序配置表，独立于扩展配置开关
+        $oaConfigured = $this->wechatCredentials($shopid, 'wechat_config');
+        $mpConfigured = $this->wechatCredentials($shopid, 'wechat_mp_config');
+
         $quietStart = $this->normalizeTime((string)$this->config('MESSAGE_QUIET_START', '21:00'));
         $quietEnd = $this->normalizeTime((string)$this->config('MESSAGE_QUIET_END', '09:00'));
 
@@ -136,14 +140,19 @@ class ChannelConfigProvider
             'sms'        => ['driver' => $driver, 'aliyun' => $aliyun, 'tencent' => $tencent],
             'email'      => $email,
             'channels'   => [
-                'inbox' => true,
-                'email' => $emailConfigured,
-                'sms'   => $smsConfigured,
+                'inbox'     => true,
+                'email'     => $emailConfigured,
+                'sms'       => $smsConfigured,
+                'wechat_oa' => $oaConfigured,
+                'wechat_mp' => $mpConfigured,
             ],
             'enabled'    => [
                 'inbox' => true,
                 'email' => (string)$this->config('MESSAGE_CHANNEL_EMAIL', '1') === '1' && $emailConfigured,
                 'sms'   => (string)$this->config('MESSAGE_CHANNEL_SMS', '1') === '1' && $smsConfigured,
+                // 微信渠道默认关闭：开启前应先下线 Pay.php / 核销等历史模板消息，避免双发
+                'wechat_oa' => (string)$this->config('MESSAGE_CHANNEL_WECHAT_OA', '0') === '1' && $oaConfigured,
+                'wechat_mp' => (string)$this->config('MESSAGE_CHANNEL_WECHAT_MP', '0') === '1' && $mpConfigured,
             ],
             'quiet'      => [
                 'enabled' => (string)$this->config('MESSAGE_QUIET_ENABLED', '0') === '1',
@@ -266,6 +275,44 @@ class ChannelConfigProvider
     }
 
     /**
+     * 当前已启用的微信渠道（凭证齐全且开关已打开）
+     *
+     * @param int $shopid
+     * @return array
+     */
+    public function enabledWechatChannels(int $shopid): array
+    {
+        $config = $this->get($shopid);
+        $channels = [];
+        foreach (['wechat_oa', 'wechat_mp'] as $channel) {
+            if (!empty($config['enabled'][$channel])) {
+                $channels[] = $channel;
+            }
+        }
+        return $channels;
+    }
+
+    /**
+     * 微信渠道凭证是否齐全（appid / secret）
+     *
+     * @param int    $shopid
+     * @param string $table  wechat_config | wechat_mp_config
+     * @return bool
+     */
+    protected function wechatCredentials(int $shopid, string $table): bool
+    {
+        try {
+            $row = \think\facade\Db::name($table)
+                ->where('shopid', $shopid)
+                ->field('appid,secret')
+                ->find();
+        } catch (\Throwable $e) {
+            return false;
+        }
+        return !empty($row['appid']) && !empty($row['secret']);
+    }
+
+    /**
      * 规范化渠道链
      *
      * @param string $chain
@@ -274,7 +321,10 @@ class ChannelConfigProvider
     protected function normalizeChain(string $chain): array
     {
         $items = array_filter(array_map('trim', explode(',', $chain)));
-        $items = array_values(array_unique(array_intersect($items, ['inbox', 'email', 'sms'])));
+        $items = array_values(array_unique(array_intersect(
+            $items,
+            ['inbox', 'email', 'sms', 'wechat_oa', 'wechat_mp']
+        )));
         return $items ?: ['sms'];
     }
 

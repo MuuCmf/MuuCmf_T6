@@ -95,6 +95,16 @@ class Orders extends Api
 
                 Db::commit();
 
+                // 免费 / 0 元订单创建时即已置为已支付，不会经过支付回调；
+                // 事务提交后由各应用服务补发支付成功站内信，失败不影响下单结果
+                if (intval($order['paid'] ?? 0) === 1 && method_exists($appOrdersService, 'notifyPaid')) {
+                    try {
+                        $appOrdersService->notifyPaid($order);
+                    } catch (\Throwable $e) {
+                        \think\facade\Log::warning('[order] paid notify failed: ' . $e->getMessage());
+                    }
+                }
+
                 return $this->success('创建订单成功', $order);
             } catch (\Throwable $e) {
                 Db::rollback();

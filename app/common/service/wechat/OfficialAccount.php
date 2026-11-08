@@ -13,10 +13,10 @@ use think\Exception;
  */
 class OfficialAccount extends Wechat
 {
-    function __construct()
+    function __construct($shopid = null)
     {
-        $shopid = request()->param('shopid') ?? 0;
-        $this->shopid = $shopid;
+        // 队列 / CLI 场景没有请求上下文，由消息渠道显式传入店铺 ID
+        $this->shopid = $shopid === null ? (request()->param('shopid') ?? 0) : (int)$shopid;
         $this->type = 'wechat_official_account';
         //服务配置文件
         $config = $this->config =  $this->initConfig();

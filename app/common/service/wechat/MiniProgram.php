@@ -13,9 +13,11 @@ use think\Exception;
  */
 class MiniProgram extends Wechat
 {
-    function __construct()
+    function __construct($shopid = null)
     {
         $this->type = 'wechat_mini_program';
+        // 队列 / CLI 场景没有请求上下文，由消息渠道显式传入店铺 ID
+        $this->shopid = $shopid === null ? (request()->param('shopid') ?? 0) : (int)$shopid;
         //服务配置文件
         $config = $this->config = $this->initConfig();
         $app = Factory::miniProgram($config);
@@ -25,7 +27,6 @@ class MiniProgram extends Wechat
 
     public function initConfig()
     {
-        $this->shopid = request()->param('shopid') ?? 0;
         //获取配置信息
         $map = [
             ['shopid', '=', $this->shopid],

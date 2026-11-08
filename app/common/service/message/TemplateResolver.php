@@ -125,15 +125,32 @@ class TemplateResolver
             if ($channel === 'inbox') {
                 continue;
             }
-            if ($channel === 'sms' || $channel === 'email') {
+            if (in_array($channel, ['sms', 'email', 'wechat_oa', 'wechat_mp'], true)) {
                 if (empty($config['enabled'][$channel])) {
                     $skipped[] = ['channel' => $channel, 'reason' => 'channel_disabled'];
                     continue;
                 }
-                // 模板未配置该渠道内容时跳过，避免发送空短信/空邮件（如仅需站内信的事务模板）
-                if (empty($template['channels'][$channel]['content'])) {
-                    $skipped[] = ['channel' => $channel, 'reason' => 'channel_not_configured'];
+                // 模板渠道行被软停用：内容保留但不进发送链路
+                if (isset($template['channels'][$channel]['status'])
+                    && (int)$template['channels'][$channel]['status'] === 0) {
+                    $skipped[] = ['channel' => $channel, 'reason' => 'channel_disabled'];
                     continue;
+                }
+                if ($channel === 'sms' || $channel === 'email') {
+                    // 模板未配置该渠道内容时跳过，避免发送空短信/空邮件（如仅需站内信的事务模板）
+                    if (empty($template['channels'][$channel]['content'])) {
+                        $skipped[] = ['channel' => $channel, 'reason' => 'channel_not_configured'];
+                        continue;
+                    }
+                } else {
+                    // 微信渠道用 field_map 组装 data，不依赖富文本正文
+                    $wechat = $template['channels'][$channel] ?? [];
+                    $wechatExtra = is_array($wechat['extra'] ?? null) ? $wechat['extra'] : [];
+                    $fieldMap = $wechatExtra['field_map'] ?? ($wechat['var_map'] ?? []);
+                    if (!is_array($fieldMap) || empty($fieldMap)) {
+                        $skipped[] = ['channel' => $channel, 'reason' => 'channel_not_configured'];
+                        continue;
+                    }
                 }
                 if (count($external) >= 3) {
                     $skipped[] = ['channel' => $channel, 'reason' => 'too_many_channels'];
@@ -142,7 +159,7 @@ class TemplateResolver
                 $external[] = $channel;
                 continue;
             }
-            // 未实现/未知渠道（含 P1 微信渠道）：不进链路，但必须落 blocked 记录
+            // 未实现/未知渠道：不进链路，但必须落 blocked 记录
             $skipped[] = ['channel' => $channel, 'reason' => 'channel_not_configured'];
         }
 
@@ -361,7 +378,11 @@ class TemplateResolver
             }
             $seen[$channelKey] = true;
 
-            if (!in_array($channelKey, ['inbox', 'email', 'sms'], true)) {
+            if (!in_array($channelKey, ['inbox', 'email', 'sms', 'wechat_oa', 'wechat_mp'], true)) {
+                continue;
+            }
+            // 停用渠道仅保留内容，不参与保存期校验（如空短信行不应触发模板ID必填）
+            if (isset($channel['status']) && (int)$channel['status'] === 0) {
                 continue;
             }
 
@@ -389,6 +410,31 @@ class TemplateResolver
 
             if ($channelKey === 'inbox' && trim((string)($extra['type_code'] ?? '')) === '') {
                 $errors[] = ['channel' => 'inbox', 'field' => 'extra.type_code', 'type' => 'missing_value'];
+            }
+
+            if ($channelKey === 'wechat_oa' || $channelKey === 'wechat_mp') {
+                // 模板 ID 可留空（运行时按 scene 回退历史微信配置），字段映射必须声明
+                $fieldMap = $extra['field_map'] ?? ($channel['var_map'] ?? []);
+                if (!is_array($fieldMap) || empty($fieldMap)) {
+                    $errors[] = [
+                        'channel' => $channelKey,
+                        'field'   => 'extra.field_map',
+                        'type'    => 'missing_value',
+                    ];
+                } else {
+                    foreach ($fieldMap as $field => $tplVar) {
+                        $field = trim((string)$field);
+                        $tplVar = (string)$tplVar;
+                        if ($field === '' || !in_array($tplVar, $declared, true)) {
+                            $errors[] = [
+                                'channel'     => $channelKey,
+                                'field'       => 'extra.field_map',
+                                'placeholder' => $field !== '' ? $field : $tplVar,
+                                'type'        => 'invalid_value',
+                            ];
+                        }
+                    }
+                }
             }
 
             if ($channelKey === 'sms') {

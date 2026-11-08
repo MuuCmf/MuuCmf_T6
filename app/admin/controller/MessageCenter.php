@@ -319,13 +319,13 @@ class MessageCenter extends Admin
                 $templateId = (int)Db::name('message_template')->insertGetId($data);
             }
 
-            // 只替换首版 3 个渠道；P1 微信渠道前端暂无编辑入口，保存时不能被静默删除
+            // 前端未提交的渠道行只做软停用，保留已填的模板ID/字段映射/正文，
+            // 避免误关 Tab 后再打开时配置不可恢复（无历史快照表）
             Db::name('message_template_channel')
                 ->where('shopid', $this->shopid)
                 ->where('template_id', $templateId)
-                ->whereIn('channel', ['inbox', 'email', 'sms'])
                 ->whereNotIn('channel', array_keys($channels))
-                ->delete();
+                ->update(['status' => 0, 'update_time' => $now]);
 
             foreach ($channels as $channelKey => $channel) {
                 $row = [
@@ -338,7 +338,7 @@ class MessageCenter extends Admin
                     'extra'             => json_encode((object)$channel['extra'], JSON_UNESCAPED_UNICODE),
                     'third_template_id' => $channel['third_template_id'],
                     'var_map'           => json_encode((object)$channel['var_map'], JSON_UNESCAPED_UNICODE),
-                    'status'            => 1,
+                    'status'            => (int)$channel['status'],
                     'update_time'       => $now,
                 ];
                 $exists = Db::name('message_template_channel')
@@ -491,6 +491,19 @@ class MessageCenter extends Admin
         }
         if (!in_array($channel, self::CHANNELS, true)) {
             return $this->error('不支持的渠道');
+        }
+
+        // 测试发送显式指定渠道会绕过 buildChain，这里补上凭证与全局开关校验，
+        // 避免「触达设置已关闭短信，测试发送仍能发出」的口径不一致
+        if ($channel !== 'inbox') {
+            $provider = $this->channels->configProvider();
+            $label = $this->channelLabels()[$channel] ?? $channel;
+            if (!$provider->configured((int)$this->shopid, $channel)) {
+                return $this->error($label . '渠道凭证未配置，请先在扩展配置中补齐');
+            }
+            if (!$provider->enabled((int)$this->shopid, $channel)) {
+                return $this->error($label . '渠道已在触达设置中关闭，请先启用后再测试');
+            }
         }
 
         if ($channel === 'sms' && $mobile !== '') {
@@ -1008,7 +1021,7 @@ class MessageCenter extends Admin
         $config = $this->channels->configProvider()->get((int)$this->shopid);
 
         $values = [];
-        foreach (['MESSAGE_QUIET_ENABLED', 'MESSAGE_QUIET_START', 'MESSAGE_QUIET_END', 'MESSAGE_BATCH_SIZE', 'MESSAGE_RETRY_MAX', 'MESSAGE_FREQ_MAX', 'MESSAGE_FREQ_WINDOW', 'MESSAGE_DEFAULT_CHAIN', 'MESSAGE_CHANNEL_EMAIL', 'MESSAGE_CHANNEL_SMS', 'SMS_SEND_DRIVER'] as $name) {
+        foreach (['MESSAGE_QUIET_ENABLED', 'MESSAGE_QUIET_START', 'MESSAGE_QUIET_END', 'MESSAGE_BATCH_SIZE', 'MESSAGE_RETRY_MAX', 'MESSAGE_FREQ_MAX', 'MESSAGE_FREQ_WINDOW', 'MESSAGE_DEFAULT_CHAIN', 'MESSAGE_CHANNEL_EMAIL', 'MESSAGE_CHANNEL_SMS', 'MESSAGE_CHANNEL_WECHAT_OA', 'MESSAGE_CHANNEL_WECHAT_MP', 'SMS_SEND_DRIVER'] as $name) {
             $values[$name] = (string)config('extend.' . $name, '');
         }
 
@@ -1026,6 +1039,8 @@ class MessageCenter extends Admin
                 ['key' => 'inbox', 'label' => '站内信'],
                 ['key' => 'email', 'label' => '邮件'],
                 ['key' => 'sms', 'label' => '短信'],
+                ['key' => 'wechat_oa', 'label' => '公众号'],
+                ['key' => 'wechat_mp', 'label' => '小程序'],
             ],
         ]);
     }
@@ -1069,23 +1084,25 @@ class MessageCenter extends Admin
 
         $chain = array_values(array_intersect(
             array_filter(array_map('trim', explode(',', (string)($input['MESSAGE_DEFAULT_CHAIN'] ?? 'sms')))),
-            ['inbox', 'email', 'sms']
+            self::CHANNELS
         ));
         if (empty($chain)) {
             return $this->error('默认兜底链不能为空');
         }
 
         $values = [
-            'MESSAGE_QUIET_ENABLED' => (int)($input['MESSAGE_QUIET_ENABLED'] ?? 0) ? '1' : '0',
-            'MESSAGE_QUIET_START'   => $start,
-            'MESSAGE_QUIET_END'     => $end,
-            'MESSAGE_BATCH_SIZE'    => (string)$batch,
-            'MESSAGE_RETRY_MAX'     => (string)$retry,
-            'MESSAGE_FREQ_MAX'      => (string)$freqMax,
-            'MESSAGE_FREQ_WINDOW'   => (string)$freqWindow,
-            'MESSAGE_DEFAULT_CHAIN' => implode(',', $chain),
-            'MESSAGE_CHANNEL_EMAIL' => (int)($input['MESSAGE_CHANNEL_EMAIL'] ?? 0) ? '1' : '0',
-            'MESSAGE_CHANNEL_SMS'   => (int)($input['MESSAGE_CHANNEL_SMS'] ?? 0) ? '1' : '0',
+            'MESSAGE_QUIET_ENABLED'       => (int)($input['MESSAGE_QUIET_ENABLED'] ?? 0) ? '1' : '0',
+            'MESSAGE_QUIET_START'         => $start,
+            'MESSAGE_QUIET_END'           => $end,
+            'MESSAGE_BATCH_SIZE'          => (string)$batch,
+            'MESSAGE_RETRY_MAX'           => (string)$retry,
+            'MESSAGE_FREQ_MAX'            => (string)$freqMax,
+            'MESSAGE_FREQ_WINDOW'         => (string)$freqWindow,
+            'MESSAGE_DEFAULT_CHAIN'       => implode(',', $chain),
+            'MESSAGE_CHANNEL_EMAIL'       => (int)($input['MESSAGE_CHANNEL_EMAIL'] ?? 0) ? '1' : '0',
+            'MESSAGE_CHANNEL_SMS'         => (int)($input['MESSAGE_CHANNEL_SMS'] ?? 0) ? '1' : '0',
+            'MESSAGE_CHANNEL_WECHAT_OA'   => (int)($input['MESSAGE_CHANNEL_WECHAT_OA'] ?? 0) ? '1' : '0',
+            'MESSAGE_CHANNEL_WECHAT_MP'   => (int)($input['MESSAGE_CHANNEL_WECHAT_MP'] ?? 0) ? '1' : '0',
         ];
 
         $now = time();
@@ -1099,8 +1116,11 @@ class MessageCenter extends Admin
                     'type'        => 'string',
                     'title'       => $name,
                     'group'       => 'message',
+                    'extra'       => '',
+                    'remark'      => '',
                     'value'       => $value,
                     'status'      => 1,
+                    'sort'        => 0,
                     'create_time' => $now,
                     'update_time' => $now,
                 ]);
@@ -1271,6 +1291,8 @@ class MessageCenter extends Admin
                 'extra'             => $extra,
                 'var_map'           => $varMap,
                 'third_template_id' => (string)($content['third_template_id'] ?? ''),
+                // 渠道 Tab 的软启停：0 表示内容保留但不参与发送链路；站内信是系统兜底，恒启用
+                'status'            => $channel === 'inbox' ? 1 : (((int)($content['status'] ?? 1) === 0) ? 0 : 1),
             ];
         }
 
@@ -1404,10 +1426,10 @@ class MessageCenter extends Admin
         $labels = $this->channelLabels();
         $status = [];
 
-        foreach (['inbox', 'email', 'sms'] as $channel) {
+        foreach (self::CHANNELS as $channel) {
             $status[] = [
                 'key'        => $channel,
-                'label'      => $labels[$channel],
+                'label'      => $labels[$channel] ?? $channel,
                 'configured' => $channel === 'inbox' ? true : $this->channels->configured((int)$this->shopid, $channel),
                 'enabled'    => $channel === 'inbox' ? true : !empty($config['enabled'][$channel]),
             ];

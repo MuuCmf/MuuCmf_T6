@@ -330,7 +330,14 @@ class Dispatcher
                 continue;
             }
             if ($channel !== 'inbox' && empty($available[$channel][$uid])) {
-                $reason = $this->channels->configured($shopid, $channel) ? 'no_binding' : 'channel_not_configured';
+                $provider = $this->channels->configProvider();
+                if (!$provider->enabled($shopid, $channel)) {
+                    $reason = $provider->configured($shopid, $channel)
+                        ? 'channel_disabled'
+                        : 'channel_not_configured';
+                } else {
+                    $reason = 'no_binding';
+                }
                 if ($this->writeBlockedRecord($task, $template, $channel, (int)$index, $uid, $reason, $options)) {
                     $stats['records']++;
                     $stats['record_blocked']++;

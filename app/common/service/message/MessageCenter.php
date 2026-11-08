@@ -436,14 +436,27 @@ class MessageCenter
         $manager = new ChannelManager();
         $config = $manager->configProvider()->get($shopid);
 
-        $chain = $resolver->buildChain($template, ['channels' => $channels], $config);
+        $skipped = [];
+        $chain = $resolver->buildChain($template, ['channels' => $channels], $config, $skipped);
         $rows = [];
+        // 被剔除（开关关闭 / 渠道停用 / 未配置模板内容）的渠道也要在预览里给出原因
+        foreach ($skipped as $item) {
+            $rows[] = [
+                'channel'   => $item['channel'],
+                'available' => false,
+                'reason'    => $item['reason'],
+                'render'    => ['title' => '', 'content' => ''],
+            ];
+        }
 
         foreach ($chain as $channel) {
-            $configured = $channel === 'inbox' ? true : $manager->configured($shopid, $channel);
-            $row = ['channel' => $channel, 'available' => $configured, 'reason' => '', 'render' => ['title' => '', 'content' => '']];
-            if (!$configured) {
-                $row['reason'] = 'channel_not_configured';
+            // 与实际发送链路口径一致：enabled = 开关 AND 凭证，而非仅看凭证
+            $enabled = $channel === 'inbox' ? true : $manager->configProvider()->enabled($shopid, $channel);
+            $row = ['channel' => $channel, 'available' => $enabled, 'reason' => '', 'render' => ['title' => '', 'content' => '']];
+            if (!$enabled) {
+                $row['reason'] = $manager->configProvider()->configured($shopid, $channel)
+                    ? 'channel_disabled'
+                    : 'channel_not_configured';
                 $rows[] = $row;
                 continue;
             }

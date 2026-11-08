@@ -558,7 +558,8 @@ DELETE FROM `muucmf_menu` WHERE `id` IN (
  '5F7C8D9E-AFB0-4FC1-9AD2-7E8D9EAFBCDE','6A8D9EAF-B0C1-4AD2-8BE3-8F9EAFB0CDEF',
  '7B9EAFB0-C1D2-4BE3-9CF4-9A0FB0C1DEFA','8CAFB0C1-D2E3-4CF4-8A05-0B10C1D2EFAB',
  '0B38495A-6B7C-4B8D-9C9E-3A4F5A6B879B','AEB1C2D3-F405-4E16-8C27-2D32E3F4ABCD',
- 'BFC2D3E4-0516-4F27-9D38-3E43F4A5BCDE'
+ 'BFC2D3E4-0516-4F27-9D38-3E43F4A5BCDE','D2E3F4A5-2738-4C49-AF6B-7A1C2D3E4F50',
+ 'C1D2E3F4-1627-4B38-9E5A-6F0B1C2D3E4F','E3F4A5B6-3849-4D5A-B07C-8B2D3E4F5061'
 );
 
 INSERT INTO `muucmf_menu` (`id`, `title`, `pid`, `sort`, `url`, `hide`, `type`, `tip`, `group`, `is_dev`, `icon`, `module`) VALUES
@@ -583,38 +584,6 @@ INSERT INTO `muucmf_menu` (`id`, `title`, `pid`, `sort`, `url`, `hide`, `type`, 
 ('D2E3F4A5-2738-4C49-AF6B-7A1C2D3E4F50', '类型保存', 'C1D2E3F4-1627-4B38-9E5A-6F0B1C2D3E4F', 0, 'admin/messagecenter/typesave', 1, 0, '', '消息中心', 0, '', 'admin'),
 ('E3F4A5B6-3849-4D5A-B07C-8B2D3E4F5061', '类型启停', 'C1D2E3F4-1627-4B38-9E5A-6F0B1C2D3E4F', 1, 'admin/messagecenter/typestatus', 1, 0, '', '消息中心', 0, '', 'admin');
 
--- ---------- 8. 权限节点（auth_rule 按 URL 直接补，避免依赖人工同步） ----------
-DELETE FROM `muucmf_auth_rule` WHERE `name` IN (
- 'admin/messagecenter/template','admin/messagecenter/templatedetail','admin/messagecenter/templatesave',
- 'admin/messagecenter/templatestatus','admin/messagecenter/templatecopy','admin/messagecenter/templatetest',
- 'admin/messagecenter/task','admin/messagecenter/taskcreate','admin/messagecenter/taskpreview',
- 'admin/messagecenter/taskdetail','admin/messagecenter/taskcancel','admin/messagecenter/taskretry',
- 'admin/messagecenter/record','admin/messagecenter/recordretry','admin/messagecenter/recordexport',
- 'admin/messagecenter/setting','admin/messagecenter/settingsave','admin/messagecenter/blacklist'
-);
-
-INSERT INTO `muucmf_auth_rule` (`module`, `type`, `name`, `title`, `status`, `condition`) VALUES
-('admin', 1, 'admin/messagecenter/template', '消息模板', 1, ''),
-('admin', 1, 'admin/messagecenter/templatedetail', '模板详情', 1, ''),
-('admin', 1, 'admin/messagecenter/templatesave', '模板保存', 1, ''),
-('admin', 1, 'admin/messagecenter/templatestatus', '模板启停', 1, ''),
-('admin', 1, 'admin/messagecenter/templatecopy', '模板复制', 1, ''),
-('admin', 1, 'admin/messagecenter/templatetest', '模板测试发送', 1, ''),
-('admin', 1, 'admin/messagecenter/task', '发送任务', 1, ''),
-('admin', 1, 'admin/messagecenter/taskcreate', '新建任务', 1, ''),
-('admin', 1, 'admin/messagecenter/taskpreview', '发送预览', 1, ''),
-('admin', 1, 'admin/messagecenter/taskdetail', '任务详情', 1, ''),
-('admin', 1, 'admin/messagecenter/taskcancel', '任务取消', 1, ''),
-('admin', 1, 'admin/messagecenter/taskretry', '任务重试', 1, ''),
-('admin', 1, 'admin/messagecenter/record', '发送记录', 1, ''),
-('admin', 1, 'admin/messagecenter/recordretry', '单条重试', 1, ''),
-('admin', 1, 'admin/messagecenter/recordexport', '记录导出', 1, ''),
-('admin', 1, 'admin/messagecenter/setting', '触达设置', 1, ''),
-('admin', 1, 'admin/messagecenter/settingsave', '设置保存', 1, ''),
-('admin', 1, 'admin/messagecenter/blacklist', '黑名单管理', 1, ''),
-('admin', 1, 'admin/messagecenter/type', '消息类型', 1, ''),
-('admin', 1, 'admin/messagecenter/typesave', '类型保存', 1, ''),
-('admin', 1, 'admin/messagecenter/typestatus', '类型启停', 1, '');
 
 -- ---------- 9. 定时任务（幂等） ----------
 INSERT IGNORE INTO `muucmf_crontab` (`id`, `shopid`, `title`, `description`, `execute`, `cycle`, `day`, `hour`, `minute`, `status`, `create_time`, `update_time`) VALUES
@@ -628,7 +597,9 @@ INSERT IGNORE INTO `muucmf_extend_config` (`name`, `type`, `title`, `group`, `ex
 ('MESSAGE_DEFAULT_CHAIN', 'string', '默认兜底链', 'message', '', '逗号分隔，如 sms,inbox；仅影响未单独配置兜底链的模板', 0, 0, 1, 'sms', 27),
 ('MESSAGE_FREQ_MAX', 'num', '默认频控次数', 'message', '', '营销消息在同一时间窗口内最多发送次数', 0, 0, 1, '3', 28),
 ('MESSAGE_FREQ_WINDOW', 'num', '默认频控窗口(小时)', 'message', '', '营销消息频控统计窗口', 0, 0, 1, '24', 29),
-('MESSAGE_RECORD_RETAIN_DAYS', 'num', '发送记录保留天数', 'message', '', '默认 180 天，与幂等有效期一致', 0, 0, 1, '180', 30);
+('MESSAGE_RECORD_RETAIN_DAYS', 'num', '发送记录保留天数', 'message', '', '默认 180 天，与幂等有效期一致', 0, 0, 1, '180', 30),
+('MESSAGE_CHANNEL_WECHAT_OA', 'radio', '启用公众号模板消息渠道', 'message', '0:关闭\r\n1:开启', '需配置公众号 AppID/Secret；开启前须下线历史模板消息入口避免双发', 0, 0, 1, '0', 31),
+('MESSAGE_CHANNEL_WECHAT_MP', 'radio', '启用小程序订阅消息渠道', 'message', '0:关闭\r\n1:开启', '需配置小程序 AppID/Secret 且用户已授权订阅；默认关闭', 0, 0, 1, '0', 32);
 
 -- A4 消息中心：扩展配置新增「消息推送」分组，并把消息中心相关配置项迁入（幂等）
 UPDATE `muucmf_extend_config`
@@ -639,7 +610,7 @@ UPDATE `muucmf_extend_config` SET `group` = 'message'
 WHERE `name` IN (
  'MESSAGE_QUIET_ENABLED','MESSAGE_QUIET_START','MESSAGE_QUIET_END','MESSAGE_BATCH_SIZE','MESSAGE_RETRY_MAX',
  'MESSAGE_CHANNEL_EMAIL','MESSAGE_CHANNEL_SMS','MESSAGE_DEFAULT_CHAIN','MESSAGE_FREQ_MAX','MESSAGE_FREQ_WINDOW',
- 'MESSAGE_RECORD_RETAIN_DAYS'
+ 'MESSAGE_RECORD_RETAIN_DAYS','MESSAGE_CHANNEL_WECHAT_OA','MESSAGE_CHANNEL_WECHAT_MP'
 );
 
 -- A4 阶段一：下线旧站内信入口（幂等，可回滚）

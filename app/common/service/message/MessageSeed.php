@@ -192,13 +192,13 @@ class MessageSeed
                 'fallback'     => ['inbox'],
                 'always_inbox' => 1,
                 'frequency'    => null,
-                'channels'     => [
+                'channels'     => array_merge([
                     'inbox' => [
                         'title'   => '支付成功',
                         'content' => '<p>您的订单 {{order_no}} 已支付成功。</p><p>商品：{{product_name}}</p><p>金额：{{amount}} 元</p><p>支付时间：{{paid_time}}</p>',
                         'extra'   => ['type_code' => 'order', 'description' => '订单 {{order_no}} 支付成功'],
                     ],
-                ],
+                ], self::wechatChannelDefinitions()),
             ],
             [
                 'code'         => 'order.pay_success_admin',
@@ -315,6 +315,97 @@ class MessageSeed
         $this->ensureVerifyCodeVariables($shopid);
         $this->ensureVerifyCodeEmailChannel($shopid);
         $this->ensureVerifyCodeSmsTemplateId($shopid);
+        // 存量店铺补齐微信渠道行（幂等，不覆盖管理员自定义内容）
+        $this->ensureWechatChannels($shopid);
+    }
+
+    /**
+     * 支付成功模板的微信渠道行定义
+     *
+     * 字段名与历史 Pay.php 模板消息保持一致；template_id 留空，
+     * 运行时由渠道按 scene=pay_success 回退 wechat_config / wechat_mp_config.tmplmsg。
+     *
+     * @return array
+     */
+    protected static function wechatChannelDefinitions(): array
+    {
+        return [
+            'wechat_oa' => [
+                'title'   => '',
+                'content' => '',
+                'extra'   => [
+                    'template_id' => '',
+                    'field_map'   => [
+                        'character_string3' => 'order_no',
+                        'amount4'           => 'amount',
+                        'thing11'           => 'product_name',
+                        'time7'             => 'paid_time',
+                    ],
+                    'url'         => '',
+                ],
+                'var_map' => [],
+            ],
+            'wechat_mp' => [
+                'title'   => '',
+                'content' => '',
+                'extra'   => [
+                    'template_id' => '',
+                    'field_map'   => [
+                        'thing1'            => 'product_name',
+                        'character_string3' => 'order_no',
+                        'amount4'           => 'amount',
+                        'time7'             => 'paid_time',
+                    ],
+                    'page'        => 'micro/pages/index',
+                ],
+                'var_map' => [],
+            ],
+        ];
+    }
+
+    /**
+     * 存量店铺补齐微信渠道行（只补缺失，不覆盖已有配置）
+     *
+     * @param int $shopid
+     * @return void
+     */
+    protected function ensureWechatChannels(int $shopid): void
+    {
+        $template = Db::name('message_template')
+            ->where('shopid', $shopid)
+            ->where('code', 'order.pay_success')
+            ->find();
+        if (empty($template)) {
+            return;
+        }
+
+        $templateId = (int)$template['id'];
+        $existing = array_flip(Db::name('message_template_channel')
+            ->where('shopid', $shopid)
+            ->where('template_id', $templateId)
+            ->whereIn('channel', ['wechat_oa', 'wechat_mp'])
+            ->column('channel'));
+
+        $now = time();
+        foreach (self::wechatChannelDefinitions() as $channel => $definition) {
+            if (isset($existing[$channel])) {
+                continue;
+            }
+            Db::name('message_template_channel')->insert([
+                'shopid'            => $shopid,
+                'template_id'       => $templateId,
+                'template_code'     => 'order.pay_success',
+                'channel'           => $channel,
+                'title'             => (string)$definition['title'],
+                'content'           => (string)$definition['content'],
+                'extra'             => json_encode($definition['extra'], JSON_UNESCAPED_UNICODE),
+                'third_template_id' => '',
+                'var_map'           => json_encode($definition['var_map'], JSON_UNESCAPED_UNICODE),
+                'status'            => 1,
+                'create_time'       => $now,
+                'update_time'       => $now,
+            ]);
+        }
     }
 
     /**

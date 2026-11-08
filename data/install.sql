@@ -697,7 +697,9 @@ INSERT INTO `muucmf_extend_config` (`id`, `name`, `type`, `title`, `group`, `ext
 (74, 'MESSAGE_DEFAULT_CHAIN', 'string', '默认兜底链', 'message', '', '逗号分隔，如 sms,inbox；仅影响未单独配置兜底链的模板', 0, 0, 1, 'sms', 27),
 (75, 'MESSAGE_FREQ_MAX', 'num', '默认频控次数', 'message', '', '营销消息在同一时间窗口内最多发送次数', 0, 0, 1, '3', 28),
 (76, 'MESSAGE_FREQ_WINDOW', 'num', '默认频控窗口(小时)', 'message', '', '营销消息频控统计窗口', 0, 0, 1, '24', 29),
-(77, 'MESSAGE_RECORD_RETAIN_DAYS', 'num', '发送记录保留天数', 'message', '', '默认 180 天，与幂等有效期一致', 0, 0, 1, '180', 30);
+(77, 'MESSAGE_RECORD_RETAIN_DAYS', 'num', '发送记录保留天数', 'message', '', '默认 180 天，与幂等有效期一致', 0, 0, 1, '180', 30),
+(78, 'MESSAGE_CHANNEL_WECHAT_OA', 'radio', '启用公众号模板消息渠道', 'message', '0:关闭\r\n1:开启', '需配置公众号 AppID/Secret；开启前须下线历史模板消息入口避免双发', 0, 0, 1, '0', 31),
+(79, 'MESSAGE_CHANNEL_WECHAT_MP', 'radio', '启用小程序订阅消息渠道', 'message', '0:关闭\r\n1:开启', '需配置小程序 AppID/Secret 且用户已授权订阅；默认关闭', 0, 0, 1, '0', 32);
 
 -- --------------------------------------------------------
 
