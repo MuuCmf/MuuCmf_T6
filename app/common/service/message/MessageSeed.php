@@ -211,6 +211,8 @@ class MessageSeed
                 'fallback'     => ['inbox'],
                 'always_inbox' => 1,
                 'frequency'    => null,
+                // 运营通知默认发给平台管理员，可在模板编辑页改为运营用户组
+                'targets'      => ['type' => 'uids', 'value' => [1]],
                 'channels'     => [
                     'inbox' => [
                         'title'   => '有新的支付订单',
@@ -284,6 +286,7 @@ class MessageSeed
                 'fallback'       => json_encode($definition['fallback'], JSON_UNESCAPED_UNICODE),
                 'always_inbox'   => (int)$definition['always_inbox'],
                 'frequency_rule' => $definition['frequency'] ? json_encode($definition['frequency'], JSON_UNESCAPED_UNICODE) : '',
+                'targets'        => empty($definition['targets']) ? '' : json_encode($definition['targets'], JSON_UNESCAPED_UNICODE),
                 'is_system'      => 1,
                 'version'        => 1,
                 'status'         => 1,

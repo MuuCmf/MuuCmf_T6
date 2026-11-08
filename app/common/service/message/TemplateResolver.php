@@ -495,6 +495,7 @@ class TemplateResolver
             $fallback = array_filter(array_map('trim', explode(',', (string)($row['fallback'] ?? ''))));
         }
         $frequency = json_decode((string)($row['frequency_rule'] ?? ''), true);
+        $targets = json_decode((string)($row['targets'] ?? ''), true);
 
         return [
             'id'             => (int)$row['id'],
@@ -510,6 +511,7 @@ class TemplateResolver
             'fallback'       => is_array($fallback) ? array_values($fallback) : [],
             'always_inbox'   => (int)$row['always_inbox'],
             'frequency_rule' => is_array($frequency) ? $frequency : [],
+            'targets'        => is_array($targets) ? $targets : [],
             'is_system'      => (int)$row['is_system'],
             'version'        => (int)$row['version'],
             'status'         => (int)$row['status'],

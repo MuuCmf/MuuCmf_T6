@@ -163,11 +163,14 @@ class MessageCenter extends Admin
             'fallback'       => $this->decodeFallback($row['fallback']),
             'always_inbox'   => (int)$row['always_inbox'],
             'frequency_rule' => $this->decodeFrequency($row['frequency_rule']),
+            'targets'        => $this->decodeArray($row['targets'] ?? ''),
             'is_system'      => (int)$row['is_system'],
             'version'        => (int)$row['version'],
             'status'         => (int)$row['status'],
             'channels'       => $channelData,
             'levels'         => MessageLevel::labels(),
+            // 默认接收人选择用户组时使用，避免前端再单独请求任务初始化接口
+            'groups'         => Db::name('auth_group')->field('id,title')->order('id asc')->select()->toArray(),
             'supported_channels' => self::CHANNELS,
         ];
 
@@ -197,6 +200,7 @@ class MessageCenter extends Admin
         $fallback = input('fallback/a', []);
         $alwaysInbox = (int)input('always_inbox', 0, 'intval');
         $frequencyRule = input('frequency_rule/a', []);
+        $targetsInput = input('targets/a', []);
         $channelsInput = input('channels/a', []);
 
         $errors = [];
@@ -245,6 +249,9 @@ class MessageCenter extends Admin
             }
         }
 
+        // 默认接收人：空数组表示未配置，由业务方显式传入目标或保持不发送
+        $targets = $this->normalizeTargets($targetsInput, $errors);
+
         // 系统模板保护
         $existing = null;
         if ($id > 0) {
@@ -290,7 +297,7 @@ class MessageCenter extends Admin
         $now = time();
         $version = $existing ? (int)$existing['version'] + 1 : 1;
 
-        $saved = Db::transaction(function () use ($id, $existing, $code, $app, $scene, $name, $description, $level, $variables, $defaultVars, $fallback, $alwaysInbox, $frequency, $channels, $now, $version) {
+        $saved = Db::transaction(function () use ($id, $existing, $code, $app, $scene, $name, $description, $level, $variables, $defaultVars, $fallback, $alwaysInbox, $frequency, $targets, $channels, $now, $version) {
             $data = [
                 'shopid'         => $this->shopid,
                 'code'           => $code,
@@ -304,6 +311,7 @@ class MessageCenter extends Admin
                 'fallback'       => json_encode($fallback, JSON_UNESCAPED_UNICODE),
                 'always_inbox'   => $alwaysInbox ? 1 : 0,
                 'frequency_rule' => $frequency ? json_encode($frequency, JSON_UNESCAPED_UNICODE) : '',
+                'targets'        => empty($targets) ? '' : json_encode($targets, JSON_UNESCAPED_UNICODE),
                 'version'        => $version,
                 'update_time'    => $now,
             ];
@@ -420,6 +428,8 @@ class MessageCenter extends Admin
             unset($data['id']);
             $data['code'] = $newCode;
             $data['name'] = mb_substr($row['name'] . '（副本）', 0, 64);
+            // 副本不继承默认接收人，避免误把生产运营通知发给同一批人
+            $data['targets'] = '';
             $data['is_system'] = 0;
             $data['version'] = 1;
             $data['status'] = 0;
@@ -1247,6 +1257,58 @@ class MessageCenter extends Admin
     }
 
     /* ==================== 内部方法 ==================== */
+
+    /**
+     * 规范化模板默认接收人
+     *
+     * 仅支持 uids / groups；未配置返回空数组。
+     * 用户组天然按店铺隔离，指定用户必须校验归属当前店铺，避免跨店投递。
+     *
+     * @param array $input  ['type'=>'uids|groups','value'=>array]
+     * @param array $errors 校验错误（引用返回）
+     * @return array
+     */
+    protected function normalizeTargets(array $input, array &$errors): array
+    {
+        $type = (string)($input['type'] ?? '');
+        $value = $input['value'] ?? [];
+        if ($type === '' || empty($value)) {
+            return [];
+        }
+        if (!in_array($type, ['uids', 'groups'], true)) {
+            $errors[] = ['channel' => 'base', 'field' => 'targets', 'type' => 'invalid_value'];
+            return [];
+        }
+
+        $ids = array_values(array_unique(array_filter(array_map('intval', is_array($value) ? $value : explode(',', (string)$value)))));
+        if (empty($ids)) {
+            return [];
+        }
+        if (count($ids) > 200) {
+            $errors[] = ['channel' => 'base', 'field' => 'targets', 'type' => 'too_many'];
+            return [];
+        }
+
+        if ($type === 'groups') {
+            $exists = Db::name('auth_group')->whereIn('id', $ids)->column('id');
+            if (count($exists) !== count($ids)) {
+                $errors[] = ['channel' => 'base', 'field' => 'targets', 'type' => 'invalid_value'];
+                return [];
+            }
+            return ['type' => 'groups', 'value' => array_values(array_map('intval', $exists))];
+        }
+
+        $query = Db::name('member')->whereIn('uid', $ids);
+        if ((int)$this->shopid > 0) {
+            $query->where('shopid', (int)$this->shopid);
+        }
+        $exists = $query->column('uid');
+        if (count($exists) !== count($ids)) {
+            $errors[] = ['channel' => 'base', 'field' => 'targets', 'type' => 'invalid_value'];
+            return [];
+        }
+        return ['type' => 'uids', 'value' => array_values(array_map('intval', $exists))];
+    }
 
     /**
      * 渠道内容规范化

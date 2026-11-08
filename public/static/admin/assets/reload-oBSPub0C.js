@@ -1,1 +1,0 @@
-import{Fn as r,yn as e}from"./element-plus-mq4TzR5a.js";import{r as n}from"./index-CNAderIV.js";var s=n({},[["render",function(n,s){return r(),e("div")}]]);export{s as default};

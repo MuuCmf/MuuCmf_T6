@@ -25,7 +25,7 @@ class MessageCenter
      * 统一发送（异步，落库后由队列按批执行）
      *
      * @param string $code    模板编码
-     * @param array  $targets ['type'=>'uids|groups','value'=>mixed]
+     * @param array  $targets ['type'=>'uids|groups|template','value'=>mixed]，type=template 时回退到模板配置的默认接收人
      * @param array  $vars    模板变量
      * @param array  $options shopid/biz_key/channels/send_time/operator_uid/is_test/remark
      * @return array{task_id:int,accepted:int,blocked:int}
@@ -38,6 +38,7 @@ class MessageCenter
 
         $resolver = new TemplateResolver();
         $template = self::resolveTemplate($shopid, $code, $resolver);
+        $targets = self::resolveTargets($template, $targets, $code);
 
         $level = self::resolveLevel($template, $options);
         $options['is_test'] = (int)($options['is_test'] ?? 0);
@@ -541,6 +542,43 @@ class MessageCenter
             }
             return $template;
         }
+    }
+
+    /**
+     * 解析发送目标
+     *
+     * 调用方传 type=template 时使用模板配置的默认接收人（运营通知类模板），
+     * 模板未配置或配置为空必须显式报错，避免落一个用户数为 0 的空任务。
+     *
+     * @param array  $template
+     * @param array  $targets
+     * @param string $code
+     * @return array
+     * @throws MessageException
+     */
+    protected static function resolveTargets(array $template, array $targets, string $code): array
+    {
+        if ((string)($targets['type'] ?? '') !== 'template') {
+            return $targets;
+        }
+
+        $configured = $template['targets'] ?? [];
+        $type = is_array($configured) ? (string)($configured['type'] ?? '') : '';
+        $value = is_array($configured) ? ($configured['value'] ?? []) : [];
+
+        if (!in_array($type, ['uids', 'groups'], true)) {
+            throw new MessageException('target_invalid', '模板未配置默认接收人：' . $code);
+        }
+
+        $values = is_array($value) ? $value : explode(',', (string)$value);
+        $values = array_values(array_filter(array_map('intval', $values), function ($item) {
+            return $item > 0;
+        }));
+        if (empty($values)) {
+            throw new MessageException('target_invalid', '模板默认接收人为空：' . $code);
+        }
+
+        return ['type' => $type, 'value' => $values];
     }
 
     /**

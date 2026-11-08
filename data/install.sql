@@ -1230,6 +1230,7 @@ CREATE TABLE IF NOT EXISTS `muucmf_message_template` (
   `fallback` varchar(255) NOT NULL DEFAULT 'inbox' COMMENT '兜底渠道链JSON，系统强制追加inbox',
   `always_inbox` tinyint(2) NOT NULL DEFAULT '0' COMMENT '1站内信必发（链首额外发送）',
   `frequency_rule` text NULL COMMENT '频控规则JSON对象 max_times/window_hours',
+  `targets` text NULL COMMENT '默认接收人JSON {"type":"groups|uids","value":[...]}',
   `is_system` tinyint(2) NOT NULL DEFAULT '0' COMMENT '1系统预置',
   `version` int(11) UNSIGNED NOT NULL DEFAULT '1' COMMENT '模板版本',
   `status` tinyint(2) NOT NULL DEFAULT '1' COMMENT '1启用 0停用',
@@ -1246,13 +1247,13 @@ CREATE TABLE IF NOT EXISTS `muucmf_message_template` (
 -- 验证码模板的 site_name 默认值由运行时按站点名称补齐，避免安装时写死
 --
 
-INSERT INTO `muucmf_message_template` (`id`, `shopid`, `code`, `app`, `scene`, `name`, `description`, `level`, `variables`, `default_vars`, `fallback`, `always_inbox`, `frequency_rule`, `is_system`, `version`, `status`, `sort`, `create_time`, `update_time`) VALUES
-(1, 0, 'common.custom_message', 'common', 'custom_message', '自定义消息', '后台自由编辑标题与正文的通用消息，供旧入口复用', 'transaction', '["title","description","content"]', '[]', '["inbox"]', 1, NULL, 1, 1, 1, 0, 1767196800, 1767196800),
-(2, 0, 'common.verify_code', 'common', 'verify_code', '验证码', '登录、注册、改密、绑定手机号/邮箱验证码，安全级别，不参与免打扰与频控', 'security', '["code","site_name","expire_minutes"]', '{"expire_minutes":"15"}', '["sms"]', 0, NULL, 1, 1, 1, 0, 1767196800, 1767196800),
-(3, 0, 'order.pay_success', 'order', 'pay_success', '支付成功通知', '订单支付成功站内信', 'transaction', '["order_no","amount","product_name","paid_time"]', '[]', '["inbox"]', 1, NULL, 1, 1, 1, 0, 1767196800, 1767196800),
-(4, 0, 'order.pay_success_admin', 'order', 'pay_success_admin', '支付成功运营通知', '支付成功后通知店铺运营', 'transaction', '["order_no","amount","paid_time"]', '[]', '["inbox"]', 1, NULL, 1, 1, 1, 0, 1767196800, 1767196800),
-(5, 0, 'order.refund_success', 'order', 'refund_success', '退款到账通知', '售后退款成功后通知用户', 'transaction', '["order_no","amount"]', '[]', '["inbox"]', 1, NULL, 1, 1, 1, 0, 1767196800, 1767196800),
-(6, 0, 'svip.expire_remind', 'svip', 'expire_remind', '会员到期提醒', '会员到期前 7/3/1 天提醒', 'marketing', '["nickname","expire_time"]', '[]', '["inbox"]', 1, '{"max_times":2,"window_hours":168}', 1, 1, 1, 0, 1767196800, 1767196800);
+INSERT INTO `muucmf_message_template` (`id`, `shopid`, `code`, `app`, `scene`, `name`, `description`, `level`, `variables`, `default_vars`, `fallback`, `always_inbox`, `frequency_rule`, `targets`, `is_system`, `version`, `status`, `sort`, `create_time`, `update_time`) VALUES
+(1, 0, 'common.custom_message', 'common', 'custom_message', '自定义消息', '后台自由编辑标题与正文的通用消息，供旧入口复用', 'transaction', '["title","description","content"]', '[]', '["inbox"]', 1, NULL, NULL, 1, 1, 1, 0, 1767196800, 1767196800),
+(2, 0, 'common.verify_code', 'common', 'verify_code', '验证码', '登录、注册、改密、绑定手机号/邮箱验证码，安全级别，不参与免打扰与频控', 'security', '["code","site_name","expire_minutes"]', '{"expire_minutes":"15"}', '["sms"]', 0, NULL, NULL, 1, 1, 1, 0, 1767196800, 1767196800),
+(3, 0, 'order.pay_success', 'order', 'pay_success', '支付成功通知', '订单支付成功站内信', 'transaction', '["order_no","amount","product_name","paid_time"]', '[]', '["inbox"]', 1, NULL, NULL, 1, 1, 1, 0, 1767196800, 1767196800),
+(4, 0, 'order.pay_success_admin', 'order', 'pay_success_admin', '支付成功运营通知', '支付成功后通知店铺运营', 'transaction', '["order_no","amount","paid_time"]', '[]', '["inbox"]', 1, NULL, '{"type":"uids","value":[1]}', 1, 1, 1, 0, 1767196800, 1767196800),
+(5, 0, 'order.refund_success', 'order', 'refund_success', '退款到账通知', '售后退款成功后通知用户', 'transaction', '["order_no","amount"]', '[]', '["inbox"]', 1, NULL, NULL, 1, 1, 1, 0, 1767196800, 1767196800),
+(6, 0, 'svip.expire_remind', 'svip', 'expire_remind', '会员到期提醒', '会员到期前 7/3/1 天提醒', 'marketing', '["nickname","expire_time"]', '[]', '["inbox"]', 1, '{"max_times":2,"window_hours":168}', NULL, 1, 1, 1, 0, 1767196800, 1767196800);
 
 -- --------------------------------------------------------
 
