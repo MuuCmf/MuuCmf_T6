@@ -28,7 +28,9 @@ class StatService
             ->where('shopid', $shopid)
             ->where('task_id', $taskId)
             ->where('status', '<>', MessageRecord::STATUS_CANCELED)
-            ->field("channel, COUNT(*) AS total, SUM(IF(status='success',1,0)) AS success, SUM(IF(status='failed',1,0)) AS failed, SUM(IF(status='blocked',1,0)) AS blocked")
+            // 测试发送不计入业务统计；pending / delayed 不属于已发送分母
+            ->where('is_test', 0)
+            ->field("channel, COUNT(*) AS total, SUM(IF(status='success',1,0)) AS success, SUM(IF(status='failed',1,0)) AS failed, SUM(IF(status='blocked',1,0)) AS blocked, SUM(IF(status='pending' OR status='delayed',1,0)) AS pending")
             ->group('channel')
             ->select()
             ->toArray();
@@ -38,13 +40,15 @@ class StatService
             $total = (int)$row['total'];
             $success = (int)$row['success'];
             $blocked = (int)$row['blocked'];
+            $pending = (int)$row['pending'];
             $byChannel[] = [
                 'channel'      => $row['channel'],
                 'total'        => $total,
                 'success'      => $success,
                 'failed'       => (int)$row['failed'],
                 'blocked'      => $blocked,
-                'success_rate' => round($success * 100 / max(1, $total - $blocked), 2),
+                'pending'      => $pending,
+                'success_rate' => round($success * 100 / max(1, $total - $blocked - $pending), 2),
             ];
         }
 
@@ -166,13 +170,16 @@ class StatService
      */
     public function overview(int $shopid, int $days = 7): array
     {
-        $start = strtotime('-' . max(1, $days) . ' days');
+        // 只统计最近 90 天；顺延记录按 scheduled_time 所在日归档
+        $days = min(90, max(1, $days));
+        $start = strtotime('-' . $days . ' days');
 
         $rows = Db::name('message_record')
             ->where('shopid', $shopid)
-            ->where('create_time', '>=', $start)
+            ->whereRaw('COALESCE(NULLIF(scheduled_time, 0), create_time) >= ?', [$start])
             ->where('status', '<>', MessageRecord::STATUS_CANCELED)
-            ->field("channel, COUNT(*) AS total, SUM(IF(status='success',1,0)) AS success, SUM(IF(status='failed',1,0)) AS failed, SUM(IF(status='blocked',1,0)) AS blocked, COUNT(DISTINCT uid) AS users")
+            ->where('is_test', 0)
+            ->field("channel, COUNT(*) AS total, SUM(IF(status='success',1,0)) AS success, SUM(IF(status='failed',1,0)) AS failed, SUM(IF(status='blocked',1,0)) AS blocked, SUM(IF(status='pending' OR status='delayed',1,0)) AS pending, COUNT(DISTINCT uid) AS users")
             ->group('channel')
             ->select()
             ->toArray();
@@ -181,12 +188,14 @@ class StatService
         $success = 0;
         $failed = 0;
         $blocked = 0;
+        $pending = 0;
         $byChannel = [];
         foreach ($rows as $row) {
             $total += (int)$row['total'];
             $success += (int)$row['success'];
             $failed += (int)$row['failed'];
             $blocked += (int)$row['blocked'];
+            $pending += (int)$row['pending'];
             $byChannel[] = [
                 'channel' => $row['channel'],
                 'total'   => (int)$row['total'],
@@ -202,7 +211,8 @@ class StatService
             'success'      => $success,
             'failed'       => $failed,
             'blocked'      => $blocked,
-            'success_rate' => round($success * 100 / max(1, $total - $blocked), 2),
+            'pending'      => $pending,
+            'success_rate' => round($success * 100 / max(1, $total - $blocked - $pending), 2),
             'channels'     => $byChannel,
         ];
     }

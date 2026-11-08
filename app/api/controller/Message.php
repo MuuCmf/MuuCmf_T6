@@ -177,6 +177,10 @@ class Message extends Api
      */
     public function unsubscribe()
     {
+        // 退订是写操作，禁止 GET / 图片链接等方式静默触发
+        if (!request()->isPost()) {
+            return $this->error('请求方式错误');
+        }
         $uid = get_uid();
         if (empty($uid)) {
             return $this->error('请先登录');

@@ -40,13 +40,16 @@ class MessageCenter
         $template = self::resolveTemplate($shopid, $code, $resolver);
 
         $level = self::resolveLevel($template, $options);
-        $bizKey = self::resolveBizKey($shopid, $code, $level, $options);
-
-        $options['biz_key'] = $bizKey;
         $options['is_test'] = (int)($options['is_test'] ?? 0);
+        $bizKey = self::resolveBizKey($shopid, $code, $level, $options);
         if ($options['is_test'] === 1) {
-            $options['biz_key'] = 'test_' . $bizKey;
+            // test_ 前缀是在长度校验之后追加的，必须保证最终仍落在 biz_key varchar(64) 内
+            $bizKey = 'test_' . $bizKey;
+            if (mb_strlen($bizKey) > 64) {
+                $bizKey = 'test_' . substr(md5($bizKey), 0, 32);
+            }
         }
+        $options['biz_key'] = $bizKey;
 
         $audience = new AudienceResolver();
         $userTotal = $audience->count($targets, $shopid);
@@ -155,6 +158,9 @@ class MessageCenter
         if ($bizKey === '') {
             $bizKey = 'now_' . substr(md5($code . $uid . microtime(true) . mt_rand()), 0, 20);
         }
+        if (mb_strlen($bizKey) > 64) {
+            throw new MessageException('biz_key_too_long', 'biz_key 长度不能超过 64');
+        }
         $options['biz_key'] = $bizKey;
 
         $dispatcher = new Dispatcher();
@@ -261,6 +267,9 @@ class MessageCenter
         // 否则 uid=0 的多次直发会命中唯一键被合并成同一条记录
         if (empty($options['biz_key'])) {
             $options['biz_key'] = 'now_' . substr(md5($code . $field . $target . microtime(true) . mt_rand()), 0, 20);
+        }
+        if (mb_strlen((string)$options['biz_key']) > 64) {
+            throw new MessageException('biz_key_too_long', 'biz_key 长度不能超过 64');
         }
 
         $resolver = new TemplateResolver();
@@ -381,10 +390,14 @@ class MessageCenter
         ShopContext::assert($shopid);
         $dispatcher = new Dispatcher();
 
+        $config = (new ChannelConfigProvider())->get($shopid);
+        $retryMax = max(0, (int)($config['retry_max'] ?? 3));
         $ids = Db::name('message_record')
             ->where('shopid', $shopid)
             ->where('task_id', $taskId)
             ->where('status', MessageRecord::STATUS_FAILED)
+            // 超过重试上限的记录只允许一次兜底降级，反复点击后台不能无限触达
+            ->where('attempts', '<=', $retryMax + 1)
             ->order('id asc')
             ->limit(2000)
             ->column('id');
@@ -464,7 +477,22 @@ class MessageCenter
                     : 0;
                 $estimated['breakdown']['blacklisted'] = $blacklisted;
                 $estimated['breakdown']['unsubscribed'] = $unsubscribed;
-                $estimated['blocked'] = $blacklisted + $unsubscribed;
+                $policyBlocked = $blacklisted + $unsubscribed;
+
+                // 免打扰是全店同一时点判定，命中即剩余用户全部顺延；
+                // 未命中时再按窗口内成功次数估算频控拦截人数（只读，不预留配额）
+                $isMarketing = MessageLevel::isMarketing((string)$template['level']);
+                if ($isMarketing && (new SuppressionGuard())->quietDelayTo($config['quiet'] ?? []) > 0) {
+                    $estimated['breakdown']['quiet'] = max(0, count($uids) - $policyBlocked);
+                } else {
+                    $rule = !empty($template['frequency_rule'])
+                        ? $template['frequency_rule']
+                        : ($config['frequency'] ?? ['max_times' => 3, 'window_hours' => 24]);
+                    $estimated['breakdown']['freq'] = self::estimateFreqLimited($shopid, $uids, $code, $rule);
+                }
+
+                $estimated['blocked'] = min(count($uids), $policyBlocked
+                    + $estimated['breakdown']['quiet'] + $estimated['breakdown']['freq']);
             }
         }
 
@@ -524,6 +552,41 @@ class MessageCenter
             $level = $override;
         }
         return MessageLevel::isValid($level) ? $level : MessageLevel::MARKETING;
+    }
+
+    /**
+     * 估算窗口内已达频控上限的用户数（只读，不预留配额）
+     *
+     * @param int    $shopid
+     * @param array  $uids
+     * @param string $code
+     * @param array  $rule
+     * @return int
+     */
+    protected static function estimateFreqLimited(int $shopid, array $uids, string $code, array $rule): int
+    {
+        if ($code === '' || empty($uids)) {
+            return 0;
+        }
+        $maxTimes = max(1, (int)($rule['max_times'] ?? 3));
+        $window = max(1, (int)($rule['window_hours'] ?? 24)) * 3600;
+        try {
+            $rows = Db::name('message_record')
+                ->where('shopid', $shopid)
+                ->where('template_code', $code)
+                ->where('status', MessageRecord::STATUS_SUCCESS)
+                ->where('is_test', 0)
+                ->where('create_time', '>=', time() - $window)
+                ->whereIn('uid', $uids)
+                ->field('uid, COUNT(*) AS cnt')
+                ->group('uid')
+                ->having('cnt >= ' . $maxTimes)
+                ->select()
+                ->toArray();
+            return count($rows);
+        } catch (\Throwable $e) {
+            return 0;
+        }
     }
 
     /**

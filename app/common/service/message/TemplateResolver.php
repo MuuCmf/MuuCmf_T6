@@ -97,15 +97,17 @@ class TemplateResolver
     }
 
     /**
-     * 生成渠道链
+     * 解析渠道链
      *
-     * @param array $template 模板
-     * @param array $options  调用参数（channels 可覆盖）
-     * @param array $config   渠道配置
+     * @param array      $template 模板
+     * @param array      $options  调用参数
+     * @param array      $config   渠道配置
+     * @param array|null $skipped  被剔除的渠道及原因（引用返回，供发送侧落 blocked 记录）
      * @return array
      */
-    public function buildChain(array $template, array $options, array $config): array
+    public function buildChain(array $template, array $options, array $config, ?array &$skipped = null): array
     {
+        $skipped = [];
         $chain = [];
         if (!empty($options['channels']) && is_array($options['channels'])) {
             $chain = $options['channels'];
@@ -125,18 +127,23 @@ class TemplateResolver
             }
             if ($channel === 'sms' || $channel === 'email') {
                 if (empty($config['enabled'][$channel])) {
+                    $skipped[] = ['channel' => $channel, 'reason' => 'channel_disabled'];
                     continue;
                 }
                 // 模板未配置该渠道内容时跳过，避免发送空短信/空邮件（如仅需站内信的事务模板）
                 if (empty($template['channels'][$channel]['content'])) {
+                    $skipped[] = ['channel' => $channel, 'reason' => 'channel_not_configured'];
                     continue;
                 }
                 if (count($external) >= 3) {
+                    $skipped[] = ['channel' => $channel, 'reason' => 'too_many_channels'];
                     continue;
                 }
                 $external[] = $channel;
+                continue;
             }
-            // 未实现的微信渠道不进入链路（发送时按 channel_not_configured 处理）
+            // 未实现/未知渠道（含 P1 微信渠道）：不进链路，但必须落 blocked 记录
+            $skipped[] = ['channel' => $channel, 'reason' => 'channel_not_configured'];
         }
 
         if (!empty($template['always_inbox'])) {
@@ -233,6 +240,11 @@ class TemplateResolver
 
         // 兼容带空格的占位符
         $text = preg_replace('/\{\{\s*[a-zA-Z0-9_]+\s*\}\}/', '', $text);
+
+        // 模板静态正文同样必须净化：只转义变量值挡不住模板里的 <script>/事件属性
+        if (!$external) {
+            $text = $this->purifyHtml($text);
+        }
 
         return $text;
     }
@@ -356,6 +368,15 @@ class TemplateResolver
             $title = (string)($channel['title'] ?? '');
             $content = (string)($channel['content'] ?? '');
             $extra = $channel['extra'] ?? [];
+
+            // 保存期校验字段长度，避免 varchar 截断或超长短信变量到发送期才暴露
+            if (mb_strlen($title, 'utf-8') > 500 || mb_strlen($content, 'utf-8') > 5000) {
+                $errors[] = [
+                    'channel' => $channelKey,
+                    'field'   => mb_strlen($title, 'utf-8') > 500 ? 'title' : 'content',
+                    'type'    => 'too_long',
+                ];
+            }
 
             if ($channelKey === 'inbox' || $channelKey === 'email') {
                 if (trim($title) === '') {

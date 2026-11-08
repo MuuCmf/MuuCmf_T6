@@ -87,6 +87,8 @@ class MessageRetry
         $rows = Db::name('message_record')
             ->where('shopid', $shopid)
             ->where('status', MessageRecord::STATUS_DELAYED)
+            // task_id=0 是同步直发的孤立记录，没有任务上下文，不能占用重试名额
+            ->where('task_id', '>', 0)
             ->where('scheduled_time', '>', 0)
             ->where('scheduled_time', '<=', $now)
             ->order('id asc')
@@ -142,6 +144,8 @@ class MessageRetry
             ->where('status', MessageRecord::STATUS_FAILED)
             ->where('attempts', $attempts)
             ->where('is_test', 0)
+            // 同步直发失败记录（task_id=0）永远查不到关联任务，会把 LIMIT 500 占满导致真实任务饿死
+            ->where('task_id', '>', 0)
             ->whereRaw('update_time <= ? - IF(error_code = ?, 3600, ?)', [$now, 'provider_rate_limit', $delay])
             ->order('id asc')
             ->limit(self::LIMIT)

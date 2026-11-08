@@ -51,15 +51,15 @@ class Dispatcher
     public function runBatch(int $taskId): array
     {
         $lockName = 'muucmf_msg_task_' . $taskId;
-        $locked = true;
+        $locked = false;
 
         try {
             $result = Db::query('SELECT GET_LOCK(?, 0) AS locked', [$lockName]);
-            // 只有明确返回 0 才表示其他进程持有锁；查询异常或返回 NULL 时降级放行，
-            // 避免锁故障导致任务永久停滞（与 MessageRetry 的店铺锁口径一致）
-            $locked = !isset($result[0]['locked']) || (int)$result[0]['locked'] !== 0;
+            // 只有明确拿到锁（返回 1）才执行：查询异常/NULL 时跳过本批，
+            // 由 MessageRetry 补投，不能无互斥并发导致整批重复发送
+            $locked = isset($result[0]['locked']) && (int)$result[0]['locked'] === 1;
         } catch (\Throwable $e) {
-            $locked = true;
+            $locked = false;
         }
 
         if (!$locked) {
@@ -98,9 +98,9 @@ class Dispatcher
             return ['executed' => 0, 'reason' => 'not_due'];
         }
 
-        // 检查点：批次开始前把任务置为 running
+        // 检查点：批次开始前把任务置为 running；若已被取消/收尾则不得继续发送
         if ($task['status'] !== MessageTask::STATUS_RUNNING) {
-            Db::name('message_task')->where('id', $taskId)->whereIn('status', [
+            $affected = Db::name('message_task')->where('id', $taskId)->whereIn('status', [
                 MessageTask::STATUS_PENDING,
                 MessageTask::STATUS_SCHEDULED,
             ])->update([
@@ -108,6 +108,9 @@ class Dispatcher
                 'start_time'  => (int)$task['start_time'] ?: time(),
                 'update_time' => time(),
             ]);
+            if ($affected <= 0) {
+                return ['executed' => 0, 'reason' => 'task_terminal'];
+            }
         }
 
         $shopid = (int)$task['shopid'];
@@ -151,12 +154,13 @@ class Dispatcher
         }
 
         $options['channels'] = $task['channels'] !== '' ? (json_decode((string)$task['channels'], true) ?: []) : ($options['channels'] ?? []);
-        $chain = $this->resolver->buildChain($template, $options, $config);
+        $skipped = [];
+        $chain = $this->resolver->buildChain($template, $options, $config, $skipped);
         if (empty($chain)) {
             $chain = ['inbox'];
         }
 
-        // 批量预取：黑名单 / 退订 / 可达性 / 用户级幂等
+        // 批量预取：黑名单 / 退订 / 可达性 / 用户级幂等 / 用户级变量
         $pre = [
             'blacklisted'  => MessageSuppression::activeMap($shopid, $uids),
             'unsubscribed' => MessageLevel::isMarketing((string)$template['level'])
@@ -170,6 +174,7 @@ class Dispatcher
 
         $bizKey = (string)($options['biz_key'] ?? '');
         $reached = $bizKey !== '' ? $this->reachedMap($shopid, (string)$task['template_code'], $uids, $bizKey) : [];
+        $userVars = $this->userVarsMap($uids, (array)($template['variables'] ?? []));
 
         $stats = [
             'users'          => 0,
@@ -182,7 +187,14 @@ class Dispatcher
             'record_blocked' => 0,
         ];
 
+        $canceled = false;
         foreach ($uids as $uid) {
+            // 每 50 人复核一次任务状态：取消是任务级 + 记录级双重生效，
+            // 批次执行中途被取消时不能继续发完整批
+            if ($stats['users'] > 0 && $stats['users'] % 50 === 0 && $this->isTaskTerminal($taskId)) {
+                $canceled = true;
+                break;
+            }
             $uid = (int)$uid;
             $stats['users']++;
 
@@ -192,8 +204,16 @@ class Dispatcher
                 continue;
             }
 
+            // 被剔除的渠道（关闭/未配置/未实现）也要落 blocked，保证统计分母与拦截原因可对账
+            foreach ($skipped as $item) {
+                if ($this->writeBlockedRecord($task, $template, $item['channel'], 0, $uid, $item['reason'], $options)) {
+                    $stats['records']++;
+                    $stats['record_blocked']++;
+                }
+            }
+
             try {
-                $result = $this->dispatchUser($task, $template, $chain, $available, $uid, $vars, $options, $pre, $config);
+                $result = $this->dispatchUser($task, $template, $chain, $available, $uid, array_merge($vars, $userVars[$uid] ?? []), $options, $pre, $config);
             } catch (\Throwable $e) {
                 Log::error('[message] dispatch user failed: ' . $e->getMessage(), [
                     'task_id' => $taskId,
@@ -212,7 +232,7 @@ class Dispatcher
         }
 
         $nextCursor = $cursor + count($uids);
-        $this->advance($taskId, $nextCursor, [
+        $advanced = $this->advance($taskId, $nextCursor, [
             'user_done'      => $stats['users'],
             'user_success'   => $stats['user_success'],
             'user_failed'    => $stats['user_failed'],
@@ -222,6 +242,14 @@ class Dispatcher
             'record_failed'  => $stats['record_failed'],
             'record_blocked' => $stats['record_blocked'],
         ]);
+
+        if ($canceled) {
+            return ['executed' => $stats['users'], 'reason' => 'task_canceled'];
+        }
+        if (!$advanced) {
+            // 游标被并发批次改写：停止推进，等待补偿重投（发送前占位保证不会重复触达）
+            return ['executed' => $stats['users'], 'reason' => 'cursor_conflict'];
+        }
 
         if ($nextCursor < (int)$task['user_total']) {
             $this->pushNextBatch($taskId);
@@ -259,6 +287,10 @@ class Dispatcher
         ]);
 
         if ($decision['action'] === 'block') {
+            // 退订只关闭外部触达渠道，站内信必须即时写入（需求 5.3.4 / 验收 15）
+            if ($decision['reason'] === 'unsubscribed') {
+                return $this->dispatchUnsubscribed($task, $template, $chain, $available, $uid, $vars, $options, $decision['reason']);
+            }
             $count = $this->writeBlocked($task, $template, $chain, $uid, $decision['reason'], $options);
             return ['user_success' => 0, 'user_failed' => 0, 'user_blocked' => 1, 'records' => $count, 'record_success' => 0, 'record_failed' => 0, 'record_blocked' => $count];
         }
@@ -278,6 +310,11 @@ class Dispatcher
             $startIndex = 1;
             if (!empty($available['inbox'][$uid])) {
                 $row = $this->sendOne($task, $template, 'inbox', 0, $uid, $vars, $options);
+                if ($row['result']->skipped) {
+                    // 用户级幂等命中：整链跳过，不再触发外部渠道与站内信重复写入
+                    $stats['user_success'] = 1;
+                    return $stats;
+                }
                 $stats['records']++;
                 if ($row['result']->success) {
                     $stats['record_success']++;
@@ -302,6 +339,11 @@ class Dispatcher
             }
 
             $row = $this->sendOne($task, $template, $channel, (int)$index, $uid, $vars, $options);
+            if ($row['result']->skipped) {
+                // 同一 biz_key 已通过其它渠道/其它任务送达，整链跳过且不计入本任务记录
+                $success = true;
+                break;
+            }
             $stats['records']++;
             if ($row['result']->success) {
                 $stats['record_success']++;
@@ -323,9 +365,46 @@ class Dispatcher
     }
 
     /**
+     * 退订用户：外部渠道全部拦截，但站内信仍即时写入
+     *
+     * @return array
+     */
+    protected function dispatchUnsubscribed(array $task, array $template, array $chain, array $available, int $uid, array $vars, array $options, string $reason): array
+    {
+        $stats = ['user_success' => 0, 'user_failed' => 0, 'user_blocked' => 0, 'records' => 0, 'record_success' => 0, 'record_failed' => 0, 'record_blocked' => 0];
+
+        foreach ($chain as $index => $channel) {
+            if ($channel === 'inbox') {
+                continue;
+            }
+            if ($this->writeBlockedRecord($task, $template, $channel, (int)$index, $uid, $reason, $options)) {
+                $stats['records']++;
+                $stats['record_blocked']++;
+            }
+        }
+
+        $inboxIndex = array_search('inbox', $chain, true);
+        if ($inboxIndex !== false && !empty($available['inbox'][$uid])) {
+            $row = $this->sendOne($task, $template, 'inbox', (int)$inboxIndex, $uid, $vars, $options);
+            $stats['records']++;
+            if ($row['result']->success) {
+                $stats['record_success']++;
+                $stats['user_success'] = 1;
+            } else {
+                $stats['record_failed']++;
+                $stats['user_failed'] = 1;
+            }
+        } else {
+            $stats['user_failed'] = 1;
+        }
+
+        return $stats;
+    }
+
+    /**
      * 免打扰顺延处理
      *
-     * 站内信不参与免打扰：always_inbox=1 时立即发送站内信；
+     * 站内信不参与免打扰：链中的 inbox 一律即时写入；
      * 外部渠道落 delayed 记录，由 MessageRetry 到期重投。
      *
      * @return array
@@ -335,7 +414,7 @@ class Dispatcher
         $stats = ['user_success' => 0, 'user_failed' => 0, 'user_blocked' => 0, 'records' => 0, 'record_success' => 0, 'record_failed' => 0, 'record_blocked' => 0];
         $sentInbox = false;
 
-        if (!empty($template['always_inbox']) && in_array('inbox', $chain, true)) {
+        if (in_array('inbox', $chain, true)) {
             $index = array_search('inbox', $chain, true);
             if (!empty($available['inbox'][$uid])) {
                 $row = $this->sendOne($task, $template, 'inbox', (int)$index, $uid, $vars, $options);
@@ -378,7 +457,7 @@ class Dispatcher
      *
      * @return array{result:ChannelResult,record_id:int}
      */
-    protected function sendOne(array $task, array $template, string $channel, int $index, int $uid, array $vars, array $options): array
+    protected function sendOne(array $task, array $template, string $channel, int $index, int $uid, array $vars, array $options, bool $forceRetry = false): array
     {
         $shopid = (int)$task['shopid'];
         $base = $this->recordBase($task, $template, $channel, $index, $uid, $options);
@@ -396,31 +475,39 @@ class Dispatcher
             'type_id'   => (int)($options['inbox_type_id'] ?? 0),
         ];
 
+        // 发送前先占幂等位：唯一键已 success / canceled / 在途时直接跳过，
+        // 不能等渠道 API 调用完成后才靠 upsert 去重（那时消息已经发出去了）
+        $reserved = $this->reserveRecord($base, $channel, $forceRetry);
+        if ($reserved['skip']) {
+            return ['result' => $reserved['result'], 'record_id' => $reserved['id']];
+        }
+        $reservedId = (int)$reserved['id'];
+
         $handler = $this->channels->get($channel);
         if (!$handler) {
             $result = ChannelResult::failure($channel, 'channel_not_configured', '渠道未实现：' . $channel);
-            return ['result' => $result, 'record_id' => $this->writeRecord($base, $result, $channel)];
+            return ['result' => $result, 'record_id' => $this->writeRecord($base, $result, $channel, $reservedId)];
         }
 
         try {
             $rendered = $this->resolver->render($template['channels'][$channel] ?? [], $vars, $channel, $template);
         } catch (MessageException $e) {
             $result = ChannelResult::failure($channel, $e->getErrorCode(), $e->getMessage(), ['retryable' => false]);
-            return ['result' => $result, 'record_id' => $this->writeRecord($base, $result, $channel)];
+            return ['result' => $result, 'record_id' => $this->writeRecord($base, $result, $channel, $reservedId)];
         }
 
         if ($channel === 'inbox') {
             // 站内信：message + message_content + message_record 同事务
             try {
-                $pair = Db::transaction(function () use ($handler, $rendered, $context, $base, $channel) {
+                $pair = Db::transaction(function () use ($handler, $rendered, $context, $base, $channel, $reservedId) {
                     $result = $handler->send($rendered, $context);
-                    $recordId = $this->writeRecord($base, $result, $channel);
+                    $recordId = $this->writeRecord($base, $result, $channel, $reservedId);
                     return [$result, $recordId];
                 });
                 return ['result' => $pair[0], 'record_id' => $pair[1]];
             } catch (\Throwable $e) {
                 $result = ChannelResult::failure('inbox', 'provider_error', $e->getMessage());
-                return ['result' => $result, 'record_id' => $this->writeRecord($base, $result, $channel)];
+                return ['result' => $result, 'record_id' => $this->writeRecord($base, $result, $channel, $reservedId)];
             }
         }
 
@@ -430,7 +517,7 @@ class Dispatcher
             $result = ChannelResult::failure($channel, 'provider_error', $e->getMessage());
         }
 
-        return ['result' => $result, 'record_id' => $this->writeRecord($base, $result, $channel)];
+        return ['result' => $result, 'record_id' => $this->writeRecord($base, $result, $channel, $reservedId)];
     }
 
     /**
@@ -476,6 +563,14 @@ class Dispatcher
 
         $task = Db::name('message_task')->where('id', (int)$record['task_id'])->find();
         if (empty($task)) {
+            // 同步直发（task_id=0）或任务已被清理：置终态，避免永远占用重试名额
+            Db::name('message_record')->where('id', $recordId)->update([
+                'status'      => MessageRecord::STATUS_BLOCKED,
+                'block_reason' => 'task_not_found',
+                'error_code'  => 'task_not_found',
+                'error_msg'   => '关联任务不存在，停止自动重试',
+                'update_time' => time(),
+            ]);
             return ['status' => 'skipped', 'reason' => 'task_not_found'];
         }
         if ((string)$task['status'] === MessageTask::STATUS_CANCELED) {
@@ -510,6 +605,8 @@ class Dispatcher
 
         $payload = json_decode((string)$task['target_payload'], true) ?: [];
         $vars = is_array($payload['vars'] ?? null) ? $payload['vars'] : [];
+        $scoped = $this->userVarsMap([$uid], (array)($template['variables'] ?? []));
+        $vars = array_merge($vars, $scoped[$uid] ?? []);
         $options = is_array($payload['options'] ?? null) ? $payload['options'] : [];
         $options['biz_key'] = $bizKey;
         $config = $this->channels->configProvider()->get($shopid);
@@ -534,7 +631,9 @@ class Dispatcher
         // 频控只对「同一次发送的后续尝试」豁免：failed 记录是重试，不能再占一次配额；
         // delayed / blocked 当初没有扣减（免打扰在频控之前返回），重投时正常判定并预留。
         $reserveFrequency = (string)$record['status'] !== MessageRecord::STATUS_FAILED;
-        $decision = $this->guard->check($shopid, $uid, $template, $chain, $config, $pre, $reserveFrequency);
+        // 顺延记录已经到达 scheduled_time，不能再次落入免打扰窗口，否则会无限顺延
+        $skipQuiet = (string)$record['status'] === MessageRecord::STATUS_DELAYED;
+        $decision = $this->guard->check($shopid, $uid, $template, $chain, $config, $pre, $reserveFrequency, $skipQuiet);
         if ($decision['action'] === 'block') {
             Db::name('message_record')->where('id', $recordId)->update([
                 'status'       => MessageRecord::STATUS_BLOCKED,
@@ -585,8 +684,11 @@ class Dispatcher
                         continue;
                     }
                 }
-                $next = $this->sendOne($task, $template, $nextChannel, $nextIndex, $uid, $vars, $options);
+                $next = $this->sendOne($task, $template, $nextChannel, $nextIndex, $uid, $vars, $options, true);
                 if ($next['result']->success) {
+                    if (!$reserveFrequency) {
+                        $this->guard->consumeFrequency($shopid, $uid, $template, $config);
+                    }
                     $degraded = ['status' => 'success', 'record_id' => $next['record_id'], 'degraded_from' => $channel];
                     // 记录降级来源，便于追溯是哪条渠道失败后兜底成功的
                     Db::name('message_record')->where('id', $next['record_id'])->update([
@@ -607,8 +709,14 @@ class Dispatcher
         }
 
         // 同一渠道重试
-        $row = $this->sendOne($task, $template, $channel, (int)$index, $uid, $vars, $options);
+        $row = $this->sendOne($task, $template, $channel, (int)$index, $uid, $vars, $options, true);
+        if ($row['result']->skipped) {
+            return ['status' => 'skipped', 'reason' => 'already_reached'];
+        }
         if ($row['result']->success) {
+            if (!$reserveFrequency) {
+                $this->guard->consumeFrequency($shopid, $uid, $template, $config);
+            }
             return ['status' => 'success', 'record_id' => $row['record_id']];
         }
 
@@ -637,9 +745,13 @@ class Dispatcher
             return;
         }
 
+        // 全部用户被策略拦截（0 送达）不能算 finished，应归为 partial/failed
+        $failed = (int)$task['user_failed'];
+        $blocked = (int)$task['user_blocked'];
+        $success = (int)$task['user_success'];
         $status = MessageTask::STATUS_FINISHED;
-        if ((int)$task['user_failed'] > 0) {
-            $status = (int)$task['user_success'] > 0 || (int)$task['user_blocked'] > 0
+        if ($failed > 0 || ($blocked > 0 && $success === 0)) {
+            $status = ($success > 0 || $blocked > 0)
                 ? MessageTask::STATUS_PARTIAL
                 : MessageTask::STATUS_FAILED;
         }
@@ -707,24 +819,48 @@ class Dispatcher
     {
         try {
             $queueName = config('queue.connections.redis.queue') ?: 'default';
-            Queue::later(1, '\app\common\queue\Message@handle', ['task_id' => $taskId], $queueName);
+            $delay = max(0, (int)config('queue.message_batch_delay', 1));
+            Queue::later($delay, '\app\common\queue\Message@handle', ['task_id' => $taskId], $queueName);
         } catch (\Throwable $e) {
             Log::error('[message] push next batch failed: ' . $e->getMessage(), ['task_id' => $taskId]);
         }
     }
 
     /**
-     * 推进游标并原子累加计数
+     * 任务是否已进入终态（含已被取消）
+     *
+     * @param int $taskId
+     * @return bool
+     */
+    protected function isTaskTerminal(int $taskId): bool
+    {
+        $status = (string)Db::name('message_task')->where('id', $taskId)->value('status');
+        return $status === '' || in_array($status, MessageTask::TERMINAL_STATUS, true);
+    }
+
+    /**
+     * 推进游标并原子累加计数（CAS）
+     *
+     * 用 target_payload 原值做乐观锁，禁止游标回退、禁止覆盖并发批次的结果、
+     * 也禁止改动已取消/已收尾的任务。
      *
      * @param int   $taskId
      * @param int   $cursor
      * @param array $counters
-     * @return void
+     * @return bool 是否成功推进
      */
-    protected function advance(int $taskId, int $cursor, array $counters): void
+    protected function advance(int $taskId, int $cursor, array $counters): bool
     {
-        $task = Db::name('message_task')->where('id', $taskId)->field('target_payload')->find();
-        $payload = json_decode((string)($task['target_payload'] ?? ''), true) ?: [];
+        $task = Db::name('message_task')->where('id', $taskId)->field('target_payload, status')->find();
+        if (empty($task) || in_array((string)$task['status'], MessageTask::TERMINAL_STATUS, true)) {
+            return false;
+        }
+
+        $raw = (string)($task['target_payload'] ?? '');
+        $payload = json_decode($raw, true) ?: [];
+        if ($cursor < (int)($payload['cursor'] ?? 0)) {
+            return false;
+        }
         $payload['cursor'] = $cursor;
 
         $update = [
@@ -737,7 +873,13 @@ class Dispatcher
             }
         }
 
-        Db::name('message_task')->where('id', $taskId)->update($update);
+        $affected = Db::name('message_task')
+            ->where('id', $taskId)
+            ->where('target_payload', $raw)
+            ->whereNotIn('status', MessageTask::TERMINAL_STATUS)
+            ->update($update);
+
+        return $affected > 0;
     }
 
     /**
@@ -764,14 +906,82 @@ class Dispatcher
     }
 
     /**
-     * 写入发送记录（成功/失败），重复键只更新尝试类字段
+     * 发送前占幂等位
+     *
+     * 唯一键 (shopid, template_code, uid, biz_key, channel) 上先插一条 pending：
+     * 已 success / canceled 或近期在途的记录直接跳过，真实渠道调用才不会重复。
+     *
+     * @param array  $base
+     * @param string $channel
+     * @return array{id:int,skip:bool,result:ChannelResult|null}
+     */
+    protected function reserveRecord(array $base, string $channel, bool $forceRetry = false): array
+    {
+        // biz_key 为空的调用没有幂等语义，沿用「发送后 upsert」
+        if ((string)($base['biz_key'] ?? '') === '') {
+            return ['id' => 0, 'skip' => false, 'result' => null];
+        }
+
+        $data = $base;
+        $data['status'] = MessageRecord::STATUS_PENDING;
+        try {
+            $id = (int)Db::name('message_record')->insertGetId($data);
+            return ['id' => $id, 'skip' => false, 'result' => null];
+        } catch (\Throwable $e) {
+            $row = Db::name('message_record')
+                ->where('shopid', $base['shopid'])
+                ->where('template_code', $base['template_code'])
+                ->where('uid', $base['uid'])
+                ->where('biz_key', $base['biz_key'])
+                ->where('channel', $channel)
+                ->find();
+            if (empty($row)) {
+                Log::error('[message] reserve record failed: ' . $e->getMessage(), $base);
+                return ['id' => 0, 'skip' => false, 'result' => null];
+            }
+
+            $status = (string)$row['status'];
+            $code = $status === MessageRecord::STATUS_CANCELED ? 'user_canceled' : 'already_reached';
+            if (in_array($status, [MessageRecord::STATUS_SUCCESS, MessageRecord::STATUS_CANCELED], true)) {
+                return [
+                    'id'     => (int)$row['id'],
+                    'skip'   => true,
+                    'result' => ChannelResult::failure($channel, $code, '该消息已处理，跳过重复发送', ['skipped' => true, 'retryable' => false]),
+                ];
+            }
+            // 近 5 分钟内更新过的 pending / delayed 视为在途批次，避免并发重复触达；
+            // MessageRetry 主动重投的 delayed / pending 记录必须放行，否则顺延消息永远发不出去
+            if (!$forceRetry
+                && in_array($status, [MessageRecord::STATUS_PENDING, MessageRecord::STATUS_DELAYED], true)
+                && (int)$row['update_time'] > time() - 300) {
+                return [
+                    'id'     => (int)$row['id'],
+                    'skip'   => true,
+                    'result' => ChannelResult::failure($channel, 'already_reached', '该消息正在发送中，跳过重复发送', ['skipped' => true, 'retryable' => false]),
+                ];
+            }
+
+            // 复用旧记录：先置 pending，发送完成后由 writeRecord 更新终态
+            Db::name('message_record')->where('id', (int)$row['id'])
+                ->whereNotIn('status', [MessageRecord::STATUS_SUCCESS, MessageRecord::STATUS_CANCELED])
+                ->update(['status' => MessageRecord::STATUS_PENDING, 'update_time' => time()]);
+            return ['id' => (int)$row['id'], 'skip' => false, 'result' => null];
+        }
+    }
+
+    /**
+     * 写入发送记录（成功/失败）
+     *
+     * 若发送前已占位（$recordId > 0），只更新结果与尝试字段；
+     * canceled / success 不会被复活或覆盖。
      *
      * @param array         $base
      * @param ChannelResult $result
      * @param string        $channel
+     * @param int           $recordId
      * @return int
      */
-    protected function writeRecord(array $base, ChannelResult $result, string $channel): int
+    protected function writeRecord(array $base, ChannelResult $result, string $channel, int $recordId = 0): int
     {
         $data = $base;
         $data['title']          = mb_substr((string)$result->title, 0, 255);
@@ -784,6 +994,18 @@ class Dispatcher
         $data['attempts']       = 1;
         $data['send_time']      = time();
         $data['receipt_time']   = time();
+
+        if ($recordId > 0) {
+            // 占位行已存在：不改写归属字段与 create_time，attempts 递增而不是重置
+            foreach (['shopid', 'task_id', 'template_code', 'template_version', 'channel', 'channel_index', 'uid', 'biz_key', 'is_test', 'create_time'] as $field) {
+                unset($data[$field]);
+            }
+            $data['attempts'] = Db::raw('attempts + 1');
+            Db::name('message_record')->where('id', $recordId)
+                ->whereNotIn('status', [MessageRecord::STATUS_SUCCESS, MessageRecord::STATUS_CANCELED])
+                ->update($data);
+            return $recordId;
+        }
 
         return $this->upsertRecord($data);
     }
@@ -891,6 +1113,45 @@ class Dispatcher
             Db::name('message_record')->where('id', (int)$row['id'])->update($update);
             return (int)$row['id'];
         }
+    }
+
+    /**
+     * 用户级变量批量预取
+     *
+     * 模板声明了 nickname / mobile / email / username 时按用户取值渲染，
+     * 避免整批用户收到相同内容或空值（PII 不得跨用户复用）。
+     *
+     * @param array $uids
+     * @param array $declared
+     * @return array [uid => [变量 => 值]]
+     */
+    protected function userVarsMap(array $uids, array $declared): array
+    {
+        $declared = array_map('strtolower', array_map('strval', $declared));
+        $fields = array_values(array_intersect(['nickname', 'mobile', 'email', 'username'], $declared));
+        if (empty($fields) || empty($uids)) {
+            return [];
+        }
+
+        try {
+            $rows = Db::name('member')
+                ->whereIn('uid', $uids)
+                ->field('uid,' . implode(',', $fields))
+                ->select()
+                ->toArray();
+        } catch (\Throwable $e) {
+            Log::warning('[message] user scoped vars unavailable: ' . $e->getMessage());
+            return [];
+        }
+
+        $map = [];
+        foreach ($rows as $row) {
+            $mapUid = (int)$row['uid'];
+            foreach ($fields as $field) {
+                $map[$mapUid][$field] = (string)($row[$field] ?? '');
+            }
+        }
+        return $map;
     }
 
     /**

@@ -2,6 +2,8 @@
 
 namespace app\common\service\message;
 
+use think\facade\Db;
+
 /**
  * 店铺上下文与 shopid 归属校验
  *
@@ -61,8 +63,9 @@ class ShopContext
     /**
      * 校验 shopid 归属
      *
-     * HTTP 请求内：请求参数带了 shopid（>0）时，只允许操作该店铺；
-     * 请求未带 shopid（0）时，允许业务代码按订单/会员自身的 shopid 发送（平台默认店铺场景）。
+     * 后台请求用登录态可信的 uid 反查 member.shopid 做白名单校验，
+     * 不再拿「请求参数 shopid」与自身比较（那等于没有校验）。
+     * 业务链路（api / minishop 支付回调等）与 CLI 不参与，避免影响主流程。
      *
      * @param int $shopid
      * @return int
@@ -78,11 +81,31 @@ class ShopContext
             return $shopid;
         }
 
-        $requested = self::currentShopid();
-        if ($requested > 0 && $shopid !== $requested) {
+        try {
+            $app = strtolower((string)app('http')->getName());
+        } catch (\Throwable $e) {
+            return $shopid;
+        }
+        if ($app !== 'admin') {
+            return $shopid;
+        }
+
+        $uid = self::currentUid();
+        if ($uid <= 0 || self::isPlatformAdmin($uid)) {
+            return $shopid;
+        }
+
+        try {
+            $owned = (int)Db::name('member')->where('uid', $uid)->value('shopid');
+        } catch (\Throwable $e) {
+            // 会员表异常时不阻断发送，退化为 URL 权限校验
+            return $shopid;
+        }
+        // owned=0 视为平台级账号；店铺账号只能操作平台级(0)或本店数据
+        if ($owned > 0 && $shopid !== 0 && $shopid !== $owned) {
             throw new MessageException('shopid_forbidden', '无权操作该店铺的消息数据', [
-                'requested' => $requested,
-                'target'    => $shopid,
+                'owned'  => $owned,
+                'target' => $shopid,
             ]);
         }
 

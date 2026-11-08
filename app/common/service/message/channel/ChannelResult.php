@@ -37,6 +37,9 @@ class ChannelResult
     /** @var bool 是否可重试 */
     public $retryable = true;
 
+    /** @var bool 是否因幂等命中而跳过真实发送（调用方不应再走兜底链或计入记录数） */
+    public $skipped = false;
+
     /**
      * 成功结果
      *

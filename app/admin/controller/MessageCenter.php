@@ -15,6 +15,7 @@ use app\common\service\message\MessageCenter as MessageCenterService;
 use app\common\service\message\MessageException;
 use app\common\service\message\MessageLevel;
 use app\common\service\message\MessageSeed;
+use app\common\service\message\ShopContext;
 use app\common\service\message\StatService;
 use app\common\service\message\TemplateResolver;
 
@@ -40,6 +41,12 @@ class MessageCenter extends Admin
     public function __construct()
     {
         parent::__construct();
+        // 所有消息中心后台接口统一做店铺归属校验
+        try {
+            ShopContext::assert((int)$this->shopid);
+        } catch (\Throwable $e) {
+            abort(403, $e->getMessage());
+        }
         $this->resolver = new TemplateResolver();
         $this->channels = new ChannelManager();
         $this->audience = new AudienceResolver();
@@ -312,10 +319,11 @@ class MessageCenter extends Admin
                 $templateId = (int)Db::name('message_template')->insertGetId($data);
             }
 
-            // 全量替换渠道内容：未提交的渠道视为删除
+            // 只替换首版 3 个渠道；P1 微信渠道前端暂无编辑入口，保存时不能被静默删除
             Db::name('message_template_channel')
                 ->where('shopid', $this->shopid)
                 ->where('template_id', $templateId)
+                ->whereIn('channel', ['inbox', 'email', 'sms'])
                 ->whereNotIn('channel', array_keys($channels))
                 ->delete();
 
@@ -454,6 +462,24 @@ class MessageCenter extends Admin
         $vars = input('vars/a', []);
         $channel = (string)input('channel', 'inbox', 'trim');
 
+        if ($mobile !== '' && !preg_match('/^\+?[0-9\-]{6,20}$/', $mobile)) {
+            return $this->error('手机号格式不正确');
+        }
+        if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return $this->error('邮箱格式不正确');
+        }
+        // 测试发送会真实调用服务商，限制同一管理员 60 秒内最多 10 次，避免成为短信/邮件轰炸入口
+        try {
+            $rateKey = 'msg:test:' . (int)get_uid();
+            $count = (int)Cache::get($rateKey, 0);
+            if ($count >= 10) {
+                return $this->error('测试发送过于频繁，请稍后再试');
+            }
+            Cache::set($rateKey, $count + 1, 60);
+        } catch (\Throwable $e) {
+            // 缓存不可用时降级，不阻断后台功能
+        }
+
         $row = $id > 0
             ? Db::name('message_template')->where('id', $id)->where('shopid', $this->shopid)->find()
             : Db::name('message_template')->where('shopid', $this->shopid)->where('code', $code)->find();
@@ -532,7 +558,7 @@ class MessageCenter extends Admin
      */
     public function task()
     {
-        $page = input('page', 1, 'intval');
+        $page = max(1, (int)input('page', 1, 'intval'));
         $rows = min(100, max(1, input('rows', 20, 'intval')));
         $status = trim((string)input('status', '', 'trim'));
         $code = trim((string)input('template_code', '', 'trim'));
@@ -648,8 +674,12 @@ class MessageCenter extends Admin
         }
 
         $sendTimestamp = 0;
-        if ($sendTime !== '') {
+        // 立即发送时前端会传 0/'0'；历史前端 value-format="x" 会传毫秒时间戳，统一折算为秒
+        if ($sendTime !== '' && $sendTime !== '0') {
             $sendTimestamp = is_numeric($sendTime) ? (int)$sendTime : (int)strtotime($sendTime);
+            if ($sendTimestamp > 100000000000) {
+                $sendTimestamp = (int)($sendTimestamp / 1000);
+            }
             if ($sendTimestamp <= 0) {
                 return $this->error('发送时间格式不正确');
             }
@@ -774,7 +804,7 @@ class MessageCenter extends Admin
      */
     public function record()
     {
-        $page = input('page', 1, 'intval');
+        $page = max(1, (int)input('page', 1, 'intval'));
         $rows = min(100, max(1, input('rows', 20, 'intval')));
         $status = trim((string)input('status', '', 'trim'));
         $channel = trim((string)input('channel', '', 'trim'));
@@ -807,11 +837,14 @@ class MessageCenter extends Admin
             $query->where('channel', 'inbox')
                 ->whereRaw("inbox_id IN (SELECT id FROM {$prefix}message WHERE shopid = ? AND is_read = ?)", [$this->shopid, (int)$isRead]);
         }
-        if ($start !== '') {
-            $query->where('create_time', '>=', strtotime($start) ?: 0);
+        $startTs = $start !== '' ? (int)strtotime($start) : 0;
+        $endTs = $end !== '' ? (int)strtotime($end) : 0;
+        if ($startTs > 0) {
+            $query->where('create_time', '>=', $startTs);
         }
-        if ($end !== '') {
-            $query->where('create_time', '<=', strtotime($end) ?: time());
+        if ($endTs > 0) {
+            // daterange 只传日期，结束日需包含当天 23:59:59；解析失败也不能悄悄退化成 time()
+            $query->where('create_time', '<=', $endTs + 86399);
         }
 
         $total = (clone $query)->count();
@@ -869,7 +902,10 @@ class MessageCenter extends Admin
         $channel = trim((string)input('channel', '', 'trim'));
         $code = trim((string)input('template_code', '', 'trim'));
         $taskId = input('task_id', 0, 'intval');
+        $uid = input('uid', 0, 'intval');
         $isRead = trim((string)input('is_read', '', 'trim'));
+        $start = trim((string)input('start_time', '', 'trim'));
+        $end = trim((string)input('end_time', '', 'trim'));
 
         $query = Db::name('message_record')->where('shopid', $this->shopid);
         if ($status !== '') {
@@ -884,6 +920,17 @@ class MessageCenter extends Admin
         if ($taskId > 0) {
             $query->where('task_id', $taskId);
         }
+        if ($uid > 0) {
+            $query->where('uid', $uid);
+        }
+        $startTs = $start !== '' ? (int)strtotime($start) : 0;
+        $endTs = $end !== '' ? (int)strtotime($end) : 0;
+        if ($startTs > 0) {
+            $query->where('create_time', '>=', $startTs);
+        }
+        if ($endTs > 0) {
+            $query->where('create_time', '<=', $endTs + 86399);
+        }
         if ($isRead === '0' || $isRead === '1') {
             $prefix = Db::getConfig('prefix');
             $query->where('channel', 'inbox')
@@ -894,8 +941,10 @@ class MessageCenter extends Admin
         $exportLimit = 5000;
         $total = (clone $query)->count();
         if ($total > $exportLimit) {
-            header('Content-Type: text/plain; charset=utf-8');
-            echo '匹配记录 ' . $total . ' 条，超过单次导出上限 ' . $exportLimit . ' 条，请缩小时间范围或增加筛选条件后重试。';
+            // 导出走 window.open 直接下载，超限时也必须返回可下载的 CSV，而不是纯文本页面
+            $this->sendCsvHeaders('message_records_limit_' . date('YmdHis') . '.csv');
+            echo "\xEF\xBB\xBF" . $this->csvEscape('提示') . "\n"
+                . $this->csvEscape('匹配记录 ' . $total . ' 条，超过单次导出上限 ' . $exportLimit . ' 条，请缩小时间范围或增加筛选条件后重试。') . "\n";
             return;
         }
 
@@ -912,29 +961,39 @@ class MessageCenter extends Admin
                 $isReadText = (int)$readMap[(int)$row['inbox_id']] === 1 ? '已读' : '未读';
             }
             $data .= implode(',', [
-                $row['id'],
-                $row['task_id'],
-                $row['template_code'],
-                $row['channel'],
-                $row['uid'],
-                $this->csvEscape($nicknames[$row['uid']] ?? ''),
-                $statusMap[$row['status']] ?? $row['status'],
-                $isReadText,
-                $row['block_reason'],
-                $row['error_code'],
-                $this->csvEscape($row['third_msg_id']),
-                $row['attempts'],
-                $row['send_time'] > 0 ? date('Y-m-d H:i:s', (int)$row['send_time']) : '',
+                (int)$row['id'],
+                (int)$row['task_id'],
+                $this->csvEscape((string)$row['template_code']),
+                $this->csvEscape((string)$row['channel']),
+                (int)$row['uid'],
+                $this->csvEscape((string)($nicknames[$row['uid']] ?? '')),
+                $this->csvEscape((string)($statusMap[$row['status']] ?? $row['status'])),
+                $this->csvEscape($isReadText),
+                $this->csvEscape((string)$row['block_reason']),
+                $this->csvEscape((string)$row['error_code']),
+                $this->csvEscape((string)$row['third_msg_id']),
+                (int)$row['attempts'],
+                $this->csvEscape($row['send_time'] > 0 ? date('Y-m-d H:i:s', (int)$row['send_time']) : ''),
             ]) . "\n";
         }
 
-        $filename = 'message_records_' . date('YmdHis') . '.csv';
+        $this->sendCsvHeaders('message_records_' . date('YmdHis') . '.csv');
+        echo $data;
+    }
+
+    /**
+     * CSV 下载响应头
+     *
+     * @param string $filename
+     * @return void
+     */
+    protected function sendCsvHeaders(string $filename): void
+    {
         header('Content-Type: application/vnd.ms-excel; charset=utf-8');
         header('Content-Disposition: attachment; filename=' . $filename);
         header('Cache-Control: must-revalidate,post-check=0,pre-check=0');
         header('Expires: 0');
         header('Pragma: public');
-        echo $data;
     }
 
     /* ==================== 设置 ==================== */
@@ -1048,7 +1107,13 @@ class MessageCenter extends Admin
             }
         }
 
-        $this->channels->configProvider()->invalidate((int)$this->shopid);
+        // 触达设置写在全局 extend_config，任一店铺保存都必须让所有店铺的缓存失效
+        $shopids = Db::name('message_task')->distinct(true)->column('shopid');
+        $shopids[] = 0;
+        $shopids[] = (int)$this->shopid;
+        foreach (array_unique($shopids) as $sid) {
+            $this->channels->configProvider()->invalidate((int)$sid);
+        }
         $this->clearExtendConfigCache();
 
         return $this->success('保存成功');
@@ -1062,7 +1127,7 @@ class MessageCenter extends Admin
     public function blacklist()
     {
         if (!request()->isPost()) {
-            $page = input('page', 1, 'intval');
+            $page = max(1, (int)input('page', 1, 'intval'));
             $rows = min(100, max(1, input('rows', 20, 'intval')));
             $uid = input('uid', 0, 'intval');
             $status = input('status', 1, 'intval');
@@ -1113,19 +1178,30 @@ class MessageCenter extends Admin
         }
 
         $now = time();
-        $exists = Db::name('message_suppression')->where('shopid', $this->shopid)->where('uid', $uid)->find();
+        $where = ['shopid' => $this->shopid, 'uid' => $uid];
+        // 解黑/重新拉黑必须定位「仍生效」的那行，避免命中历史已解除记录
+        $active = Db::name('message_suppression')->where($where)->where('status', 1)->order('id desc')->find();
 
         if ($action === 'release') {
-            if (empty($exists)) {
+            if (empty($active)) {
                 return $this->error('黑名单记录不存在');
             }
-            Db::name('message_suppression')->where('id', $exists['id'])->update([
+            Db::name('message_suppression')->where('id', $active['id'])->update([
                 'status'       => 0,
                 'release_uid'  => get_uid(),
                 'release_time' => $now,
                 'update_time'  => $now,
             ]);
             return $this->success('已解除黑名单');
+        }
+
+        $expireTime = (int)input('expire_time', 0, 'intval');
+        // 兼容历史前端 value-format="x"（毫秒）与非法的过去时间
+        if ($expireTime > 100000000000) {
+            $expireTime = (int)($expireTime / 1000);
+        }
+        if ($expireTime > 0 && $expireTime <= $now) {
+            return $this->error('失效时间必须晚于当前时间');
         }
 
         $data = [
@@ -1135,10 +1211,11 @@ class MessageCenter extends Admin
             'reason'      => mb_substr((string)input('reason', '', 'trim'), 0, 255),
             'operator_uid' => get_uid(),
             'status'      => 1,
-            'expire_time' => (int)input('expire_time', 0, 'intval'),
+            'expire_time' => $expireTime,
             'update_time' => $now,
         ];
 
+        $exists = $active ?: Db::name('message_suppression')->where($where)->order('id desc')->find();
         if ($exists) {
             Db::name('message_suppression')->where('id', $exists['id'])->update($data);
         } else {
@@ -1559,6 +1636,10 @@ class MessageCenter extends Admin
     {
         if ($value === '') {
             return '';
+        }
+        // 防止 Excel/WPS 把 = + - @ 开头的单元格当公式执行
+        if (preg_match('/^[=+\-@\t\r]/', $value)) {
+            $value = "'" . $value;
         }
         return '"' . str_replace('"', '""', $value) . '"';
     }

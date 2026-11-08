@@ -2,10 +2,8 @@
 
 namespace app\common\queue;
 
-use think\facade\Db;
 use think\queue\Job;
 use app\common\service\message\Dispatcher;
-use app\common\model\MessageTask;
 
 /**
  * 统一消息推送中心队列任务
@@ -31,8 +29,13 @@ class Message
         try {
             $result = (new Dispatcher())->runBatch($taskId);
             if (($result['reason'] ?? '') === 'batch_locked') {
-                // 同一任务已有批次在跑：稍后重投，不能直接丢弃，否则任务会停在中途
-                $job->release(30);
+                // 同一任务已有批次在跑：稍后重投，但不能无限重投堆积
+                if ($job->attempts() < 3) {
+                    $job->release(30);
+                    return;
+                }
+                // 超过上限直接丢弃，由 MessageRetry 的补偿段重新投递
+                $job->delete();
                 return;
             }
             trace('[message] dispatch task ' . $taskId . ' done: ' . json_encode($result, JSON_UNESCAPED_UNICODE), 'info');
@@ -43,6 +46,8 @@ class Message
                 $job->release(60);
                 return;
             }
+            // 手动 delete 会绕过框架的 failJob / failed() / failed_jobs，必须把异常交回 Worker
+            throw $e;
         }
 
         $job->delete();
@@ -58,20 +63,9 @@ class Message
     {
         try {
             trace('[message] dispatch job failed: ' . json_encode($data, JSON_UNESCAPED_UNICODE), 'error');
-
-            // 队列级失败后任务不会再被推进，直接置 failed，
-            // 避免长期停在 running 让运营误以为还在发（补偿会重投非终态任务）
-            $taskId = (int)($data['task_id'] ?? 0);
-            if ($taskId > 0) {
-                Db::name('message_task')
-                    ->where('id', $taskId)
-                    ->whereNotIn('status', MessageTask::TERMINAL_STATUS)
-                    ->update([
-                        'status'      => MessageTask::STATUS_FAILED,
-                        'finish_time' => time(),
-                        'update_time' => time(),
-                    ]);
-            }
+            // 框架已把失败 job 写入 failed_jobs，这里只记业务日志。
+            // 不能把任务置 failed 终态：resumeStaleTasks 只补偿非终态任务，
+            // 否则游标停在中途时剩余用户将永远收不到消息。
         } catch (\Throwable $e) {
             // 忽略
         }

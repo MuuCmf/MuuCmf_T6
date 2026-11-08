@@ -22,7 +22,49 @@ class AudienceResolver
      */
     public function count(array $targets, int $shopid): int
     {
-        return count($this->all($targets, $shopid));
+        $type = (string)($targets['type'] ?? 'uids');
+        $value = $targets['value'] ?? [];
+
+        if ($type === 'uids') {
+            $uids = is_array($value) ? $value : explode(',', (string)$value);
+            $uids = array_values(array_unique(array_filter(array_map('intval', $uids), function ($uid) {
+                return $uid > 0;
+            })));
+            return count(array_slice($uids, 0, 200000));
+        }
+
+        if ($type === 'groups') {
+            $groupIds = is_array($value) ? $value : explode(',', (string)$value);
+            $groupIds = array_values(array_unique(array_filter(array_map('intval', $groupIds))));
+            if (empty($groupIds)) {
+                return 0;
+            }
+            // 与 fetch() 用同一套条件，避免 user_total 与实际目标集合不一致
+            $query = $this->groupsQuery($groupIds, $shopid);
+            return min(200000, (int)$query->count('DISTINCT a.uid'));
+        }
+
+        throw new MessageException('target_invalid', '不支持的发送目标类型：' . $type);
+    }
+
+    /**
+     * 用户组目标查询（带店铺隔离）
+     *
+     * @param array $groupIds
+     * @param int   $shopid
+     * @return \think\db\Query
+     */
+    protected function groupsQuery(array $groupIds, int $shopid)
+    {
+        $query = Db::name('auth_group_access')->alias('a')
+            ->join('member m', 'm.uid=a.uid')
+            ->where('a.group_id', 'in', $groupIds)
+            ->where('m.status', '>=', 0);
+        // shopid=0 是平台级视图，保持历史口径；非 0 店铺只能选本店会员
+        if ($shopid > 0) {
+            $query->where('m.shopid', $shopid);
+        }
+        return $query;
     }
 
     /**
@@ -53,12 +95,8 @@ class AudienceResolver
             if (empty($groupIds)) {
                 return [];
             }
-            // 必须显式排序：分批是「整表重查 + slice」，无序结果在两次查询间可能变化，
-            // 会导致同一用户被重复发送或漏发
-            $rows = Db::name('auth_group_access')->alias('a')
-                ->join('member m', 'm.uid=a.uid')
-                ->where('a.group_id', 'in', $groupIds)
-                ->where('m.status', '>=', 0)
+            // 显式排序并与 fetch / count 共用条件，避免跨店群发和口径不一致
+            $rows = $this->groupsQuery($groupIds, $shopid)
                 ->distinct(true)
                 ->order('a.uid asc')
                 ->limit($max)
@@ -82,8 +120,30 @@ class AudienceResolver
      */
     public function fetch(array $targets, int $shopid, int $offset, int $limit): array
     {
-        $all = $this->all($targets, $shopid);
-        return array_slice($all, max(0, $offset), max(1, $limit));
+        $type = (string)($targets['type'] ?? 'uids');
+        $value = $targets['value'] ?? [];
+
+        if ($type === 'uids') {
+            $all = $this->all($targets, $shopid);
+            return array_slice($all, max(0, $offset), max(1, $limit));
+        }
+
+        if ($type === 'groups') {
+            $groupIds = is_array($value) ? $value : explode(',', (string)$value);
+            $groupIds = array_values(array_unique(array_filter(array_map('intval', $groupIds))));
+            if (empty($groupIds)) {
+                return [];
+            }
+            // 直接用 SQL 分页，避免每批把全量目标重新载入内存（1 万用户时是 O(N²)）
+            $rows = $this->groupsQuery($groupIds, $shopid)
+                ->distinct(true)
+                ->order('a.uid asc')
+                ->limit(max(0, $offset), max(1, $limit))
+                ->column('a.uid');
+            return array_values(array_unique(array_map('intval', $rows)));
+        }
+
+        throw new MessageException('target_invalid', '不支持的发送目标类型：' . $type);
     }
 
     /**

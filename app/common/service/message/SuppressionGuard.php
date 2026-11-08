@@ -23,10 +23,25 @@ class SuppressionGuard
      */
     protected const LUA_RESERVE = <<<'LUA'
 local c = tonumber(redis.call('GET', KEYS[1]) or '0')
+if c < 0 then redis.call('DEL', KEYS[1]); c = 0 end
 if c >= tonumber(ARGV[2]) then return 0 end
 redis.call('INCR', KEYS[1])
 if c == 0 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
 return 1
+LUA;
+
+    /**
+     * 频控回退 Lua：原子 DECR，绝不创建「负值且无 TTL」的 key
+     */
+    protected const LUA_RELEASE = <<<'LUA'
+local c = tonumber(redis.call('GET', KEYS[1]) or '0')
+if c <= 0 then
+    if redis.call('EXISTS', KEYS[1]) == 1 then redis.call('DEL', KEYS[1]) end
+    return 0
+end
+local n = redis.call('DECR', KEYS[1])
+if n <= 0 then redis.call('DEL', KEYS[1]) end
+return n
 LUA;
 
     /**
@@ -39,9 +54,10 @@ LUA;
      * @param array $config   渠道配置
      * @param array $pre      批量预取结果：blacklisted / unsubscribed
      * @param bool  $reserveFrequency 是否参与频控扣减（同一次发送的后续重试必须传 false）
+     * @param bool  $skipQuiet 顺延记录到期重投时跳过二次免打扰判定，避免无限顺延
      * @return array{action:string,reason:string,delay_to:int,reserved:array}
      */
-    public function check(int $shopid, int $uid, array $template, array $chain, array $config, array $pre = [], bool $reserveFrequency = true): array
+    public function check(int $shopid, int $uid, array $template, array $chain, array $config, array $pre = [], bool $reserveFrequency = true, bool $skipQuiet = false): array
     {
         $level = (string)($template['level'] ?? MessageLevel::MARKETING);
         $result = ['action' => 'allow', 'reason' => '', 'delay_to' => 0, 'reserved' => []];
@@ -72,8 +88,8 @@ LUA;
             }
         }
 
-        // 3. 免打扰（仅营销，且只作用于外部渠道）
-        if (MessageLevel::isMarketing($level) && $this->hasExternalChannel($chain)) {
+        // 3. 免打扰（仅营销，且只作用于外部渠道）；顺延到期重投不再二次判定
+        if (!$skipQuiet && MessageLevel::isMarketing($level) && $this->hasExternalChannel($chain)) {
             $delayTo = $this->quietDelayTo($config['quiet'] ?? []);
             if ($delayTo > 0) {
                 $result['action'] = 'delay';
@@ -114,13 +130,40 @@ LUA;
         try {
             $redis = Cache::store('redis')->handler();
             foreach ($keys as $key) {
-                $current = (int)$redis->get($key);
-                if ($current > 0) {
-                    $redis->decr($key);
-                }
+                // get + decr 非原子：key 恰好过期时 decr 会写出 -1 且永不过期，导致该用户被永久拦截
+                $redis->eval(self::LUA_RELEASE, [$key], 1);
             }
         } catch (\Throwable $e) {
             Log::warning('[message] frequency release failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * 重试成功时补扣一次频控配额
+     *
+     * 首次发送失败会回退配额、失败记录重试又豁免预留；若重试最终成功，
+     * 这条真实触达必须占一次配额，否则「渠道抖动 + 自动重试」可绕过频控。
+     *
+     * @param int   $shopid
+     * @param int   $uid
+     * @param array $template
+     * @param array $config
+     * @return void
+     */
+    public function consumeFrequency(int $shopid, int $uid, array $template, array $config): void
+    {
+        if (!MessageLevel::isMarketing((string)($template['level'] ?? MessageLevel::MARKETING))) {
+            return;
+        }
+        $rule = !empty($template['frequency_rule'])
+            ? $template['frequency_rule']
+            : ($config['frequency'] ?? ['max_times' => 3, 'window_hours' => 24]);
+        if ($this->reserveFrequency($shopid, $uid, (string)$template['code'], $rule) === null) {
+            Log::warning('[message] frequency quota exhausted on retry success', [
+                'shopid' => $shopid,
+                'uid'    => $uid,
+                'code'   => (string)$template['code'],
+            ]);
         }
     }
 
