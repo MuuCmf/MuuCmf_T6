@@ -915,6 +915,40 @@ class MessageCenter extends Admin
     }
 
     /**
+     * 删除发送记录
+     *
+     * 仅允许删除已终态且所属任务已结束的记录：
+     * 运行中任务的 success 记录是用户级幂等的唯一依据，先删会导致重投时重复触达。
+     * 删除只影响发送记录（以及任务统计口径），不回删用户已收到的站内信。
+     *
+     * @return \think\Response
+     */
+    public function recordDelete()
+    {
+        $id = input('id', 0, 'intval');
+        $row = Db::name('message_record')->where('id', $id)->where('shopid', $this->shopid)->find();
+        if (empty($row)) {
+            return $this->error('记录不存在');
+        }
+        if (!in_array((string)$row['status'], MessageRecord::TERMINAL_STATUS, true)) {
+            return $this->error('发送中的记录不可删除，请等待发送结束');
+        }
+        if ((int)$row['task_id'] > 0) {
+            $taskStatus = (string)Db::name('message_task')
+                ->where('id', (int)$row['task_id'])
+                ->where('shopid', $this->shopid)
+                ->value('status');
+            if ($taskStatus !== '' && !in_array($taskStatus, MessageTask::TERMINAL_STATUS, true)) {
+                return $this->error('所属任务尚未结束，暂不可删除');
+            }
+        }
+
+        Db::name('message_record')->where('id', $id)->where('shopid', $this->shopid)->delete();
+
+        return $this->success('删除成功');
+    }
+
+    /**
      * 记录导出（CSV）
      *
      * @return void

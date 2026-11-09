@@ -213,6 +213,7 @@ Route::group('messagecenter', function () {
     // 记录
     Route::get('record', 'admin/MessageCenter/record');
     Route::post('recordretry', 'admin/MessageCenter/recordRetry');
+    Route::post('recorddelete', 'admin/MessageCenter/recordDelete');
     Route::get('recordexport', 'admin/MessageCenter/recordExport');
 
     // 消息类型

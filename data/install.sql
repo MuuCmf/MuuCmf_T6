@@ -1128,7 +1128,8 @@ INSERT INTO `muucmf_menu` (`id`, `title`, `pid`, `sort`, `url`, `hide`, `type`, 
 ('BFC2D3E4-0516-4F27-9D38-3E43F4A5BCDE', '黑名单管理', 'F9162738-495A-4F6B-9A7C-182D3E4F6578', 12, 'admin/messagecenter/blacklist', 1, 0, '', '消息中心', 0, '', 'admin'),
 ('C1D2E3F4-1627-4B38-9E5A-6F0B1C2D3E4F', '消息类型', '8F5C83E0-3753-C731-4EEF-5D004137B11D', 24, 'admin/messagecenter/type', 0, 0, '', '消息中心', 0, 'tags', 'admin'),
 ('D2E3F4A5-2738-4C49-AF6B-7A1C2D3E4F50', '类型保存', 'C1D2E3F4-1627-4B38-9E5A-6F0B1C2D3E4F', 0, 'admin/messagecenter/typesave', 1, 0, '', '消息中心', 0, '', 'admin'),
-('E3F4A5B6-3849-4D5A-B07C-8B2D3E4F5061', '类型启停', 'C1D2E3F4-1627-4B38-9E5A-6F0B1C2D3E4F', 1, 'admin/messagecenter/typestatus', 1, 0, '', '消息中心', 0, '', 'admin');
+('E3F4A5B6-3849-4D5A-B07C-8B2D3E4F5061', '类型启停', 'C1D2E3F4-1627-4B38-9E5A-6F0B1C2D3E4F', 1, 'admin/messagecenter/typestatus', 1, 0, '', '消息中心', 0, '', 'admin'),
+('9DAFB0C1-D2E3-4CF4-8A05-0B10C1D2EFAC', '记录删除', 'C6E3F405-1627-4C38-8D49-E5FA0B1C3245', 11, 'admin/messagecenter/recorddelete', 1, 0, '', '消息中心', 0, '', 'admin');
 
 -- --------------------------------------------------------
 

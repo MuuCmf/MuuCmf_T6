@@ -241,6 +241,86 @@ class MessageSeed
                 ],
             ],
             [
+                'code'         => 'minishop.erp_alert',
+                'app'          => 'minishop',
+                'scene'        => 'erp_alert',
+                'name'         => '快麦ERP告警',
+                'description'  => 'ERP 凭证或会话异常时通知店铺运营',
+                'level'        => MessageLevel::TRANSACTION,
+                'variables'    => ['title', 'content'],
+                'fallback'     => ['inbox'],
+                'always_inbox' => 1,
+                'frequency'    => null,
+                // 运营告警默认发给平台管理员，可在模板编辑页改为运营用户组
+                'targets'      => ['type' => 'uids', 'value' => [1]],
+                'channels'     => [
+                    'inbox' => [
+                        'title'   => '{{title}}',
+                        'content' => '<p>{{title}}</p><p>{{content}}</p>',
+                        'extra'   => ['type_code' => 'system'],
+                    ],
+                ],
+            ],
+            [
+                'code'         => 'scoreshop.exchange_success',
+                'app'          => 'scoreshop',
+                'scene'        => 'exchange_success',
+                'name'         => '积分兑换成功通知',
+                'description'  => '积分商城兑换成功后通知用户',
+                'level'        => MessageLevel::TRANSACTION,
+                'variables'    => ['order_no', 'product_name', 'quantity', 'points', 'exchange_time'],
+                'fallback'     => ['inbox'],
+                'always_inbox' => 1,
+                'frequency'    => null,
+                'channels'     => [
+                    'inbox' => [
+                        'title'   => '兑换成功',
+                        'content' => '<p>您的兑换订单 {{order_no}} 已成功提交。</p><p>商品：{{product_name}} × {{quantity}}</p><p>消耗积分：{{points}}</p><p>兑换时间：{{exchange_time}}</p>',
+                        'extra'   => ['type_code' => 'order', 'description' => '订单 {{order_no}} 兑换成功'],
+                    ],
+                ],
+            ],
+            [
+                'code'         => 'scoreshop.exchange_success_admin',
+                'app'          => 'scoreshop',
+                'scene'        => 'exchange_success_admin',
+                'name'         => '积分兑换运营通知',
+                'description'  => '积分商城兑换成功后通知店铺运营',
+                'level'        => MessageLevel::TRANSACTION,
+                'variables'    => ['order_no', 'nickname', 'uid', 'product_name', 'quantity', 'points', 'exchange_time'],
+                'fallback'     => ['inbox'],
+                'always_inbox' => 1,
+                'frequency'    => null,
+                // 运营通知默认发给平台管理员，可在模板编辑页改为运营用户组
+                'targets'      => ['type' => 'uids', 'value' => [1]],
+                'channels'     => [
+                    'inbox' => [
+                        'title'   => '有新的积分兑换订单',
+                        'content' => '<p>{{nickname}}（UID {{uid}}）兑换了 {{product_name}} × {{quantity}}，消耗 {{points}} 积分。</p><p>订单号：{{order_no}}</p><p>时间：{{exchange_time}}</p>',
+                        'extra'   => ['type_code' => 'order'],
+                    ],
+                ],
+            ],
+            [
+                'code'         => 'scoreshop.order_shipped',
+                'app'          => 'scoreshop',
+                'scene'        => 'order_shipped',
+                'name'         => '积分兑换发货通知',
+                'description'  => '积分商城订单发货后通知用户',
+                'level'        => MessageLevel::TRANSACTION,
+                'variables'    => ['order_no', 'product_name', 'quantity', 'delivery_info', 'delivery_time'],
+                'fallback'     => ['inbox'],
+                'always_inbox' => 1,
+                'frequency'    => null,
+                'channels'     => [
+                    'inbox' => [
+                        'title'   => '您的兑换商品已发货',
+                        'content' => '<p>订单 {{order_no}} 已发货。</p><p>商品：{{product_name}} × {{quantity}}</p><p>发货信息：{{delivery_info}}</p><p>发货时间：{{delivery_time}}</p>',
+                        'extra'   => ['type_code' => 'order', 'description' => '订单 {{order_no}} 已发货'],
+                    ],
+                ],
+            ],
+            [
                 'code'         => 'svip.expire_remind',
                 'app'          => 'svip',
                 'scene'        => 'expire_remind',
@@ -261,14 +341,28 @@ class MessageSeed
             ],
         ];
 
-        // 一次取回已有 code，避免后台每次请求都逐条查询
-        $existing = Db::name('message_template')
+        // 一次取回已有模板（含默认接收人），避免后台每次请求都逐条查询
+        $existing = [];
+        $existingRows = Db::name('message_template')
             ->where('shopid', $shopid)
-            ->column('code');
-        $existing = array_flip(array_map('strval', $existing));
+            ->field('code,targets')
+            ->select()->toArray();
+        foreach ($existingRows as $row) {
+            $existing[(string)$row['code']] = $row;
+        }
 
         foreach ($templates as $definition) {
             if (isset($existing[$definition['code']])) {
+                // 历史种子（旧 upgrade.sql）可能未写入默认接收人，按定义补齐；不覆盖后台已配置值
+                if (!empty($definition['targets']) && empty($existing[$definition['code']]['targets'])) {
+                    Db::name('message_template')
+                        ->where('shopid', $shopid)
+                        ->where('code', $definition['code'])
+                        ->update([
+                            'targets'     => json_encode($definition['targets'], JSON_UNESCAPED_UNICODE),
+                            'update_time' => time(),
+                        ]);
+                }
                 continue;
             }
 

@@ -11,11 +11,10 @@ use app\common\facade\channel\Pay as PayServer;
 use app\common\controller\Api;
 use app\common\model\MemberSync;
 use app\common\model\Orders as OrdersModel;
-use app\common\facade\wechat\OfficialAccount;
-use app\common\facade\wechat\MiniProgram as WeixinMiniProgramServer;
 use app\common\facade\bytedance\MiniProgram as DouyinMiniProgramServer;
 use app\common\facade\baidu\MiniProgram as BaiduMiniProgramServer;
 use app\common\service\aftersale\RefundCenter;
+use app\common\service\message\ChannelConfigProvider;
 use app\common\service\message\MessageCenter;
 
 
@@ -102,7 +101,7 @@ class Pay extends Api
                     $order_data['channel'] = $channel;
                 }
                 //数据处理
-                if ($order_data['app'] == 'vip' || $order_data['order_info_type'] == 'vipcard') {
+                if ($order_data['app'] == 'vip' || $order_data['app'] == 'svip' || $order_data['order_info_type'] == 'vipcard') {
                     $order_namespace = "app\\common\\logic\\Orders";
                     $this->OrderLogic = new $order_namespace;
                     $order_data = $this->OrderLogic->vipFormatData($order_data);
@@ -522,8 +521,7 @@ class Pay extends Api
 
         //消息通知（并发重复回调未抢到订单状态迁移时，业务未重复执行，跳过模板消息避免重复推送）
         if (!is_array($result) || empty($result['already_paid'])) {
-            $this->sendPaySuccessTmplmsg($order_info['channel'], $order_info);
-            // 统一消息中心：仅接管站内信，微信模板消息分支保持原样；
+            // 统一消息中心：站内信 + 已启用的微信渠道；
             // 模块订单服务已自行接入通知（如 classroom::notifyPaid）时跳过，避免同一次支付重复推送
             if (!method_exists($OrderService, 'notifyPaid')) {
                 $this->sendPaySuccessMessage($order_info);
@@ -587,9 +585,10 @@ class Pay extends Api
     }
 
     /**
-     * 发送支付成功站内信（统一消息推送中心）
+     * 发送支付成功消息（统一消息推送中心）
      *
-     * 只接管站内信，微信模板消息仍由 sendPaySuccessTmplmsg 发送；
+     * 用户侧站内信必发，微信模板/订阅消息取消息中心已启用的渠道统一发送；
+     * 同时按模板「默认接收人」发运营提醒 order.pay_success_admin；
      * 调用点在支付业务事务提交之后，异常一律吞掉，不影响支付结果。
      *
      * @param array $order_info 订单数据
@@ -615,146 +614,45 @@ class Pay extends Api
                 $paidTime = (int)$this->OrderModel->where('order_no', $orderNo)->value('paid_time');
             }
 
+            // 微信渠道开关打开后由消息中心接管：显式传 channels 覆盖模板默认兜底链
+            $shopid = (int)($order_info['shopid'] ?? 0);
+            $channels = array_merge(['inbox'],
+                (new ChannelConfigProvider())->enabledWechatChannels($shopid));
+            $amount = sprintf('%.2f', (int)($order_info['paid_fee'] ?? 0) / 100);
+            $paidTimeText = $paidTime > 0 ? time_format($paidTime, 'Y-m-d H:i:s') : '';
+
             MessageCenter::send('order.pay_success', [
                 'type'  => 'uids',
                 'value' => [$uid],
             ], [
                 'order_no'     => $orderNo,
-                'amount'       => sprintf('%.2f', (int)($order_info['paid_fee'] ?? 0) / 100),
+                'amount'       => $amount,
                 'product_name' => (string)($products['title'] ?? '商品'),
-                'paid_time'    => $paidTime > 0 ? time_format($paidTime, 'Y-m-d H:i:s') : '',
+                'paid_time'    => $paidTimeText,
             ], [
-                'shopid'   => (int)($order_info['shopid'] ?? 0),
+                'shopid'   => $shopid,
                 'biz_key'  => $orderNo,
-                'channels' => ['inbox'],
+                'channels' => $channels,
             ]);
+
+            // 运营提醒：接收人取模板「默认接收人」配置，失败不影响用户消息
+            try {
+                MessageCenter::send('order.pay_success_admin', [
+                    'type' => 'template',
+                ], [
+                    'order_no'  => $orderNo,
+                    'amount'    => $amount,
+                    'paid_time' => $paidTimeText,
+                ], [
+                    'shopid'   => $shopid,
+                    'biz_key'  => $orderNo . '_admin',
+                    'channels' => $channels,
+                ]);
+            } catch (\Throwable $e) {
+                Log::write('[message] 支付成功运营提醒发送失败 order_no=' . $orderNo . '：' . $e->getMessage());
+            }
         } catch (\Throwable $e) {
-            Log::write('[message] 支付成功站内信发送失败 order_no=' . ($order_info['order_no'] ?? '') . '：' . $e->getMessage());
-        }
-    }
-
-    /**
-     * 发送支付成功模板消息
-     * @param $tmplmsg_config
-     * @param $order_info
-     */
-    protected function sendPaySuccessTmplmsg($channel, $order_info)
-    {
-        // 格式化商品数据
-        if (!empty($order_info['products']) && !is_array($order_info['products'])) {
-            $order_info['products'] = json_decode($order_info['products'], true);
-        } else {
-            return false;
-        }
-
-        // 公众号消息
-        if ($channel  == 'weixin_h5') {
-            // 获取配置
-            $weixin_config = (new \app\common\model\WechatConfig())->getWechatConfigByShopId($this->shopid);
-            // 获取支付时间戳
-            $paid_time = $this->OrderModel->where('order_no', $order_info['order_no'])->value('paid_time');
-            //消息模板是否设置
-            if (empty($weixin_config['tmplmsg']['tmplmsg']['pay_success'])) {
-                return false;
-            }
-            $msg_list = [];
-            if (in_array('manager', $weixin_config['tmplmsg']['to']) && !empty($weixin_config['tmplmsg']['manager_uid'])) {
-                $msg_item['openid'] = get_openid($this->shopid, $weixin_config['tmplmsg']['manager_uid']);
-                $msg_item['user_info'] = query_user($order_info['uid']);
-                $msg_item['remark'] = '客户的订单已支付成功，如有任何问题请联系平台客服！';
-                $msg_list[] = $msg_item;
-            }
-            if (in_array('user', $weixin_config['tmplmsg']['to'])) {
-                $msg_item['openid'] = get_openid($this->shopid, $order_info['uid']);
-                $msg_item['user_info'] = query_user($order_info['uid']);
-                $msg_item['remark'] = '感谢您的支持，如有任何问题请联系平台客服！';
-                $msg_list[] = $msg_item;
-            }
-
-            $res = null;
-            foreach ($msg_list as $item) {
-                $msg = [
-                    'touser' => $item['openid'],
-                    'template_id' => $weixin_config['tmplmsg']['tmplmsg']['pay_success'],
-                    'data' => [
-                        'character_string3' => [ // 订单编号
-                            'value' => $order_info['order_no'],
-                        ],
-                        'amount4' => [ // 订单金额
-                            'value' => sprintf("%.2f", $order_info['paid_fee'] / 100) . '元',
-                        ],
-                        'thing11' => [ // 产品名称
-                            'value' => $order_info['products']['title'] ?? '商品',
-                        ],
-                        'time7' => [ // 支付时间
-                            'value' => time_format($paid_time, 'Y-m-d H:i:s')
-                        ]
-                    ],
-                ];
-                $res = @OfficialAccount::sendTemplateMsg($msg);
-                // 发送失败则中断后续，避免重发错误配置
-                if (empty($res)) {
-                    break;
-                }
-            }
-            // 循环结束后统一返回，确保 manager 与 user 多条消息都能发出
-            return $res;
-        }
-
-        // 微信小程序消息（订阅消息，form_id 模板消息已废弃）
-        if ($channel == 'weixin_mp') {
-            // 获取配置
-            $weixin_mp_config = (new \app\common\model\WechatMpConfig())->getWechatMpConfigByShopId($this->shopid);
-            // 优先使用订阅消息模板ID，兼容旧模板消息模板ID
-            $template_id = $weixin_mp_config['tmplmsg']['subscribe']['pay_success']
-                ?? $weixin_mp_config['tmplmsg']['tmplmsg']['pay_success'] ?? '';
-            //消息模板是否设置
-            if (empty($template_id)) {
-                return false;
-            }
-
-            $msg_list = [];
-            if (in_array('manager', $weixin_mp_config['tmplmsg']['to']) && !empty($weixin_mp_config['tmplmsg']['manager_uid'])) {
-                $msg_item['openid'] = get_openid($this->shopid, $weixin_mp_config['tmplmsg']['manager_uid'], $channel);
-                $msg_item['user_info'] = query_user($order_info['uid']);
-                $msg_list[] = $msg_item;
-            }
-            if (in_array('user', $weixin_mp_config['tmplmsg']['to'])) {
-                $msg_item['openid'] = get_openid($this->shopid, $order_info['uid'], $channel);
-                $msg_item['user_info'] = query_user($order_info['uid']);
-                $msg_list[] = $msg_item;
-            }
-
-            $res = null;
-            foreach ($msg_list as $item) {
-                $msg = [
-                    'touser' => $item['openid'],
-                    'template_id' => $template_id,
-                    'page' => 'micro/pages/index',
-                    'data' => [
-                        'thing1' => [
-                            'value' => $order_info['products']['title'],
-                        ],
-                        'character_string3' => [
-                            'value' => $order_info['order_no'],
-                        ],
-                        'amount4' => [
-                            'value' => sprintf("%.2f", $order_info['paid_fee'] / 100) . '元',
-                        ],
-                        'time7' => [
-                            'value' => $order_info['create_time'],
-                        ],
-                    ],
-                ];
-                // 订阅消息无需 form_id；需用户在小程序端已授权（requestSubscribeMessage）
-                $res = @WeixinMiniProgramServer::sendSubscribeMsg($msg);
-                // 发送失败则中断后续
-                if (empty($res)) {
-                    break;
-                }
-            }
-            // 循环结束后统一返回，确保 manager 与 user 多条消息都能发出
-            return $res;
+            Log::write('[message] 支付成功消息发送失败 order_no=' . ($order_info['order_no'] ?? '') . '：' . $e->getMessage());
         }
     }
 

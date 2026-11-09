@@ -150,7 +150,7 @@ class ChannelConfigProvider
                 'inbox' => true,
                 'email' => (string)$this->config('MESSAGE_CHANNEL_EMAIL', '1') === '1' && $emailConfigured,
                 'sms'   => (string)$this->config('MESSAGE_CHANNEL_SMS', '1') === '1' && $smsConfigured,
-                // 微信渠道默认关闭：开启前应先下线 Pay.php / 核销等历史模板消息，避免双发
+                // 微信渠道默认关闭：灰度开关；核销通知仍直连微信 SDK（classroom/logic/OfflineVerification），不受本开关控制
                 'wechat_oa' => (string)$this->config('MESSAGE_CHANNEL_WECHAT_OA', '0') === '1' && $oaConfigured,
                 'wechat_mp' => (string)$this->config('MESSAGE_CHANNEL_WECHAT_MP', '0') === '1' && $mpConfigured,
             ],
