@@ -339,6 +339,56 @@ class MessageSeed
                     ],
                 ],
             ],
+            [
+                'code'         => 'appstore.license_expire',
+                'app'          => 'appstore',
+                'scene'        => 'license_expire',
+                'name'         => '应用授权到期提醒',
+                'description'  => '应用商店升级服务到期前 7/3/1 天提醒用户续费',
+                'level'        => MessageLevel::TRANSACTION,
+                'variables'    => ['app_name', 'domain', 'end_time', 'days_left'],
+                'fallback'     => ['inbox'],
+                'always_inbox' => 1,
+                'frequency'    => null,
+                'channels'     => [
+                    'inbox' => [
+                        'title'   => '应用授权即将到期',
+                        'content' => '<p>您的应用 {{app_name}}（域名 {{domain}}）升级服务将于 {{end_time}} 到期，剩余 {{days_left}} 天。</p><p>请及时续费，以免影响应用正常使用。</p>',
+                        'extra'   => ['type_code' => 'order'],
+                    ],
+                    // 微信模板 ID 由后台模板编辑页填写；field_map 为默认字段映射，可按实际模板调整
+                    'wechat_oa' => [
+                        'title'   => '',
+                        'content' => '',
+                        'extra'   => [
+                            'template_id' => '',
+                            'field_map'   => [
+                                'thing1'  => 'app_name',
+                                'thing2'  => 'domain',
+                                'time3'   => 'end_time',
+                                'number4' => 'days_left',
+                            ],
+                            'url'         => '',
+                        ],
+                        'var_map' => [],
+                    ],
+                    'wechat_mp' => [
+                        'title'   => '',
+                        'content' => '',
+                        'extra'   => [
+                            'template_id' => '',
+                            'field_map'   => [
+                                'thing1'  => 'app_name',
+                                'thing2'  => 'domain',
+                                'time3'   => 'end_time',
+                                'number4' => 'days_left',
+                            ],
+                            'page'        => '',
+                        ],
+                        'var_map' => [],
+                    ],
+                ],
+            ],
         ];
 
         // 一次取回已有模板（含默认接收人），避免后台每次请求都逐条查询

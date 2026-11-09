@@ -239,7 +239,7 @@ class WechatMiniProgram extends Api
         $rows = input('rows', 10, 'intval');
         $map = [
             ['shopid', '=', $this->shopid],
-            ['type', '=', 'weixin_app']
+            ['type', '=', 'weixin_mp']
         ];
         // 获取列表
         $lists = $TominiprogramModel->getListByPage($map, 'id DESC', '*', $rows);

@@ -21,7 +21,7 @@ class Tominiprogram extends Admin
         $this->TominiprogramLogic = new TominiprogramLogic();
         $this->TominiprogramModel = new TominiprogramModel();
         $this->shopid = request()->param('shopid') ?? 0;
-        $this->type = request()->param('type') ?? 'weixin_app';
+        $this->type = request()->param('type') ?? 'weixin_mp';
     }
 
     public function list()

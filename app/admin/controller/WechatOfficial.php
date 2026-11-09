@@ -127,6 +127,19 @@ class WechatOfficial extends Admin
         if (request()->isPost()) {
             $data = input('post.');
 
+            // 店铺隔离：自动回复归属当前店铺
+            $data['shopid'] = $this->shopid;
+
+            // 备注为非空字段，表单未提交时补默认值，避免 SQL 1364
+            if (!isset($data['remark'])) {
+                $data['remark'] = '';
+            }
+
+            // 编辑时校验归属，避免跨店铺修改
+            if ($aId > 0 && !$this->autoReplyModel->where(['id' => $aId, 'shopid' => $this->shopid])->count()) {
+                return $this->error('自动回复不存在');
+            }
+
             // 兼容性处理
             if (is_numeric($data['msg_type']) && $data['msg_type'] == 1) {
                 $data['msg_type'] = 'text';
