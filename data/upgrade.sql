@@ -685,7 +685,9 @@ INSERT INTO `muucmf_menu` (`id`, `title`, `pid`, `sort`, `url`, `hide`, `type`, 
 
 -- ---------- 11. 历史微信模板消息配置列下线（独立脚本，不自动执行） ----------
 -- wechat_config / wechat_mp_config / douyin_mp_config 的 tmplmsg 列已在代码中停止读写，
--- install.sql 也已移除列定义。存量库的 DROP 不可逆，须人工确认迁移完成后单独执行：
---   php tests/legacy_tmplmsg_migrate.php --apply   （回填 + 覆盖率门禁）
---   data/upgrade_drop_legacy_tmplmsg.sql          （幂等 DROP，执行前先备份）
+-- install.sql 也已移除列定义。微信渠道此前未启用，历史模板 ID 无需回填，也无需访问
+-- 「消息中心」后台触发模板种子补齐 wechat_oa / wechat_mp 渠道行。
+-- 存量库的 DROP 不可逆，备份后单独执行：
+--   data/upgrade_drop_legacy_tmplmsg.sql          （幂等 DROP）
+-- 可选：php tests/legacy_tmplmsg_migrate.php --apply（仅搬运已存在渠道行的历史模板 ID）
 -- 未执行前保留列不影响功能；请勿把 DROP 语句并入本文件自动执行。
