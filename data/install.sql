@@ -1531,7 +1531,9 @@ CREATE TABLE IF NOT EXISTS `muucmf_orders` (
   `create_time` int(11) UNSIGNED NOT NULL COMMENT '创建时间',
   `update_time` int(11) UNSIGNED NOT NULL COMMENT '更新时间',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `order_no` (`order_no`) USING BTREE
+  UNIQUE KEY `order_no` (`order_no`) USING BTREE,
+  KEY `idx_status_paid_create` (`status`, `paid`, `create_time`),
+  KEY `idx_shop_status_paid_create` (`shopid`, `status`, `paid`, `create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单表' ROW_FORMAT=COMPACT;
 
 -- --------------------------------------------------------

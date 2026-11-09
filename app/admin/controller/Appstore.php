@@ -1,7 +1,7 @@
 <?php
 namespace app\admin\controller;
 
-class Appcloud extends Admin
+class Appstore extends Admin
 {
 
     public function index(){

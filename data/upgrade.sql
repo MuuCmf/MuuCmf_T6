@@ -628,14 +628,23 @@ WHERE `name` IN (
 );
 
 -- A4 阶段一：下线旧站内信入口（幂等，可回滚）
--- 仅隐藏后台菜单，旧页面、权限节点与历史数据全部保留，观察一个版本后再进入阶段二：
---   阶段二才删除 admin/Message/* 权限节点与后台群发控制器方法（届时再补 SQL）
--- 保留 admin/Message/send 权限节点，仍被「会员列表 → 发消息」组件调用（非超管缺少该节点会 401）
+-- 仅隐藏后台菜单，旧页面与历史数据保留；阶段二的「发送入口」部分已在下方实施。
+-- admin/Message/* 的列表/内容等读接口与 message/message_content/message_type 三张表
+-- 仍是新链路 InboxChannel 的落地依赖，不删除。
 UPDATE `muucmf_menu` SET `hide` = 1
 WHERE `module` = 'admin' AND `url` IN (
  'admin/Message/type','admin/Message/list','admin/Message/send','admin/Message/typeEdit',
  'admin/Message/typeStatus','admin/Message/contentEdit','admin/Message/messageStatus'
 );
+
+-- A4 阶段二：移除旧发送入口（幂等）
+-- admin/controller/Message::send()、admin/message/send 路由、model/Message 兼容壳与
+-- 前端 MessageSend.vue 均已删除；「会员列表 → 发消息」「消息列表 → 发送消息」改为跳转
+-- admin/messagecenter/taskcreate（模板 common.custom_message），不再需要旧权限节点。
+-- 部署提示：旧节点移除后，原本只授予 admin/Message/send 的角色需在「角色授权」页
+--           补授「消息中心 → 新建任务」(admin/messagecenter/taskcreate)，否则会 401。
+DELETE FROM `muucmf_menu` WHERE `module` = 'admin' AND `url` IN ('admin/Message/send', 'admin/message/send');
+DELETE FROM `muucmf_auth_rule` WHERE `module` = 'admin' AND `name` IN ('admin/Message/send', 'admin/message/send');
 
 -- A4 短信模板 ID 下线（阶段 Cv1：软下线，幂等）
 -- 代码已不再读取全局「短信模板」，模板 ID 只认「消息中心 → 消息模板 → 短信渠道」里的配置；
@@ -655,6 +664,17 @@ ALTER TABLE `muucmf_attachment` ADD INDEX `idx_shopid_create` (`shopid`, `create
 ALTER TABLE `muucmf_attachment` ADD INDEX `idx_shopid_driver_create` (`shopid`, `driver`, `create_time`);
 ALTER TABLE `muucmf_attachment` ADD INDEX `idx_shopid_type_create` (`shopid`, `type`, `create_time`);
 ALTER TABLE `muucmf_attachment` ADD INDEX `idx_uid` (`uid`);
+
+--
+-- 订单表（muucmf_orders）超时未支付自动取消查询索引
+-- 场景：app\common\crontab\Orders —— WHERE status=1 AND paid=0 AND create_time <= ?
+--       [AND shopid = ?] ORDER BY id ASC LIMIT ?；原表仅 PRIMARY + UNIQUE order_no，
+--       四条件过滤需全表扫描，任务每小时执行一次会放大开销。
+-- 说明：MySQL 8.0 之前不支持 ADD INDEX IF NOT EXISTS，重复执行会报
+--       Duplicate key name，可忽略；建议按需在存量库各执行一次。
+--
+ALTER TABLE `muucmf_orders` ADD INDEX `idx_status_paid_create` (`status`, `paid`, `create_time`);
+ALTER TABLE `muucmf_orders` ADD INDEX `idx_shop_status_paid_create` (`shopid`, `status`, `paid`, `create_time`);
 
 -- ---------- 10. 跳转小程序删除权限节点（幂等） ----------
 -- 说明：列表删除接口 admin/Tominiprogram/del 原先未注册菜单/权限节点，非超管角色调用会被 CheckRule 拦截为 401。

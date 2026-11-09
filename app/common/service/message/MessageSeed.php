@@ -116,12 +116,12 @@ class MessageSeed
 
         $templates = [
             [
-                // 兼容历史后台「发送消息」入口：自由标题 + 富文本正文
+                // 后台新建发送任务：自由标题 + 富文本正文
                 'code'         => 'common.custom_message',
                 'app'          => 'common',
                 'scene'        => 'custom_message',
                 'name'         => '自定义消息',
-                'description'  => '后台自由编辑标题与正文的通用消息，供旧入口复用',
+                'description'  => '后台自由编辑标题与正文的通用消息，供自定义发送任务复用',
                 'level'        => MessageLevel::TRANSACTION,
                 'variables'    => ['title', 'description', 'content'],
                 'fallback'     => ['inbox'],

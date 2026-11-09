@@ -33,44 +33,6 @@ class Message extends Admin
     }
 
     /**
-     * 手动消息发送
-     */
-    public function send()
-    {
-        if (request()->isPost()) {
-            $data = input('post.', [], 'trim,htmlspecialchars');
-            $data['shopid'] = $this->shopid;
-
-            // 数据验证
-            try {
-                validate(Common::class)->scene('message')->check($data);
-            } catch (ValidateException $e) {
-                // 验证失败 输出错误信息
-                return $this->error($e->getError());
-            }
-            // 处理发送的类型
-            $send_type = $data['send_type'];
-            // 处理接收用户
-            if (!empty($data['to_uid'])) {
-                $to_uids = intval($data['to_uid']);
-                // 发送消息
-                $res = $this->MessageModel->sendMessageToUid($this->shopid, 0, $to_uids, $data['title'], $data['description'], $data['content'], $data['type_id'], $send_type);
-            } else {
-                // 发送至用户组
-                $to_group_ids = $data['user_group'];
-                // 发送消息
-                $res = $this->MessageModel->sendMessageToGroup($this->shopid, 0, $to_group_ids, $data['title'], $data['description'], $data['content'], $data['type_id'], $send_type);
-            }
-
-            if ($res) {
-                return $this->success('消息发送成功', $res);
-            } else {
-                return $this->error('消息发送失败');
-            }
-        }
-    }
-
-    /**
      * 消息发送列表
      */
     public function list()

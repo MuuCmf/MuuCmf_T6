@@ -11,6 +11,7 @@ use think\facade\Db;
 use think\Request;
 use app\common\validate\Orders as OrdersValidate;
 use app\common\service\aftersale\RefundQuery;
+use app\common\service\order\CancelService;
 use think\exception\ValidateException;
 
 class Orders extends Api
@@ -194,78 +195,55 @@ class Orders extends Api
      */
     public function cancel()
     {
-        if (request()->isPost()) {
-            Db::startTrans();
-            try {
-                $uid = get_uid();
-                $id = input('id', 0, 'intval');
-                $order_no = input('order_no', '', 'text');
+        if (!request()->isPost()) {
+            return;
+        }
+        try {
+            $uid = get_uid();
+            $id = input('id', 0, 'intval');
+            $order_no = input('order_no', '', 'text');
 
-                // 获取订单信息
-                if ($id) {
-                    $order = $this->OrdersModel->getDataById($id);
-                }
-
-                if ($order_no) {
-                    $order = $this->OrdersModel->getDataByOrderNo($order_no);
-                }
-
-                if (!$order) {
-                    return $this->error('订单不存在');
-                }
-
-                // 验证订单归属
-                if ($order['uid'] != $uid) {
-                    return $this->error('非法操作');
-                }
-
-                // 验证订单状态: 只能取消待付款订单(status=1)或未支付订单
-                if ($order['status'] != 1) {
-                    return $this->error('该订单状态不允许取消');
-                }
-
-                if ($order['paid'] == 1) {
-                    return $this->error('已支付订单不能取消，请申请退款');
-                }
-
-                // 更新订单状态为已取消
-                $update_data = [
-                    'id' => $order['id'],
-                    'status' => 0,
-                ];
-
-                $res = $this->OrdersModel->edit($update_data);
-
-                if (!$res) {
-                    throw new Exception('取消订单失败');
-                }
-
-                //限时折扣：取消订单，回滚活动销量与限购计数
-                \app\common\service\Discount::rollback($order['order_no']);
-                //优惠券：取消订单，释放占用中的券（无券为空操作）
-                \app\common\service\Coupon::release(intval($order['shopid'] ?? 0), $order['order_no']);
-                //拼团：取消订单，成员置为已取消，未成团回退人数（幂等，非拼团订单为空操作）
-                \app\common\service\Groupbuy::release(intval($order['shopid'] ?? 0), $order['order_no']);
-                //商品库存回补：按订单归属模块派发（未实现 stockRollback 的模块自动跳过）
-                $cancelApp = (string)($order['app'] ?? '');
-                if (preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $cancelApp)) {
-                    $cancelOrderService = 'app\\' . $cancelApp . '\\service\\Orders';
-                    if (class_exists($cancelOrderService) && method_exists($cancelOrderService, 'stockRollback')) {
-                        (new $cancelOrderService)->stockRollback($order);
-                    }
-                }
-
-                Db::commit();
-
-                return $this->success('取消订单成功');
-            } catch (\Throwable $e) {
-                Db::rollback();
-                if (\think\facade\App::isDebug()) {
-                    return $this->error($e->getMessage() . $e->getFile() . $e->getLine());
-                } else {
-                    return $this->error($e->getMessage());
-                }
+            // 获取订单信息
+            $order = null;
+            if ($id) {
+                $order = $this->OrdersModel->getDataById($id);
             }
+
+            if ($order_no) {
+                $order = $this->OrdersModel->getDataByOrderNo($order_no);
+            }
+
+            if (!$order) {
+                return $this->error('订单不存在');
+            }
+
+            // 验证订单归属
+            if ($order['uid'] != $uid) {
+                return $this->error('非法操作');
+            }
+
+            // 验证订单状态：只能取消待付款且未支付的订单
+            if (intval($order['status']) !== CancelService::STATUS_UNPAID) {
+                return $this->error('该订单状态不允许取消');
+            }
+
+            if (intval($order['paid']) !== CancelService::PAID_NO) {
+                return $this->error('已支付订单不能取消，请申请退款');
+            }
+
+            // 状态流转、营销占用与库存回补由统一服务在事务内完成。
+            // 返回 false 表示已被支付回调或定时任务抢先处理，本方不再重复回滚。
+            $cancelled = (new CancelService())->cancelUnpaid($order);
+            if (!$cancelled) {
+                return $this->error('订单状态已变更，请刷新后重试');
+            }
+
+            return $this->success('取消订单成功');
+        } catch (\Throwable $e) {
+            if (\think\facade\App::isDebug()) {
+                return $this->error($e->getMessage() . $e->getFile() . $e->getLine());
+            }
+            return $this->error($e->getMessage());
         }
     }
 

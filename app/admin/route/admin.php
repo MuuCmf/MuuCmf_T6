@@ -180,8 +180,7 @@ Route::group('menu', function () {
 });
 
 Route::group('message', function () {
-    // 消息发送管理
-    Route::post('send', 'admin/Message/send');
+    // 消息列表与内容管理（读链路）；发送统一走 messagecenter/taskcreate
     Route::get('list', 'admin/Message/list');
     Route::post('status', 'admin/Message/messageStatus');
     
