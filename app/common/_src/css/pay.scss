@@ -1,0 +1,177 @@
+$pay-wechat-green: #07c160;
+
+.payment-section {
+    padding: 40px 0 80px;
+    background: radial-gradient(760px 300px at 50% -120px, rgba(7, 193, 96, 0.1), rgba(255, 255, 255, 0) 70%);
+
+    .pay-weixin {
+        width: 480px;
+        margin: 0 auto;
+        padding: 30px 40px 24px;
+        box-sizing: border-box;
+        background: #fff;
+        border-radius: 18px;
+        box-shadow: 0 18px 48px rgba(23, 43, 77, 0.08), 0 2px 8px rgba(23, 43, 77, 0.04);
+        text-align: center;
+    }
+
+    .pay-head {
+        display: flex;
+        align-items: center;
+        text-align: left;
+
+        .pay-brand {
+            flex: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #2bdd7e, $pay-wechat-green);
+            box-shadow: 0 8px 18px rgba(7, 193, 96, 0.26);
+            color: #fff;
+            font-size: 24px;
+            line-height: 1;
+        }
+
+        .pay-head-text {
+            margin-left: 14px;
+
+            h2 {
+                margin: 0;
+                font-size: 20px;
+                font-weight: 600;
+                line-height: 1.4;
+                color: #1d2129;
+            }
+
+            p {
+                margin: 3px 0 0;
+                font-size: 13px;
+                line-height: 1.5;
+                color: #86909c;
+            }
+        }
+    }
+
+    .pay-amount {
+        margin-top: 24px;
+        padding: 18px 0 20px;
+        border-top: 1px dashed #ebedf0;
+        border-bottom: 1px dashed #ebedf0;
+
+        .pay-amount-label {
+            display: block;
+            font-size: 13px;
+            color: #86909c;
+        }
+
+        .pay-amount-value {
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            margin-top: 4px;
+            color: #ff5a1f;
+            line-height: 1;
+
+            em {
+                margin-right: 2px;
+                font-size: 22px;
+                font-style: normal;
+                font-weight: 600;
+            }
+
+            .paid-fee {
+                font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+                font-size: 40px;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+            }
+        }
+    }
+
+    .qrcode {
+        margin-top: 24px;
+
+        .qrcode-box {
+            width: 216px;
+            height: 216px;
+            margin: 0 auto;
+            padding: 10px;
+            box-sizing: content-box;
+            background: #fff;
+            border: 1px solid #ebedf0;
+            border-radius: 14px;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+
+            img {
+                display: block;
+                width: 216px;
+                height: 216px;
+            }
+        }
+
+        .qrcode-tip {
+            margin: 14px 0 0;
+            font-size: 13px;
+            color: #4e5969;
+
+            i {
+                margin-right: 5px;
+                color: $pay-wechat-green;
+                font-size: 15px;
+            }
+        }
+    }
+
+    .pay-status {
+        display: inline-flex;
+        align-items: center;
+        margin-top: 18px;
+        padding: 6px 14px;
+        border-radius: 999px;
+        background: #f2fbf5;
+        font-size: 12px;
+        color: #15803d;
+
+        .pay-status-dot {
+            width: 6px;
+            height: 6px;
+            margin-right: 7px;
+            border-radius: 50%;
+            background: $pay-wechat-green;
+            animation: pay-status-pulse 1.6s ease-out infinite;
+        }
+    }
+
+    .pay-order {
+        margin-top: 20px;
+        font-size: 12px;
+        color: #86909c;
+
+        .pay-order-label {
+            margin-right: 8px;
+        }
+
+        .order-no {
+            color: #4e5969;
+            font-family: Menlo, Consolas, "Courier New", monospace;
+            word-break: break-all;
+        }
+    }
+}
+
+@keyframes pay-status-pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(7, 193, 96, 0.4);
+    }
+
+    70% {
+        box-shadow: 0 0 0 7px rgba(7, 193, 96, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(7, 193, 96, 0);
+    }
+}
