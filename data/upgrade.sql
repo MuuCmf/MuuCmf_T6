@@ -532,11 +532,6 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
--- 存量店铺的运营通知模板原先由业务代码硬编码发给 uid=1，升级时按原口径回填，避免通知静默丢失
-UPDATE `muucmf_message_template`
-SET `targets` = '{"type":"uids","value":[1]}', `update_time` = UNIX_TIMESTAMP()
-WHERE `code` = 'order.pay_success_admin' AND (`targets` IS NULL OR `targets` = '');
-
 -- ---------- 5. 老表改造：message 索引 ----------
 SET @exist := (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_message' AND INDEX_NAME = 'idx_shop_to_uid');
 SET @sql := IF(@exist = 0, 'ALTER TABLE `muucmf_message` ADD KEY `idx_shop_to_uid` (`shopid`,`to_uid`,`status`)', 'DO 0');
