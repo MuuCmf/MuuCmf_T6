@@ -24,11 +24,6 @@ class WechatConfig extends Base
             $config = $config->toArray();
             // 固定URL地址
             $config['url'] = $this->callbackUrl($shopid);
-            if (!empty($config['tmplmsg'])) {
-                $config['tmplmsg'] = json_decode($config['tmplmsg'], true);
-            } else {
-                $config['tmplmsg'] = [];
-            }
 
             // 处理封面图和二维码
             if (!empty($config['cover'])) {

@@ -17,13 +17,6 @@ class WechatMpConfig extends Base
             ['shopid', '=', $shopid],
         ])->find();
 
-        if (!empty($config['tmplmsg'])) {
-            $config['tmplmsg'] = json_decode($config['tmplmsg'], true);
-        } else {
-            $config['tmplmsg'] = [];
-        }
-
-
         return $config;
     }
 }

@@ -2,14 +2,13 @@
 
 namespace app\common\service\message\channel;
 
-use think\facade\Db;
 use app\common\service\wechat\OfficialAccount;
 
 /**
  * 微信公众号模板消息渠道（wechat_oa）
  *
- * openid 取 member_sync.type=weixin_h5；模板 ID 缺省时按 scene 回退
- * wechat_config.tmplmsg.tmplmsg.{scene}（兼容历史「支付成功」等配置）。
+ * openid 取 member_sync.type=weixin_h5；模板 ID 只从消息模板渠道配置读取，
+ * 不再回退 wechat_config.tmplmsg 等历史配置。
  */
 class WechatOfficialChannel extends WechatChannel
 {
@@ -21,13 +20,6 @@ class WechatOfficialChannel extends WechatChannel
     protected function syncTypes(): array
     {
         return ['weixin_h5'];
-    }
-
-    protected function legacyTemplateId(int $shopid, string $scene): string
-    {
-        $config = json_decode((string)Db::name('wechat_config')
-            ->where('shopid', $shopid)->value('tmplmsg'), true) ?: [];
-        return trim((string)($config['tmplmsg'][$scene] ?? ''));
     }
 
     protected function dispatch(int $shopid, array $message): array

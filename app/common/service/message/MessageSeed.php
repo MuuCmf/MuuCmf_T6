@@ -469,8 +469,9 @@ class MessageSeed
     /**
      * 支付成功模板的微信渠道行定义
      *
-     * 字段名与历史 Pay.php 模板消息保持一致；template_id 留空，
-     * 运行时由渠道按 scene=pay_success 回退 wechat_config / wechat_mp_config.tmplmsg。
+     * 字段名与历史 Pay.php 模板消息保持一致；模板 ID 由后台模板编辑页填写，
+     * 存量配置由 tests/legacy_tmplmsg_migrate.php 一次性回填到 third_template_id，
+     * 渠道运行时不再读取 wechat_config / wechat_mp_config.tmplmsg。
      *
      * @return array
      */

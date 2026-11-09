@@ -110,9 +110,6 @@ Route::group('douyin', function () {
 
     // 结算及分账结果查询
     Route::post('manual/settle_query', 'admin/DouyinMiniprogram/manualSettleQuery');
-
-    // 模板消息通知
-    Route::any('template_message', 'admin/DouyinMiniprogram/templateMessage');
 });
 
 // 扩展配置管理
@@ -349,9 +346,6 @@ Route::group('tominiprogram', function () {
 Route::group('wechat_mp', function () {
     // 微信小程序配置
     Route::any('config', 'admin/WechatMiniProgram/config');
-    
-    // 模板消息通知
-    Route::any('message', 'admin/WechatMiniProgram/templateMessage');
 });
 
 Route::group('wechat', function () {
@@ -375,9 +369,6 @@ Route::group('wechat', function () {
     
     // 获取单个素材详情
     Route::any('material/detail', 'admin/WechatOfficial/materialDetail');
-    
-    // 模板消息通知
-    Route::any('message', 'admin/WechatOfficial/templateMessage');
 });
 
 Route::group('wechat_work', function () {

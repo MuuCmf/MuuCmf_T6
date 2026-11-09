@@ -554,7 +554,6 @@ CREATE TABLE  IF NOT EXISTS `muucmf_douyin_mp_config` (
   `alipay_merchant_uid` VARCHAR(128) NOT NULL DEFAULT '' COMMENT '进件完成支付宝商户号',
   `token` varchar(128) NOT NULL DEFAULT '' COMMENT 'token',
   `salt` varchar(128) NOT NULL DEFAULT '' COMMENT 'salt',
-  `tmplmsg` varchar(500) NOT NULL DEFAULT '' COMMENT '模板消息',
   `create_time` int(11) UNSIGNED NOT NULL COMMENT '创建日期',
   `update_time` int(11) UNSIGNED NOT NULL COMMENT '更新日期',
   PRIMARY KEY (`id`)
@@ -698,7 +697,7 @@ INSERT INTO `muucmf_extend_config` (`id`, `name`, `type`, `title`, `group`, `ext
 (75, 'MESSAGE_FREQ_MAX', 'num', '默认频控次数', 'message', '', '营销消息在同一时间窗口内最多发送次数', 0, 0, 1, '3', 28),
 (76, 'MESSAGE_FREQ_WINDOW', 'num', '默认频控窗口(小时)', 'message', '', '营销消息频控统计窗口', 0, 0, 1, '24', 29),
 (77, 'MESSAGE_RECORD_RETAIN_DAYS', 'num', '发送记录保留天数', 'message', '', '默认 180 天，与幂等有效期一致', 0, 0, 1, '180', 30),
-(78, 'MESSAGE_CHANNEL_WECHAT_OA', 'radio', '启用公众号模板消息渠道', 'message', '0:关闭\r\n1:开启', '需配置公众号 AppID/Secret；开启前须下线历史模板消息入口避免双发', 0, 0, 1, '0', 31),
+(78, 'MESSAGE_CHANNEL_WECHAT_OA', 'radio', '启用公众号模板消息渠道', 'message', '0:关闭\r\n1:开启', '需配置公众号 AppID/Secret；模板 ID 在「消息中心 → 消息模板」配置', 0, 0, 1, '0', 31),
 (79, 'MESSAGE_CHANNEL_WECHAT_MP', 'radio', '启用小程序订阅消息渠道', 'message', '0:关闭\r\n1:开启', '需配置小程序 AppID/Secret 且用户已授权订阅；默认关闭', 0, 0, 1, '0', 32);
 
 -- --------------------------------------------------------
@@ -1900,7 +1899,6 @@ CREATE TABLE IF NOT EXISTS `muucmf_wechat_config` (
   `encoding_aes_key` varchar(60) NOT NULL COMMENT '消息加解密密钥',
   `token` varchar(40) NOT NULL COMMENT 'token',
   `menu_json` text NULL COMMENT '公众号菜单配置',
-  `tmplmsg` varchar(1000) NOT NULL DEFAULT '' COMMENT '模板消息配置',
   `auth_login` TINYINT(2) NOT NULL DEFAULT '1' COMMENT '是否启用网页授权登录',
   `create_time` int(11) UNSIGNED NOT NULL COMMENT '创建日期',
   `update_time` int(11) UNSIGNED NOT NULL COMMENT '更新日期',
@@ -1922,7 +1920,6 @@ CREATE TABLE IF NOT EXISTS `muucmf_wechat_mp_config` (
   `appid` varchar(40) NOT NULL COMMENT '应用ID',
   `secret` varchar(60) NOT NULL COMMENT '应用密匙',
   `originalid` varchar(40) NOT NULL COMMENT '原始ID',
-  `tmplmsg` varchar(500) NOT NULL DEFAULT '' COMMENT '模板消息',
   `create_time` int(11) UNSIGNED NOT NULL COMMENT '创建日期',
   `update_time` int(11) UNSIGNED NOT NULL COMMENT '更新日期',
   PRIMARY KEY (`id`)

@@ -10,8 +10,8 @@ use think\facade\Log;
  *
  * 公众号（wechat_oa）与小程序订阅消息（wechat_mp）共用：
  *  - 可达性：member_sync 一次 IN 批量取 openid，禁止在用户循环内逐条查库；
- *  - 模板 ID：message_template_channel.extra.template_id / third_template_id，
- *    缺省时按模板 scene 回退历史 wechat_config / wechat_mp_config.tmplmsg；
+ *  - 模板 ID：只认 message_template_channel.extra.template_id / third_template_id，
+ *    不再回退 wechat_config / wechat_mp_config.tmplmsg 等历史配置；
  *  - 字段：extra.field_map（微信模板字段名 => 消息模板变量名）。
  *
  * 渠道不直接依赖请求上下文中的 shopid，队列 / CLI 场景由 context 显式传入。
@@ -34,9 +34,6 @@ abstract class WechatChannel implements ChannelInterface
 
     /** @return array 服务商原始响应 */
     abstract protected function dispatch(int $shopid, array $message): array;
-
-    /** @return string 历史微信配置里的模板 ID */
-    abstract protected function legacyTemplateId(int $shopid, string $scene): string;
 
     public function key(): string
     {
@@ -91,7 +88,7 @@ abstract class WechatChannel implements ChannelInterface
                 '用户未绑定微信 openid', ['retryable' => false]);
         }
 
-        $templateId = $this->resolveTemplateId($rendered, $shopid);
+        $templateId = $this->resolveTemplateId($rendered);
         if ($templateId === '') {
             return ChannelResult::failure($channel, 'channel_not_configured',
                 '模板未配置微信模板ID', ['retryable' => false]);
@@ -184,26 +181,16 @@ abstract class WechatChannel implements ChannelInterface
     }
 
     /**
-     * 模板 ID：模板配置优先，缺省按 scene 回退历史微信配置
+     * 模板 ID：唯一来源是消息模板渠道配置，缺省即视为未配置
      */
-    protected function resolveTemplateId(array $rendered, int $shopid): string
+    protected function resolveTemplateId(array $rendered): string
     {
         $extra = is_array($rendered['extra'] ?? null) ? $rendered['extra'] : [];
         $templateId = trim((string)($extra['template_id'] ?? ''));
-        if ($templateId === '') {
-            $templateId = trim((string)($rendered['third_template_id'] ?? ''));
-        }
         if ($templateId !== '') {
             return $templateId;
         }
-
-        $code = (string)($rendered['template_code'] ?? '');
-        $pos = strrpos($code, '.');
-        $scene = $pos === false ? $code : substr($code, $pos + 1);
-        if ($scene === '') {
-            return '';
-        }
-        return $this->legacyTemplateId($shopid, $scene);
+        return trim((string)($rendered['third_template_id'] ?? ''));
     }
 
     protected function openidOf(int $shopid, int $uid): string

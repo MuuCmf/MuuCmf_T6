@@ -612,7 +612,7 @@ INSERT IGNORE INTO `muucmf_extend_config` (`name`, `type`, `title`, `group`, `ex
 ('MESSAGE_FREQ_MAX', 'num', '默认频控次数', 'message', '', '营销消息在同一时间窗口内最多发送次数', 0, 0, 1, '3', 28),
 ('MESSAGE_FREQ_WINDOW', 'num', '默认频控窗口(小时)', 'message', '', '营销消息频控统计窗口', 0, 0, 1, '24', 29),
 ('MESSAGE_RECORD_RETAIN_DAYS', 'num', '发送记录保留天数', 'message', '', '默认 180 天，与幂等有效期一致', 0, 0, 1, '180', 30),
-('MESSAGE_CHANNEL_WECHAT_OA', 'radio', '启用公众号模板消息渠道', 'message', '0:关闭\r\n1:开启', '需配置公众号 AppID/Secret；开启前须下线历史模板消息入口避免双发', 0, 0, 1, '0', 31),
+('MESSAGE_CHANNEL_WECHAT_OA', 'radio', '启用公众号模板消息渠道', 'message', '0:关闭\r\n1:开启', '需配置公众号 AppID/Secret；模板 ID 在「消息中心 → 消息模板」配置', 0, 0, 1, '0', 31),
 ('MESSAGE_CHANNEL_WECHAT_MP', 'radio', '启用小程序订阅消息渠道', 'message', '0:关闭\r\n1:开启', '需配置小程序 AppID/Secret 且用户已授权订阅；默认关闭', 0, 0, 1, '0', 32);
 
 -- A4 消息中心：扩展配置新增「消息推送」分组，并把消息中心相关配置项迁入（幂等）
@@ -682,3 +682,10 @@ ALTER TABLE `muucmf_orders` ADD INDEX `idx_shop_status_paid_create` (`shopid`, `
 DELETE FROM `muucmf_menu` WHERE `id` = 'D7E8F9A0-B1C2-4D3E-8F4A-5B6C7D8E9F01';
 INSERT INTO `muucmf_menu` (`id`, `title`, `pid`, `sort`, `url`, `hide`, `type`, `tip`, `group`, `is_dev`, `icon`, `module`) VALUES
 ('D7E8F9A0-B1C2-4D3E-8F4A-5B6C7D8E9F01', '删除跳转小程序', '4B3DFCDA-258E-0CBC-66D5-BB95CE81B9D5', 1, 'admin/Tominiprogram/del', 1, 0, '', '跳转小程序', 0, '', 'admin');
+
+-- ---------- 11. 历史微信模板消息配置列下线（独立脚本，不自动执行） ----------
+-- wechat_config / wechat_mp_config / douyin_mp_config 的 tmplmsg 列已在代码中停止读写，
+-- install.sql 也已移除列定义。存量库的 DROP 不可逆，须人工确认迁移完成后单独执行：
+--   php tests/legacy_tmplmsg_migrate.php --apply   （回填 + 覆盖率门禁）
+--   data/upgrade_drop_legacy_tmplmsg.sql          （幂等 DROP，执行前先备份）
+-- 未执行前保留列不影响功能；请勿把 DROP 语句并入本文件自动执行。

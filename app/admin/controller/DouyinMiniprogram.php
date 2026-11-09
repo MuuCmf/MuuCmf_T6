@@ -231,26 +231,4 @@ class DouyinMiniprogram extends Admin
         }
     }
 
-    /**
-     * 模板消息通知
-     * @return \think\response\Json
-     */
-    public function templateMessage()
-    {
-        if (request()->isPost()) {
-            $params = request()->post();
-            $data = [
-                'switch'      => $params['switch'],
-                'to'          => $params['to'],
-                'manager_uid' => $params['manager_uid'],
-                'tmplmsg'     => $params['tmplmsg']
-            ];
-            $data = json_encode($data);
-            $result = $this->MiniProgramModel->where('shopid', $this->shopid)->save(['tmplmsg' => $data]);
-            if ($result) {
-                return $this->success('保存成功');
-            }
-            return $this->error('保存失败，请稍后再试');
-        }
-    }
 }
