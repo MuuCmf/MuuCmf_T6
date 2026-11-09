@@ -4,6 +4,7 @@ namespace app\admin\controller;
 
 use app\common\logic\Tominiprogram as TominiprogramLogic;
 use app\common\model\Tominiprogram as TominiprogramModel;
+use think\facade\Db;
 
 /**
  * @title 跳转小程序
@@ -94,17 +95,20 @@ class Tominiprogram extends Admin
     }
 
     /**
-     * 设置分组状态：删除=-1，禁用=0，启用=1
-     * @param $status
+     * 删除跳转小程序（支持单条与批量）
      */
     public function del()
     {
-        $id = array_unique((array)input('id', 0));
-        if (empty($id)) {
+        // 前端列表使用 ids 传参（单条为标量，批量时为数组），同时兼容 id
+        $ids = input('ids', input('id', 0));
+        $ids = is_array($ids) ? $ids : explode(',', (string)$ids);
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        if (empty($ids)) {
             return $this->error('请选择要操作的数据');
         }
-        $id = is_array($id) ? $id : explode(',', $id);
-        $result = $this->TominiprogramModel->where('id', 'in', $id)->delete();
+
+        // 模型实例上的 delete() 依赖已存在的记录，这里必须走查询构造器执行条件删除
+        $result = Db::name('tominiprogram')->where('id', 'in', $ids)->delete();
         if ($result) {
             return $this->success('删除成功');
         }

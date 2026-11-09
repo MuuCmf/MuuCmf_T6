@@ -163,12 +163,20 @@ class TemplateResolver
             $skipped[] = ['channel' => $channel, 'reason' => 'channel_not_configured'];
         }
 
-        if (!empty($template['always_inbox'])) {
+        // 站内信可在模板中软停用：内容保留，但不参与发送链路
+        $inboxDisabled = isset($template['channels']['inbox']['status'])
+            && (int)$template['channels']['inbox']['status'] === 0;
+
+        if (!empty($template['always_inbox']) && !$inboxDisabled) {
             // 站内信必发：链首额外发送，链尾不再重复
             return array_merge(['inbox'], $external);
         }
 
-        $external[] = 'inbox';
+        if ($inboxDisabled) {
+            $skipped[] = ['channel' => 'inbox', 'reason' => 'channel_disabled'];
+        } else {
+            $external[] = 'inbox';
+        }
         return $external;
     }
 
@@ -188,8 +196,12 @@ class TemplateResolver
         $defaults = $template['default_vars'] ?? [];
         $vars = array_merge($defaults, $vars);
 
+        // 正文占位符必须在渲染前提取：渲染后占位符已被变量值替换
+        $rawContent = (string)($channel['content'] ?? '');
+        $placeholders = $this->extractVariables($rawContent);
+
         $title = $this->renderString((string)($channel['title'] ?? ''), $vars, $channelKey, $declared);
-        $content = $this->renderString((string)($channel['content'] ?? ''), $vars, $channelKey, $declared);
+        $content = $this->renderString($rawContent, $vars, $channelKey, $declared);
 
         $extra = $channel['extra'] ?? [];
         $link = (string)($extra['link'] ?? '');
@@ -205,6 +217,8 @@ class TemplateResolver
             'third_template_id' => (string)($channel['third_template_id'] ?? ''),
             'template_code' => (string)($template['code'] ?? ''),
             'variables'     => $vars,
+            // 正文实际使用的占位符：短信服务商参数只按它生成，避免把默认变量等多余参数发给服务商
+            'placeholders'  => $placeholders,
         ];
     }
 
@@ -451,9 +465,8 @@ class TemplateResolver
                 if (empty($filledTemplateIds)) {
                     $errors[] = ['channel' => 'sms', 'field' => 'extra.provider_template_id', 'type' => 'missing_value'];
                 }
-                if (trim((string)($extra['sign_name'] ?? '')) === '') {
-                    $errors[] = ['channel' => 'sms', 'field' => 'extra.sign_name', 'type' => 'missing_value'];
-                }
+                // 短信签名允许留空：发送期回落到「短信配置」里的默认签名（见 SmsChannel），
+                // 与后台「留空则使用短信配置中的默认签名」的提示保持一致，不在保存阶段拦截
                 // 仅当短信正文含变量时才要求映射（纯静态短信模板可留空）
                 if (empty($channel['var_map']) && !empty($this->extractVariables($content))) {
                     $errors[] = ['channel' => 'sms', 'field' => 'var_map', 'type' => 'missing_value'];

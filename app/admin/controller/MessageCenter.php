@@ -233,6 +233,11 @@ class MessageCenter extends Admin
             $errors[] = ['channel' => 'base', 'field' => 'channels', 'type' => 'missing_value'];
         }
 
+        // 站内信已关闭时「站内信必发」无意义，统一置 0
+        if (isset($channels['inbox']) && (int)($channels['inbox']['status'] ?? 1) === 0) {
+            $alwaysInbox = 0;
+        }
+
         $fallback = array_values(array_intersect(array_map('strval', (array)$fallback), self::CHANNELS));
         if (empty($fallback)) {
             $fallback = ['inbox'];
@@ -1378,7 +1383,8 @@ class MessageCenter extends Admin
 
             $varMap = isset($content['var_map']) && is_array($content['var_map']) ? $content['var_map'] : [];
             $varMap = array_filter($varMap, function ($value, $key) use ($variables) {
-                return is_string($key) && $key !== '' && in_array((string)$value, $variables, true);
+                // 腾讯云按位置传参，服务商变量名是 "1"/"2"，JSON 解码后是整型键，不能只认字符串键
+                return (string)$key !== '' && in_array((string)$value, $variables, true);
             }, ARRAY_FILTER_USE_BOTH);
 
             $channels[$channel] = [
@@ -1387,8 +1393,8 @@ class MessageCenter extends Admin
                 'extra'             => $extra,
                 'var_map'           => $varMap,
                 'third_template_id' => (string)($content['third_template_id'] ?? ''),
-                // 渠道 Tab 的软启停：0 表示内容保留但不参与发送链路；站内信是系统兜底，恒启用
-                'status'            => $channel === 'inbox' ? 1 : (((int)($content['status'] ?? 1) === 0) ? 0 : 1),
+                // 渠道 Tab 的软启停：0 表示内容保留但不参与发送链路（站内信同样支持关闭）
+                'status'            => (((int)($content['status'] ?? 1) === 0) ? 0 : 1),
             ];
         }
 

@@ -113,6 +113,11 @@ class SmsChannel implements ChannelInterface
     /**
      * 构建服务商变量
      *
+     * 服务商模板参数只由「短信正文里的占位符」决定：
+     * - 未配置 var_map 时按正文占位符一一映射，不再把所有变量（含 site_name/expire_minutes 等默认变量）都发出去；
+     * - 已配置 var_map 时剔除正文里没出现的变量，避免多传参数导致服务商模板变量个数校验失败
+     *   （腾讯云 FailedOperation.TemplateParamSetNotMatchApprovedTemplate）。
+     *
      * @param array $rendered
      * @return array
      */
@@ -120,11 +125,26 @@ class SmsChannel implements ChannelInterface
     {
         $vars = $rendered['variables'] ?? [];
         $varMap = $rendered['var_map'] ?? [];
-        if (!is_array($varMap) || empty($varMap)) {
+        $placeholders = $rendered['placeholders'] ?? [];
+        if (!is_array($varMap)) {
             $varMap = [];
-            foreach (array_keys((array)$vars) as $name) {
+        }
+        if (!is_array($placeholders)) {
+            $placeholders = [];
+        }
+
+        if (empty($varMap)) {
+            foreach ($placeholders as $name) {
                 $varMap[$name] = $name;
             }
+        } elseif (!empty($placeholders)) {
+            $filtered = [];
+            foreach ($varMap as $providerVar => $tplVar) {
+                if (in_array((string)$tplVar, $placeholders, true)) {
+                    $filtered[$providerVar] = $tplVar;
+                }
+            }
+            $varMap = $filtered;
         }
 
         $params = [];

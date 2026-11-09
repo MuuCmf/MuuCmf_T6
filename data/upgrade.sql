@@ -655,3 +655,10 @@ ALTER TABLE `muucmf_attachment` ADD INDEX `idx_shopid_create` (`shopid`, `create
 ALTER TABLE `muucmf_attachment` ADD INDEX `idx_shopid_driver_create` (`shopid`, `driver`, `create_time`);
 ALTER TABLE `muucmf_attachment` ADD INDEX `idx_shopid_type_create` (`shopid`, `type`, `create_time`);
 ALTER TABLE `muucmf_attachment` ADD INDEX `idx_uid` (`uid`);
+
+-- ---------- 10. 跳转小程序删除权限节点（幂等） ----------
+-- 说明：列表删除接口 admin/Tominiprogram/del 原先未注册菜单/权限节点，非超管角色调用会被 CheckRule 拦截为 401。
+--       菜单节点为隐藏项（hide=1），仅供「角色授权」页同步 muucmf_auth_rule 后分配权限。
+DELETE FROM `muucmf_menu` WHERE `id` = 'D7E8F9A0-B1C2-4D3E-8F4A-5B6C7D8E9F01';
+INSERT INTO `muucmf_menu` (`id`, `title`, `pid`, `sort`, `url`, `hide`, `type`, `tip`, `group`, `is_dev`, `icon`, `module`) VALUES
+('D7E8F9A0-B1C2-4D3E-8F4A-5B6C7D8E9F01', '删除跳转小程序', '4B3DFCDA-258E-0CBC-66D5-BB95CE81B9D5', 1, 'admin/Tominiprogram/del', 1, 0, '', '跳转小程序', 0, '', 'admin');

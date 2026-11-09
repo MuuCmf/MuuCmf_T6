@@ -165,12 +165,12 @@
                                                 class="col-xs-2 control-label">签名</label>
                                             <div class="col-xs-10 signature">
                                                 <span
-                                                    class="lh32 sp_signature">{$user.signature|htmlspecialchars}</span>
+                                                    class="lh32 sp_signature">{$user.signature|default=''|htmlspecialchars}</span>
                                                 <textarea id="signature" style="display:none;"
                                                     name="signature"
                                                     class="form-control te_signature"
                                                     style="width: 100%; height: 6em;resize: none"
-                                                    placeholder='{$user.signature|htmlspecialchars}'>{$user.signature|htmlspecialchars}</textarea>
+                                                    placeholder='{$user.signature|default=''|htmlspecialchars}'>{$user.signature|default=''|htmlspecialchars}</textarea>
                                             </div>
                                         </div>
                                         <div class="form-group">
