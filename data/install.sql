@@ -517,7 +517,8 @@ INSERT INTO `muucmf_crontab` (`id`, `shopid`, `title`, `description`, `execute`,
 (6, 0, 'Sitemap自动生成', '汇总框架核心页面与已安装应用页面生成 public/sitemap.xml，并同步 robots.txt 的 Sitemap 声明', 'app\\common\\crontab\\Sitemap', 'day', 0, 3, 30, 1, 1759104000, 1759104000),
 (7, 0, '售后退款超时关闭、滞留对账与遗留巡检', '申请售后超过 12 小时未审核自动关闭退款单；打款滞留超过 30 分钟回置为已同意待重试；退货超时 7 天未收到商品自动关闭；遗留订单只读巡检（dry-run 对账 orders.refund 与 muucmf_refund，不一致只告警，不自动补建、不触发打款，补建需人工确认后执行 php think refund:reconcile --apply）', 'app\\common\\crontab\\Refund', 'hour-n', 1, 1, 1, 1, 1793880000, 1793880000),
 (8, 0, '消息重试与补偿', '重试失败记录、投递到期顺延记录、重置超时未推进的任务', 'app\\common\\crontab\\MessageRetry', 'minute-n', 0, 0, 5, 1, UNIX_TIMESTAMP(), UNIX_TIMESTAMP()),
-(9, 0, '消息数据清理', '清理超过保留期的发送记录、失效黑名单与队列失败任务', 'app\\common\\crontab\\MessageClean', 'day', 0, 4, 0, 1, UNIX_TIMESTAMP(), UNIX_TIMESTAMP());
+(9, 0, '消息数据清理', '清理超过保留期的发送记录、失效黑名单与队列失败任务', 'app\\common\\crontab\\MessageClean', 'day', 0, 4, 0, 1, UNIX_TIMESTAMP(), UNIX_TIMESTAMP()),
+(10, 0, '会员到期提醒', '扫描到期前 7/3/1 天的有效会员，按店铺批量通过统一消息中心发送 svip.expire_remind；同一会员同一提醒周期仅触达一次', 'app\\common\\crontab\\VipExpireRemind', 'day', 0, 9, 0, 1, UNIX_TIMESTAMP(), UNIX_TIMESTAMP());
 
 -- --------------------------------------------------------
 
@@ -1254,7 +1255,7 @@ INSERT INTO `muucmf_message_template` (`id`, `shopid`, `code`, `app`, `scene`, `
 (3, 0, 'order.pay_success', 'order', 'pay_success', '支付成功通知', '订单支付成功站内信', 'transaction', '["order_no","amount","product_name","paid_time"]', '[]', '["inbox"]', 1, NULL, NULL, 1, 1, 1, 0, 1767196800, 1767196800),
 (4, 0, 'order.pay_success_admin', 'order', 'pay_success_admin', '支付成功运营通知', '支付成功后通知店铺运营', 'transaction', '["order_no","amount","paid_time"]', '[]', '["inbox"]', 1, NULL, '{"type":"uids","value":[1]}', 1, 1, 1, 0, 1767196800, 1767196800),
 (5, 0, 'order.refund_success', 'order', 'refund_success', '退款到账通知', '售后退款成功后通知用户', 'transaction', '["order_no","amount"]', '[]', '["inbox"]', 1, NULL, NULL, 1, 1, 1, 0, 1767196800, 1767196800),
-(6, 0, 'svip.expire_remind', 'svip', 'expire_remind', '会员到期提醒', '会员到期前 7/3/1 天提醒', 'marketing', '["nickname","expire_time"]', '[]', '["inbox"]', 1, '{"max_times":2,"window_hours":168}', NULL, 1, 1, 1, 0, 1767196800, 1767196800);
+(6, 0, 'svip.expire_remind', 'svip', 'expire_remind', '会员到期提醒', '会员到期前 7/3/1 天提醒', 'marketing', '["nickname","expire_time"]', '[]', '["inbox"]', 1, '{"max_times":3,"window_hours":168}', NULL, 1, 1, 1, 0, 1767196800, 1767196800);
 
 -- --------------------------------------------------------
 

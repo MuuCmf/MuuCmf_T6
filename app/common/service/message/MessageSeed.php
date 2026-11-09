@@ -330,7 +330,7 @@ class MessageSeed
                 'variables'    => ['nickname', 'expire_time'],
                 'fallback'     => ['inbox'],
                 'always_inbox' => 1,
-                'frequency'    => ['max_times' => 2, 'window_hours' => 168],
+                'frequency'    => ['max_times' => 3, 'window_hours' => 168],
                 'channels'     => [
                     'inbox' => [
                         'title'   => '会员即将到期',

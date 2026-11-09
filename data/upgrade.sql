@@ -458,8 +458,18 @@ SELECT 0, 'order.refund_success', 'order', 'refund_success', '退款到账通知
 WHERE NOT EXISTS (SELECT 1 FROM (SELECT `id` FROM `muucmf_message_template` WHERE `shopid` = 0 AND `code` = 'order.refund_success') `t8`);
 
 INSERT INTO `muucmf_message_template` (`shopid`, `code`, `app`, `scene`, `name`, `description`, `level`, `variables`, `default_vars`, `fallback`, `always_inbox`, `frequency_rule`, `is_system`, `version`, `status`, `sort`, `create_time`, `update_time`)
-SELECT 0, 'svip.expire_remind', 'svip', 'expire_remind', '会员到期提醒', '会员到期前 7/3/1 天提醒', 'marketing', '["nickname","expire_time"]', '[]', '["inbox"]', 1, '{"max_times":2,"window_hours":168}', 1, 1, 1, 0, UNIX_TIMESTAMP(), UNIX_TIMESTAMP() FROM DUAL
+SELECT 0, 'svip.expire_remind', 'svip', 'expire_remind', '会员到期提醒', '会员到期前 7/3/1 天提醒', 'marketing', '["nickname","expire_time"]', '[]', '["inbox"]', 1, '{"max_times":3,"window_hours":168}', 1, 1, 1, 0, UNIX_TIMESTAMP(), UNIX_TIMESTAMP() FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM (SELECT `id` FROM `muucmf_message_template` WHERE `shopid` = 0 AND `code` = 'svip.expire_remind') `t9`);
+
+-- ---------- 4.1 会员到期提醒频控默认值对齐 7/3/1 三节点 ----------
+-- 7/3/1 三个节点都落在 168 小时窗口内，默认配额由 2 调到 3。
+-- 只更新「仍保持旧默认值」的行，后台管理员自定义过的频控规则一律不覆盖；
+-- 覆盖全部 shopid：店铺级模板副本由 MessageSeed 补齐，不随 shopid=0 的种子 INSERT 更新。
+-- upgrade.sql 逐条执行且吞异常，本语句重复执行时无匹配行，天然幂等。
+UPDATE `muucmf_message_template`
+SET `frequency_rule` = '{"max_times":3,"window_hours":168}', `update_time` = UNIX_TIMESTAMP()
+WHERE `code` = 'svip.expire_remind'
+  AND TRIM(COALESCE(`frequency_rule`, '')) IN ('{"max_times":2,"window_hours":168}', '{"max_times": 2, "window_hours": 168}');
 
 INSERT INTO `muucmf_message_template_channel` (`shopid`, `template_id`, `template_code`, `channel`, `title`, `content`, `extra`, `third_template_id`, `var_map`, `status`, `create_time`, `update_time`)
 SELECT t.`shopid`, t.`id`, t.`code`, 'inbox', '{{title}}', '{{content}}', '{"type_code":"system"}', '', NULL, 1, UNIX_TIMESTAMP(), UNIX_TIMESTAMP()
@@ -602,7 +612,11 @@ INSERT INTO `muucmf_menu` (`id`, `title`, `pid`, `sort`, `url`, `hide`, `type`, 
 -- ---------- 9. 定时任务（幂等） ----------
 INSERT IGNORE INTO `muucmf_crontab` (`id`, `shopid`, `title`, `description`, `execute`, `cycle`, `day`, `hour`, `minute`, `status`, `create_time`, `update_time`) VALUES
 (8, 0, '消息重试与补偿', '重试失败记录、投递到期顺延记录、重置超时未推进的任务', 'app\\common\\crontab\\MessageRetry', 'minute-n', 0, 0, 5, 1, UNIX_TIMESTAMP(), UNIX_TIMESTAMP()),
-(9, 0, '消息数据清理', '清理超过保留期的发送记录、失效黑名单与队列失败任务', 'app\\common\\crontab\\MessageClean', 'day', 0, 4, 0, 1, UNIX_TIMESTAMP(), UNIX_TIMESTAMP());
+(9, 0, '消息数据清理', '清理超过保留期的发送记录、失效黑名单与队列失败任务', 'app\\common\\crontab\\MessageClean', 'day', 0, 4, 0, 1, UNIX_TIMESTAMP(), UNIX_TIMESTAMP()),
+(10, 0, '会员到期提醒', '扫描到期前 7/3/1 天的有效会员，按店铺批量通过统一消息中心发送 svip.expire_remind；同一会员同一提醒周期仅触达一次', 'app\\common\\crontab\\VipExpireRemind', 'day', 0, 9, 0, 1, UNIX_TIMESTAMP(), UNIX_TIMESTAMP());
+
+-- 部署提示：crontab start 只在进程启动时注册 Timer，新增 id=10 的任务必须
+-- 执行 php think crontab restart（Docker 环境重启 scheduler 容器）后才会生效。
 
 -- A4 消息中心：触达设置补充配置项（幂等）
 INSERT IGNORE INTO `muucmf_extend_config` (`name`, `type`, `title`, `group`, `extra`, `remark`, `create_time`, `update_time`, `status`, `value`, `sort`) VALUES
