@@ -215,41 +215,7 @@ LUA;
      */
     public function quietDelayTo(array $quiet): int
     {
-        if (empty($quiet['enabled'])) {
-            return 0;
-        }
-        $start = (string)($quiet['start'] ?? '');
-        $end = (string)($quiet['end'] ?? '');
-        if ($start === '' || $end === '' || $start === $end) {
-            return 0;
-        }
-
-        $now = time();
-        $nowMinute = (int)date('G', $now) * 60 + (int)date('i', $now);
-        $startMinute = $this->toMinute($start);
-        $endMinute = $this->toMinute($end);
-        if ($startMinute < 0 || $endMinute < 0) {
-            return 0;
-        }
-
-        $inQuiet = $startMinute < $endMinute
-            ? ($nowMinute >= $startMinute && $nowMinute < $endMinute)
-            : ($nowMinute >= $startMinute || $nowMinute < $endMinute);
-
-        if (!$inQuiet) {
-            return 0;
-        }
-
-        // 当天 quiet_end 未过就用当天，已过才顺延到次日
-        $todayEnd = strtotime(date('Y-m-d', $now) . ' ' . $end);
-        if ($todayEnd === false) {
-            return 0;
-        }
-        if ($todayEnd <= $now) {
-            $todayEnd += 86400;
-        }
-
-        return $todayEnd + mt_rand(0, 1800);
+        return (new SuppressionPolicy())->quietDelayTo(SuppressionPolicy::fromMessageConfig($quiet));
     }
 
     /**
@@ -268,17 +234,4 @@ LUA;
         return false;
     }
 
-    /**
-     * HH:MM 转分钟
-     *
-     * @param string $time
-     * @return int
-     */
-    protected function toMinute(string $time): int
-    {
-        if (!preg_match('/^(\d{1,2}):(\d{1,2})$/', trim($time), $m)) {
-            return -1;
-        }
-        return (int)$m[1] * 60 + (int)$m[2];
-    }
 }

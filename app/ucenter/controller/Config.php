@@ -413,10 +413,18 @@ class Config extends Base
             // 查询是否已绑定
             $has_bind = boolval((new MemberSync())->where($bind_map)->count());
             if ($has_bind) return $this->error('当前微信已绑定了其他账号');
+            // 同一开放平台账号（unionid）已绑定到其他会员时拒绝，避免一个微信对应多个账号
+            $unionid = trim((string)($params['unionid'] ?? ''));
+            if ($unionid !== '' && (new MemberSync())->where([
+                ['unionid', '=', $unionid],
+                ['uid', '<>', get_uid()],
+            ])->count()) {
+                return $this->error('当前微信已绑定了其他账号');
+            }
             $data = [
                 'uid'     => get_uid(),
                 'openid'  => $params['openid'],
-                'unionid' => $params['unionid'] ?? '',
+                'unionid' => $unionid,
                 'type'    => 'weixin_h5'
             ];
             $res = (new MemberSync())->edit($data);

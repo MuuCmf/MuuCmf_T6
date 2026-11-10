@@ -823,11 +823,17 @@ class Member extends Base
     public function oauth(int $shopid, array $data)
     {
         $syncModel = new MemberSync();
+        // 授权记录按店铺隔离；历史数据存在 shopid=0 的存量记录，精确匹配失败时回退兼容
+        $findSync = function (array $map) use ($syncModel, $shopid) {
+            $sync = $syncModel->where(array_merge($map, [['shopid', '=', $shopid]]))->find();
+            if ($sync || $shopid === 0) {
+                return $sync;
+            }
+
+            return $syncModel->where(array_merge($map, [['shopid', '=', 0]]))->find();
+        };
         //是否已有授权信息
-        $sync = $syncModel->where([
-            ['shopid', '=', $shopid],
-            ['openid', '=', $data['openid']]
-        ])->find();
+        $sync = $findSync([['openid', '=', $data['openid']]]);
         // 初始化授权记录id
         $sync_id = 0;
         if ($sync) {
@@ -835,6 +841,7 @@ class Member extends Base
             $uid = $sync['uid'];
             $has_member = $this->where([
                 ['uid', '=', $uid],
+                ['shopid', '=', $shopid],
                 ['status', 'in', [0, 1]]
             ])->find();
 
@@ -843,16 +850,38 @@ class Member extends Base
             }
         }
 
-        //是否已有开放平台相同的账户
-        if (!empty($data['unionid'])) {
-            $has_union = $syncModel->where([
-                ['shopid', '=', $shopid],
-                ['unionid', '=', $data['unionid']],
-            ])->find();
-            if ($has_union) $has_union = $has_union->toArray();
-        }
         //初始UID
         $uid = 0;
+        // 开放平台 unionid 在公众号 / 小程序 / APP 间一致：命中说明该微信用户已在其它端注册过，
+        // 复用会员并只补建当前端的授权记录，避免公众号与小程序各自建号产生两个用户。
+        // member 按店铺隔离，复用前需校验会员归属当前店铺，避免跨店串号。
+        if (!empty($data['unionid'])) {
+            $union = $findSync([['unionid', '=', $data['unionid']]]);
+            if ($union) {
+                $union_member = $this->where([
+                    ['uid', '=', $union['uid']],
+                    ['shopid', '=', $shopid],
+                    ['status', 'in', [0, 1]]
+                ])->find();
+
+                if ($union_member) {
+                    // 复用当前 openid 的旧记录（如原会员已删除）或新增当前端的授权记录
+                    $sync_result = $syncModel->edit([
+                        'id'      => $sync_id,
+                        'uid'     => $union['uid'],
+                        'shopid'  => $shopid,
+                        'openid'  => $data['openid'],
+                        'type'    => $data['oauth_type'],
+                        'unionid' => $data['unionid'],
+                    ]);
+                    if (!$sync_result) {
+                        throw new Exception('存入用户授权记录失败');
+                    }
+
+                    return $union_member;
+                }
+            }
+        }
 
         // 过滤掉emoji表情符号
         $nickname = filter_emoji($data['nickname']);
@@ -862,7 +891,7 @@ class Member extends Base
             $nickname = rand_nickname(Config::get('system.USER_NICKNAME_PREFIX'));
         }
         $member_data = [
-            'shopid'    => $data['shopid'],
+            'shopid'    => $shopid,
             'nickname'  => $nickname,
             'username'  => rand_username(''),
             'password'  => user_md5('123456', Config::get('auth.auth_key')),
@@ -883,6 +912,7 @@ class Member extends Base
 
         $sync_data = [
             'id'        => $sync_id,
+            'shopid'    => $shopid,
             'uid'       => $uid,
             'openid'    => $data['openid'],
             'type'      => $data['oauth_type']
