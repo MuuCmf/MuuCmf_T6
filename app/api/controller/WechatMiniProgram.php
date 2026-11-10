@@ -106,8 +106,6 @@ class WechatMiniProgram extends Api
         $map[] = ['openid', '=', $oauth['openid']];
         $map[] = ['type', '=', 'weixin_mp'];
         $user = $this->MemberSyncModel->getDataByMap($map);
-        // 是否为已删除账号的重新注册流程
-        $reRegister = false;
         // 已登录过
         if (!empty($user)) {
             $existing = query_user($user['uid'], ['uid', 'nickname', 'avatar', 'email', 'mobile', 'realname', 'sex', 'score']);
@@ -121,27 +119,25 @@ class WechatMiniProgram extends Api
                 } else {
                     // 已删除账号（status=-1）不复用旧账号，继续走下方创建流程，允许重新注册
                     $user = null;
-                    $reRegister = true;
                 }
             } else {
                 $user = null;
-                $reRegister = true;
             }
         }
         if (empty($user)) {
             // 未登录过 / 已删除，创建用户
-            try {
-                $result = MiniProgramServer::decryptData($oauth['session_key'], $params['iv'], $params['encrypted_data']);
-            } catch (\Throwable $e) {
-                // 微信返回空/非法 encryptedData 时会抛出解密异常，统一按解密失败处理
-                $result = null;
+            // encryptedData 仅用于补全昵称头像：小程序端已改用 chooseAvatar + 昵称输入，
+            // 且 getUserProfile 自基础库 2.27.1 起已回收、可能返回空加密串，
+            // 因此解密失败不再拦截登录，直接以 openid 建号，昵称头像由登录后的资料提交接口补齐
+            $result = null;
+            if (!empty($params['encrypted_data']) && !empty($params['iv'])) {
+                try {
+                    $result = MiniProgramServer::decryptData($oauth['session_key'], $params['iv'], $params['encrypted_data']);
+                } catch (\Throwable $e) {
+                    $result = null;
+                }
             }
             $decrypted = is_array($result) && isset($result['openId'], $result['nickName']);
-            // 新用户必须解密成功；已删除账号重新注册时微信可能返回空/无效的 encryptedData，
-            // 此时以 openid 为准创建账号，昵称头像由登录成功后的资料提交接口补齐
-            if (!$decrypted && !$reRegister) {
-                return $this->error('微信数据解密失败，请重试');
-            }
             if ($decrypted) {
                 $nickname = $result['nickName'];
                 if ($nickname == '微信用户') {
