@@ -16,6 +16,7 @@ use app\common\facade\baidu\MiniProgram as BaiduMiniProgramServer;
 use app\common\service\aftersale\RefundCenter;
 use app\common\service\message\ChannelConfigProvider;
 use app\common\service\message\MessageCenter;
+use app\common\service\trade\TradeEventDispatcher;
 
 
 class Pay extends Api
@@ -528,9 +529,9 @@ class Pay extends Api
             }
         }
 
-        // SCRM 业务事件接入：支付成功后回流订单事件，失败不影响支付主流程
+        // 交易领域事件：支付成功后统一广播，由 SCRM 等业务应用订阅；失败不影响支付主流程
         if (!is_array($result) || empty($result['already_paid'])) {
-            $this->pushScrmBusinessEvent('pay', $order_info);
+            TradeEventDispatcher::paid($order_info);
         }
 
         return $result;
@@ -550,38 +551,6 @@ class Pay extends Api
         ];
         echo array_to_xml($data);
         exit();
-    }
-
-    /**
-     * 推送 SCRM 业务事件
-     *
-     * 仅做事件回流，异常一律吞掉，保证支付/退款主流程不受影响；SCRM 未安装时直接跳过。
-     *
-     * @param string $scene      场景 pay支付 refund退款
-     * @param array  $order      订单数据
-     * @param array  $refundInfo 退款数据（uid / order_no / refund_no / refund_fee）
-     * @return void
-     */
-    protected function pushScrmBusinessEvent(string $scene, array $order, array $refundInfo = []): void
-    {
-        try {
-            $shopid = (int)($order['shopid'] ?? 0);
-            if ($shopid <= 0 || !class_exists('\\app\\scrm\\service\\BusinessEventService')) {
-                return;
-            }
-            if (!(new \app\common\model\Module())->checkInstalled('scrm')) {
-                return;
-            }
-
-            $service = new \app\scrm\service\BusinessEventService();
-            if ($scene === 'pay') {
-                $service->fromOrderPay($shopid, $order);
-            } else {
-                $service->fromOrderRefund($shopid, $order, $refundInfo);
-            }
-        } catch (\Throwable $e) {
-            Log::write('SCRM业务事件推送失败 scene=' . $scene . '：' . $e->getMessage());
-        }
     }
 
     /**

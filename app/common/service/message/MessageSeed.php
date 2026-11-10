@@ -389,6 +389,26 @@ class MessageSeed
                     ],
                 ],
             ],
+            [
+                // SCRM SOP / 客户旅程的「站内信通知会员」动作；企微触达不在此模板范围内
+                'code'         => 'scrm.sop_notice',
+                'app'          => 'scrm',
+                'scene'        => 'sop_notice',
+                'name'         => 'SOP/旅程会员通知',
+                'description'  => 'SOP 与客户旅程的站内信通知会员动作，营销级别受频控、免打扰与退订治理',
+                'level'        => MessageLevel::MARKETING,
+                'variables'    => ['customer_name', 'flow_title', 'content'],
+                'fallback'     => ['inbox'],
+                'always_inbox' => 1,
+                'frequency'    => ['max_times' => 3, 'window_hours' => 168],
+                'channels'     => [
+                    'inbox' => [
+                        'title'   => '{{flow_title}}',
+                        'content' => '<p>{{customer_name}}，{{content}}</p>',
+                        'extra'   => ['type_code' => 'marketing'],
+                    ],
+                ],
+            ],
         ];
 
         // 一次取回已有模板（含默认接收人），避免后台每次请求都逐条查询

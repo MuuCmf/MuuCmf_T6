@@ -12,6 +12,7 @@ use think\Request;
 use app\common\validate\Orders as OrdersValidate;
 use app\common\service\aftersale\RefundQuery;
 use app\common\service\order\CancelService;
+use app\common\service\trade\TradeEventDispatcher;
 use think\exception\ValidateException;
 
 class Orders extends Api
@@ -79,8 +80,11 @@ class Orders extends Api
                 if (!$res) {
                     throw new Exception('创建订单失败，请稍后再试');
                 }
-                //获取订单数据
+                //获取订单数据（另存原始分单位数据，formatData 会把 paid_fee 转成元字符串）
                 $order = $this->OrdersModel->getDataById($order_id);
+                $rawOrder = is_object($order) && method_exists($order, 'toArray')
+                    ? $order->toArray()
+                    : (array)$order;
                 $order = $this->OrdersLogic->formatData($order);
                 //免费商品或需退费商品后续业务逻辑处理
                 if ($order['paid'] == 1) {
@@ -103,6 +107,16 @@ class Orders extends Api
                         $appOrdersService->notifyPaid($order);
                     } catch (\Throwable $e) {
                         \think\facade\Log::warning('[order] paid notify failed: ' . $e->getMessage());
+                    }
+                }
+
+                // 免费 / 0 元订单不走支付回调，事务提交后统一广播交易事件；
+                // 业务应用（含 SCRM）通过订阅者接收，失败不影响下单结果
+                if (intval($rawOrder['paid'] ?? 0) === 1) {
+                    try {
+                        TradeEventDispatcher::paid($rawOrder);
+                    } catch (\Throwable $e) {
+                        \think\facade\Log::warning('[order] paid event dispatch failed: ' . $e->getMessage());
                     }
                 }
 

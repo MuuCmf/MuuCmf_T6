@@ -14,6 +14,7 @@ use app\common\service\aftersale\channel\BalanceChannel;
 use app\common\service\aftersale\channel\OfflineChannel;
 use app\common\service\aftersale\channel\ScoreChannel;
 use app\common\service\message\MessageCenter;
+use app\common\service\trade\TradeEventDispatcher;
 
 /**
  * 退款执行器（唯一实现）
@@ -211,6 +212,19 @@ class RefundExecutor
                 Log::warning('[售后] 事务后钩子失败，order_no=' . $orderNo . '：' . $e->getMessage());
             }
 
+            // 交易领域事件：退款完成后统一广播，由 SCRM 等业务应用订阅
+            try {
+                TradeEventDispatcher::refunded($fresh, [
+                    'refund_no'   => (string)($refund['refund_no'] ?? ''),
+                    'refund_fee'  => $amount,
+                    'order_no'    => $orderNo,
+                    'uid'         => (int)($fresh['uid'] ?? 0),
+                    'refund_time' => time(),
+                ]);
+            } catch (\Throwable $e) {
+                Log::warning('[售后] 退款完成事件广播失败，order_no=' . $orderNo . '：' . $e->getMessage());
+            }
+
             // 退款到账通知：售后中心是唯一触发点，biz_key 保证同一次退款只通知一次
             try {
                 $uid = (int)($fresh['uid'] ?? 0);
@@ -344,6 +358,19 @@ class RefundExecutor
             $policy->onRefundedAfterTx($order, $refund);
         } catch (\Throwable $e) {
             Log::warning('[售后] 已完成流水收尾时事务后钩子失败，order_no=' . $orderNo . '：' . $e->getMessage());
+        }
+
+        // 按已完成流水收尾同样视为退款完成，统一广播，避免旧链路退款漏发业务事件
+        try {
+            TradeEventDispatcher::refunded($order, [
+                'refund_no'   => $flowNo !== '' ? $flowNo : $businessRefundNo,
+                'refund_fee'  => $amount,
+                'order_no'    => $orderNo,
+                'uid'         => (int)($order['uid'] ?? 0),
+                'refund_time' => time(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('[售后] 已完成流水收尾事件广播失败，order_no=' . $orderNo . '：' . $e->getMessage());
         }
 
         Log::info('[售后] 按已完成流水收尾，order_no=' . $orderNo . '，refund_no=' . $flowNo);
