@@ -244,6 +244,8 @@ class Member extends Base
             if ($user['uid'] && $user['status'] == 1) {
                 /* 验证用户验证码 */
                 if (!$verifyModel->checkVerify($account, $type, $captcha)) {
+                    // 记录验证码登录失败行为，纳入行为限制统计
+                    (new ActionLog())->add('input_password', 'member', $user['uid'], $user['uid']);
                     return -2;
                 } else {
                     return $user['uid']; //返回用户ID

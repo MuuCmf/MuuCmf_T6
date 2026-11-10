@@ -26,16 +26,24 @@ class Message extends Base
         $t_map[] = ['status', '=', 1];
         // 排序值越大越靠前，相同排序值按创建顺序（id 升序）
         $type_list = $MessageTypeModel->getList($t_map, 100, 'sort desc,id asc')->toArray();
+
+        // 一次聚合查询各类型未读数量，避免逐类型 count
+        $unread_map = [];
+        $unread_map[] = ['shopid', '=', $this->shopid];
+        $unread_map[] = ['is_read', '=', 0];
+        $unread_map[] = ['status', '=', 1];
+        $unread_map[] = ['to_uid', '=', get_uid()];
+        $unread_list = $MessageModel->where($unread_map)
+            ->field('type_id, COUNT(*) as num')
+            ->group('type_id')
+            ->select()
+            ->toArray();
+        $unread = array_column($unread_list, 'num', 'type_id');
+
         foreach($type_list as &$val){
             $val = $MessageTypeModel->formatData($val);
             // 未读消息数量
-            $map = [];
-            $map[] = ['shopid', '=', $this->shopid];
-            $map[] = ['type_id', '=', $val['id']];
-            $map[] = ['is_read', '=', 0];
-            $map[] = ['status', '=', 1];
-            $map[] = ['to_uid', '=', get_uid()];
-            $num = $MessageModel->where($map)->count();
+            $num = isset($unread[$val['id']]) ? intval($unread[$val['id']]) : 0;
             if($num > 99){
                 $val['unread'] = '99+';
             }else{

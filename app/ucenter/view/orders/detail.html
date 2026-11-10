@@ -1,0 +1,21 @@
+<div class="delivery_info">
+    <p>【订 单 号】：{$order.order_no|default=''}</p>
+    <p>【订单状态】：{$order.status_str|default=''}</p>
+    <p>【支付状态】：{$order.paid_str|default=''}</p>
+    <p>【下单时间】：{$order.create_time_str|default=''}</p>
+    {if !empty($order['paid_time_str'])}
+    <p>【支付时间】：{$order.paid_time_str}</p>
+    {/if}
+    <p>【商品名称】：{$order.products.title|default=''}</p>
+    {if !empty($order['products']['description'])}
+    <p>【商品说明】：{$order.products.description}</p>
+    {/if}
+    {if $order['order_info_type'] == 'goods'}
+    <p>【购买数量】：{$order.products.quantity|default=0}</p>
+    <p>【商品规格】：{$order.products.sku|default=''}</p>
+    {/if}
+    <p>【订单金额】：￥{$order.paid_fee|default='0.00'}</p>
+    {if !empty($order['remark'])}
+    <p>【订单备注】：{$order.remark}</p>
+    {/if}
+</div>

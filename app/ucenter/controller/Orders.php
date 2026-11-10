@@ -34,7 +34,11 @@ class Orders extends Base
         $rows = input('rows', 15, 'intval');
         // rows限制在1-100之间
         $rows = min($rows, 100);
-        $status = input('status', 'all');
+        $status = input('status', 'all', 'text');
+        // 状态仅允许 all 或合法整数，避免非法值进入查询条件
+        if ($status !== 'all') {
+            $status = (string)intval($status);
+        }
         View::assign('status', $status);
         $map = [
             ['shopid', '=', $this->shopid],
@@ -80,12 +84,29 @@ class Orders extends Base
      */
     public function detail()
     {
-        $order_no = $this->params['order_no'];
-        $order_data = $this->OrdersModel->getDataByOrderNo($order_no);
+        $order_no = input('order_no', '', 'text');
+        $id = input('id', 0, 'intval');
+
+        // 仅允许查询当前店铺下当前用户自己的订单
+        $map = [
+            ['shopid', '=', $this->shopid],
+            ['uid', '=', get_uid()],
+        ];
+        if ($order_no !== '') {
+            $map[] = ['order_no', '=', $order_no];
+        } elseif ($id) {
+            $map[] = ['id', '=', $id];
+        } else {
+            return $this->error('参数错误');
+        }
+
+        $order_data = $this->OrdersModel->getDataByMap($map);
+        if (empty($order_data)) {
+            return $this->error('订单不存在');
+        }
         $order_data = $this->OrdersLogic->formatData($order_data);
 
-        // pc端商品路径
-        $return_url = url($order_data['app'] . '/' . $order_data['products']['link']['url'], $order_data['products']['link']['param']);
+        View::assign('order', $order_data);
         // 设置菜单识别TAB
         View::assign('tab', 'orders');
         $this->setTitle('我的订单');

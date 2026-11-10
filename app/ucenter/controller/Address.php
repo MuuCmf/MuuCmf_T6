@@ -59,8 +59,16 @@ class Address extends Base
 
         $data = [];
         if(!empty($id)){
-            $data = $this->AddressModel->getDataById($id);
-            $data = $this->AddressLogic->formatData($data);
+            // 仅允许编辑当前店铺下当前用户自己的地址
+            $data = $this->AddressModel->getDataByMap([
+                ['id', '=', $id],
+                ['shopid', '=', $this->shopid],
+                ['uid', '=', get_uid()],
+            ]);
+            $data = $data ? $this->AddressLogic->formatData($data->toArray()) : [];
+            if (empty($data)) {
+                return $this->error('地址不存在');
+            }
         }
         View::assign('data',$data);
 

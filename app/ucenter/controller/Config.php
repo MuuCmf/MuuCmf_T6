@@ -11,24 +11,15 @@ use think\exception\ValidateException;
 use app\common\model\Attachment;
 use app\common\model\Verify;
 use app\common\model\Member;
-use app\common\model\ScoreType;
-use app\common\model\ScoreLog;
 use app\common\model\MemberAuthentication;
 use app\common\validate\Authentication as AuthenticationValidate;
+use app\ucenter\validate\Member as MemberValidate;
 
 class Config extends Base
 {
     protected $middleware = [
         'app\\common\\middleware\\CheckAuth',
     ];
-
-    public function __construct()
-    {
-        parent::__construct();
-
-        $user = query_user(get_uid());
-        View::assign('user', $user);
-    }
 
     /**
      * 用户中心
@@ -45,6 +36,39 @@ class Config extends Base
         $this->setTitle('基本信息');
 
         return View::fetch();
+    }
+
+    /**
+     * 保存用户名
+     */
+    public function saveUsername()
+    {
+        if (!request()->isPost()) {
+            return $this->error('请求方式错误');
+        }
+
+        $username = (string)input('post.username', '', 'text');
+        if ($username === '') {
+            return $this->error('用户名不能为空');
+        }
+
+        try {
+            validate(MemberValidate::class)->scene('saveUsername')->check([
+                'username' => $username,
+            ]);
+        } catch (ValidateException $e) {
+            return $this->error($e->getError());
+        }
+
+        $res = (new Member)->edit([
+            'uid' => get_uid(),
+            'username' => $username,
+        ]);
+        if ($res) {
+            return $this->success('用户名修改成功');
+        }
+
+        return $this->error('用户名修改失败，请稍后再试');
     }
 
     /**
@@ -80,72 +104,6 @@ class Config extends Base
         View::assign('type', $aTag);
 
         return View::fetch();
-    }
-
-    /**
-     * 绑定用户手机或邮箱(即将废弃)
-     */
-    public function account()
-    {
-        if (request()->isPost()) {
-            $account = input('account', '', 'text'); //账号
-            $type = input('type', '', 'text'); //账号类型
-            $verify = input('verify', '', 'text');
-            $type_str = $type == 'mobile' ? '手机号' : 'email';
-
-            if (empty($account)) {
-                return $this->error($type_str . '不能为空');
-            }
-
-            if (empty($verify)) {
-                return $this->error('验证码不能为空');
-            }
-
-            if (!in_array($type, ['mobile', 'email'])) {
-                return $this->error('账号类型错误');
-            }
-
-            // 验证手机号码唯一性
-            $has_map = [
-                ['shopid', '=', $this->shopid],
-            ];
-            if ($type == 'mobile') {
-                $has_map[] = ['mobile', '=', $account];
-            }
-            if ($type == 'email') {
-                $has_map[] = ['email', '=', $account];
-            }
-            $has_account = Db::name('Member')->where($has_map)->find();
-
-            if ($has_account) {
-                return $this->error($type_str . '已绑定其他用户');
-            }
-
-            // 验证验证码
-            if (($type == 'mobile') || $type == 'email') {
-                $verifyModel = new Verify();
-                if (!$verifyModel->checkVerify($account, $type, $verify)) {
-                    return $this->error('验证码错误');
-                }
-            }
-            if ($type == 'mobile') {
-                $data = [
-                    'mobile' => $account,
-                ];
-            }
-            if ($type == 'email') {
-                $data = [
-                    'email' => $account,
-                ];
-            }
-
-            $res = Db::name('Member')->where(['uid' => get_uid()])->update($data);
-            if ($res) {
-                return $this->success('保存成功');
-            } else {
-                return $this->error('保存失败');
-            }
-        }
     }
 
     /**
@@ -326,79 +284,6 @@ class Config extends Base
     }
 
     /**
-     * 我的积分
-     * @return [type] [description]
-     */
-    public function score()
-    {
-        $scoreTypeModel = new ScoreType();
-        // 用户积分类型列表
-        $scores = $scoreTypeModel->getTypeList(['status' => 1]);
-        foreach ($scores as &$v) {
-            $v['value'] = $scoreTypeModel->getUserScore(is_login(), $v['id']);
-        }
-        unset($v);
-        View::assign('scores', $scores);
-
-        // 获取积分日志列表
-        $scoreLogModel = new ScoreLog();
-        $lists = $scoreLogModel->getListByPage([
-            ['uid', '=', get_uid()],
-        ], 'create_time desc', '*', 10);
-        $pager = $lists->render();
-        $lists = $lists->toArray();
-        foreach ($lists['data'] as &$v) {
-            $type = $scoreTypeModel->getType(['id' => $v['type']])->toArray();
-            $v['type'] = $type;
-            if (!empty($v['create_time'])) {
-                $v['create_time_str'] = time_format($v['create_time']);
-                $v['create_time_friendly_str'] = friendly_date($v['create_time']);
-            }
-        }
-        unset($v);
-        View::assign('pager', $pager);
-        View::assign('lists', $lists);
-
-        // 设置页面TITLE
-        $this->setTitle('我的积分');
-        View::assign('tab', 'score');
-        // 输出模板
-        return View::fetch();
-    }
-
-    //积分规则
-    public function scorerule()
-    {
-        View::assign('tab', 'scorerule');
-        $this->setTitle('积分规则');
-        return View::fetch();
-    }
-
-    /**
-     * 积分等级
-     */
-    public function score_estate()
-    {
-        $scoreModel = new ScoreType();
-
-        $scores = $scoreModel->getTypeList(['status' => 1]);
-        foreach ($scores as &$v) {
-            $v['value'] = $scoreModel->getUserScore(is_login(), $v['id']);
-        }
-        unset($v);
-        View::assign('scores', $scores);
-
-        $level = config('system.USER_LEVEL');
-        View::assign('level', $level);
-
-        View::assign('tab', 'score_estate');
-        // 设置页面title
-        $this->setTitle('积分等级');
-        // 输出模板
-        return View::fetch();
-    }
-
-    /**
      * 绑定微信账号
      */
     public function wechat()
@@ -455,6 +340,10 @@ class Config extends Base
      */
     public function unbind()
     {
+        if (!request()->isPost()) {
+            return $this->error('请求方式错误');
+        }
+
         $map[] = ['uid', '=', get_uid()];
         $map[] = ['type', '=',  'weixin_h5'];
         $res = (new MemberSync())->where($map)->delete();

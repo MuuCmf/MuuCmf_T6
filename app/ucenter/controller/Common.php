@@ -6,6 +6,7 @@ use think\facade\Db;
 use think\facade\View;
 use think\facade\Request;
 use app\common\model\Member as CommonMember;
+use app\common\model\MemberSync;
 use app\ucenter\validate\Member;
 use think\exception\ValidateException;
 use thans\jwt\facade\JWTAuth;
@@ -346,12 +347,30 @@ class Common extends Base
      */
     public function logoff()
     {
+        if (!request()->isPost()) {
+            return $this->error('请求方式错误');
+        }
+
         $uid = get_uid();
         if (!$uid) {
             return $this->error('需要登录', 'login');
         }
+
+        // 二次确认：校验登录密码
+        $password = (string)input('post.password', '', 'text');
+        if ($password === '') {
+            return $this->error('请输入登录密码');
+        }
+        $user = (new CommonMember)->where(['uid' => $uid])->find();
+        if (empty($user) || user_md5($password, config('auth.auth_key')) !== $user['password']) {
+            return $this->error('密码错误');
+        }
+
         $commonMemberModel = new CommonMember;
         $commonMemberModel->logout($uid);
+
+        // 清理第三方绑定，避免注销后仍可通过微信等第三方登录
+        (new MemberSync())->where(['uid' => $uid])->delete();
 
         $res = $commonMemberModel->where(['uid' => $uid])->update(['status' => -1]);
         if (!$res) {

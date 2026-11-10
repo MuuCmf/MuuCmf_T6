@@ -28,8 +28,9 @@ class Score extends Base
     public function index()
     {
         $scoreTypeModel = new ScoreType();
-        // 用户积分类型列表
-        $scores = $scoreTypeModel->getTypeList(['status'=>1]);
+        // 用户积分类型列表（按ID索引，供日志类型映射复用）
+        $type_map = $scoreTypeModel->getTypeListByIndex(['status' => 1]);
+        $scores = array_values($type_map);
         foreach ($scores as &$v) {
             $v['value'] = $scoreTypeModel->getUserScore(is_login(), $v['id']);
         }
@@ -44,8 +45,7 @@ class Score extends Base
         $pager = $lists->render();
         $lists = $lists->toArray();
         foreach($lists['data'] as &$v){
-            $type = $scoreTypeModel->getType(['id' => $v['type']])->toArray();
-            $v['type'] = $type;
+            $v['type'] = $type_map[$v['type']] ?? [];
             if(!empty($v['create_time'])){
                 $v['create_time_str'] = time_format($v['create_time']);
                 $v['create_time_friendly_str'] = friendly_date($v['create_time']);

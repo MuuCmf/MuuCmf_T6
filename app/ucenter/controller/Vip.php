@@ -140,6 +140,11 @@ class Vip extends Base
         $info_type = input('info_type', '', 'text');
         View::assign('info_type', $info_type);
         $cycle = input('cycle', 'month', 'text');
+        // 周期白名单，避免非法键取不到价格
+        $allow_cycles = ['month', 'quarter', 'year', 'year_two', 'year_three', 'year_five', 'forever'];
+        if (!in_array($cycle, $allow_cycles, true)) {
+            $cycle = 'month';
+        }
         View::assign('cycle', $cycle);
 
         $data = $this->VipCardModel->getDataById($info_id);

@@ -17,6 +17,7 @@ class Member extends Validate
 
     //验证不符返回msg
     protected $message  =   [
+        'username.checkUsername'    => '用户名格式错误',
         'username.unique'           => '用户名已存在',
         'email.email'               => '邮箱格式错误',
         'email.unique'              => '邮箱已经存在',
@@ -40,6 +41,12 @@ class Member extends Validate
             ->append('password', 'require|length:6,32')
             ->append('confirm_password', 'require|length:6,32|confirm:password');
     }    
+
+    // 修改用户名验证场景定义
+    public function sceneSaveUsername()
+    {
+        return $this->only(['username']);
+    }
 
     // 自定义验证规则
     /**
@@ -65,12 +72,12 @@ class Member extends Validate
     {
         //如果用户名中有空格，不允许注册
         if (strpos($value, ' ') !== false) {
-            return false;
+            return '用户名中不能包含空格';
         }
         preg_match("/^[a-zA-Z0-9_]{0,64}$/", $value, $result);
 
         if (!$result) {
-            return -12;
+            return '用户名只能由字母、数字和下划线组成';
         }
         return true;
     }
