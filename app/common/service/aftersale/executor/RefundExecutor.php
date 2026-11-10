@@ -226,23 +226,7 @@ class RefundExecutor
             }
 
             // 退款到账通知：售后中心是唯一触发点，biz_key 保证同一次退款只通知一次
-            try {
-                $uid = (int)($fresh['uid'] ?? 0);
-                if ($uid > 0) {
-                    MessageCenter::send('order.refund_success', [
-                        'type'  => 'uids',
-                        'value' => [$uid],
-                    ], [
-                        'order_no' => $orderNo,
-                        'amount'   => sprintf('%.2f', $amount / 100),
-                    ], [
-                        'shopid'  => (int)($fresh['shopid'] ?? 0),
-                        'biz_key' => 'refund_' . (string)$refund['refund_no'],
-                    ]);
-                }
-            } catch (\Throwable $e) {
-                Log::warning('[售后] 退款到账通知发送失败，order_no=' . $orderNo . '：' . $e->getMessage());
-            }
+            $this->notifyRefundSuccess($fresh, $amount, (string)$refund['refund_no']);
 
             Log::info('[售后] 退款完成，order_no=' . $orderNo . '，refund_to=' . $refundTo . '，refund_no=' . $finalRefundNo);
 
@@ -320,6 +304,8 @@ class RefundExecutor
         $policy = PolicyRegistry::resolve((string)($order['app'] ?? ''));
         $amount = intval($completed['price'] ?? ($order['paid_fee'] ?? 0));
         $businessRefundNo = self::buildRefundNo((string)($order['app'] ?? ''), $orderNo);
+        // 仅当本次确实把订单收敛为「已退款」时才发到账通知，避免 paid=0 等异常状态误发
+        $converged = false;
         Db::startTrans();
         try {
             $affected = Db::name('orders')
@@ -337,6 +323,7 @@ class RefundExecutor
                     'update_time'   => time(),
                 ]);
             if (intval($affected) === 1) {
+                $converged = true;
                 (new Refund())->recordCompleted($businessRefundNo, $order, $refund, $amount, $refundTo, [
                     'channel' => (string)($completed['channel'] ?? ''),
                     'flow_no' => $flowNo,
@@ -373,12 +360,49 @@ class RefundExecutor
             Log::warning('[售后] 已完成流水收尾事件广播失败，order_no=' . $orderNo . '：' . $e->getMessage());
         }
 
+        // 旧链路已打款但订单未收敛时同样补发到账通知；与 execute() 复用同一发送实现和 biz_key，
+        // 因此同一次退款无论由哪条路径收尾，消息中心都只会产生一条到账记录
+        if ($converged) {
+            $this->notifyRefundSuccess($order, $amount, $businessRefundNo, '（已完成流水收尾）');
+        }
+
         Log::info('[售后] 按已完成流水收尾，order_no=' . $orderNo . '，refund_no=' . $flowNo);
         return [
             'refund_to'     => $refundTo,
             'refund_no'     => $flowNo,
             'refund_result' => $refundResultJson,
         ];
+    }
+
+    /**
+     * 退款到账通知（售后中心唯一发送实现）
+     *
+     * execute() 与 convergeCompleted() 均调用本方法。$refundNo 统一取
+     * buildRefundNo(app, order_no) 派生的业务退款单号，保证两条路径的 biz_key 一致；
+     * 渠道不显式指定，由 order.refund_success 模板与消息中心决定；
+     * 异常只记日志，绝不影响已完成的退款。
+     */
+    private function notifyRefundSuccess(array $order, int $amount, string $refundNo, string $scene = ''): void
+    {
+        $uid = (int)($order['uid'] ?? 0);
+        $orderNo = (string)($order['order_no'] ?? '');
+        if ($uid <= 0 || $orderNo === '' || $refundNo === '') {
+            return;
+        }
+        try {
+            MessageCenter::send('order.refund_success', [
+                'type'  => 'uids',
+                'value' => [$uid],
+            ], [
+                'order_no' => $orderNo,
+                'amount'   => sprintf('%.2f', $amount / 100),
+            ], [
+                'shopid'  => (int)($order['shopid'] ?? 0),
+                'biz_key' => 'refund_' . $refundNo,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('[售后] 退款到账通知发送失败' . $scene . '，order_no=' . $orderNo . '：' . $e->getMessage());
+        }
     }
 
     /**
