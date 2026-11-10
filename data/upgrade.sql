@@ -694,9 +694,44 @@ INSERT INTO `muucmf_menu` (`id`, `title`, `pid`, `sort`, `url`, `hide`, `type`, 
 
 -- ---------- 11. 历史微信模板消息配置列下线（独立脚本，不自动执行） ----------
 -- wechat_config / wechat_mp_config / douyin_mp_config 的 tmplmsg 列已在代码中停止读写，
--- install.sql 也已移除列定义。微信渠道此前未启用，历史模板 ID 无需回填，也无需访问
--- 「消息中心」后台触发模板种子补齐 wechat_oa / wechat_mp 渠道行。
--- 存量库的 DROP 不可逆，备份后单独执行：
+-- install.sql 也已移除列定义。历史模板 ID 不做回填；如个别店铺已建渠道行且希望保留，
+-- 可用下方可选搬运脚本。模板 ID 以 message_template_channel 为唯一来源。
+-- 【DROP 前置条件】node_server 的 generated 模型 / WechatConfigRepository /
+-- WechatController / src/data/install.sql 仍声明并读写这三列，且 .env 使用同名 muucmf 库。
+-- 执行 DROP 前必须确认该服务是否部署并指向同一库；若在用须先改造 Node 侧去掉字段依赖，
+-- 否则 Sequelize 会报 Unknown column 'tmplmsg'。
+-- 存量库的 DROP 不可逆，观察一个版本、备份后单独执行：
 --   data/upgrade_drop_legacy_tmplmsg.sql          （幂等 DROP）
 -- 可选：php tests/legacy_tmplmsg_migrate.php --apply（仅搬运已存在渠道行的历史模板 ID）
 -- 未执行前保留列不影响功能；请勿把 DROP 语句并入本文件自动执行。
+
+-- ---------- 12. 会员第三方授权记录唯一约束与 unionid 归因索引 ----------
+-- 说明：
+-- 1) 老库若缺 unionid 列，必须先手工执行下方被注释的 ADD COLUMN，再执行本节其余语句；
+--    MySQL 8.0 之前不支持 ADD COLUMN IF NOT EXISTS，列已存在时会报 Duplicate column name。
+-- 2) 建唯一索引前必须先执行去重 DELETE，执行前请备份 muucmf_member_sync。
+-- 3) MySQL 8.0 之前不支持 ADD INDEX IF NOT EXISTS，重复执行报 Duplicate key name 可忽略。
+-- 4) unionid 不加唯一索引：同一 uid 下公众号 / 小程序有多条记录且 unionid 相同。
+-- 5) 历史 weixin_mp 与 weixin_app 并存，不改写历史 type，解析层按 type 分组兼容。
+
+-- ALTER TABLE `muucmf_member_sync`
+--   ADD COLUMN `unionid` varchar(64) NULL DEFAULT NULL COMMENT '三方平台ID' AFTER `openid`;
+
+DELETE s1 FROM `muucmf_member_sync` s1
+JOIN `muucmf_member_sync` s2
+  ON s1.shopid = s2.shopid
+ AND s1.type = s2.type
+ AND s1.openid = s2.openid
+ AND s1.id > s2.id;
+
+ALTER TABLE `muucmf_member_sync`
+  ADD UNIQUE KEY `uk_shop_type_openid` (`shopid`, `type`, `openid`),
+  ADD INDEX `idx_shop_unionid` (`shopid`, `unionid`);
+
+-- 巡检：同一店铺、同一微信开放平台下 unionid 已分裂到多个 uid 的存量账号，
+-- 不做自动合并（会丢订单 / 余额），由后台人工确认主账号后处理。
+-- SELECT shopid, unionid, COUNT(DISTINCT uid) AS uid_cnt, GROUP_CONCAT(DISTINCT uid) AS uids
+-- FROM muucmf_member_sync
+-- WHERE unionid IS NOT NULL AND unionid <> ''
+--   AND type IN ('weixin_h5', 'weixin_mp', 'weixin_app')
+-- GROUP BY shopid, unionid HAVING uid_cnt > 1;

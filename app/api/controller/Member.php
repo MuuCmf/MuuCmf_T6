@@ -6,6 +6,7 @@ use app\common\controller\Api;
 use think\facade\Db;
 use app\common\model\Member as CommonMember;
 use app\common\model\MemberSync;
+use app\common\model\QrcodeLogin;
 use think\exception\ValidateException;
 use thans\jwt\facade\JWTAuth;
 use app\common\model\Verify;
@@ -554,31 +555,42 @@ class Member extends Api
     public function wechat()
     {
         if (request()->isPost()) {
-            //绑定用户信息
-            $params = input('param.');
+            // 前端只传 scene_key，openid / unionid 由微信回调写入的扫码会话提供，
+            // 不再信任前端提交的身份标识，避免绑定他人微信
+            $scene_key = trim((string)input('param.scene_key', ''));
+            $scan = (new QrcodeLogin())->getScanIdentity($scene_key);
+            if (!$scan) {
+                return $this->error('二维码已失效，请重新扫码');
+            }
+            $openid = $scan['openid'];
+            $unionid = $scan['unionid'];
+            $uid = get_uid();
+
             //是否绑定过其他账号
             $bind_map = [];
-            $bind_map[] = ['openid', '=', $params['openid']];
+            $bind_map[] = ['openid', '=', $openid];
             $bind_map[] = ['type', '=', 'weixin_h5'];
-            // 查询是否已绑定
             $has_bind = boolval((new MemberSync())->where($bind_map)->count());
             if ($has_bind) return $this->error('当前微信已绑定了其他账号');
-            // 同一开放平台账号（unionid）已绑定到其他会员时拒绝，避免一个微信对应多个账号
-            $unionid = trim((string)($params['unionid'] ?? ''));
+            // 同一开放平台账号（unionid）已绑定到其他会员时拒绝，按微信 type 分组查询，
+            // 避免抖音 / 企微的 unionid 碰撞造成误判
             if ($unionid !== '' && (new MemberSync())->where([
                 ['unionid', '=', $unionid],
-                ['uid', '<>', get_uid()],
+                ['type', 'in', ['weixin_h5', 'weixin_mp', 'weixin_app']],
+                ['uid', '<>', $uid],
             ])->count()) {
-                return $this->error('当前微信已绑定了其他账号');
+                return $this->error('当前微信已绑定了其他账号，请先联系管理员合并账号');
             }
             $data = [
-                'uid'     => get_uid(),
-                'openid'  => $params['openid'],
+                'uid'     => $uid,
+                'openid'  => $openid,
                 'unionid' => $unionid,
                 'type'    => 'weixin_h5'
             ];
             $res = (new MemberSync())->edit($data);
             if ($res) {
+                // 扫码会话一次性使用，防止同一二维码被重复绑定到多个账号
+                (new QrcodeLogin())->where('scene_key', $scene_key)->delete();
                 return $this->success('绑定成功');
             }
             return $this->error('绑定失败，请稍后再试！');

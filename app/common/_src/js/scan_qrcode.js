@@ -44,7 +44,7 @@ var scan_qrcode = {
     login(){
         let that = this;
         
-        $.post( `${this.apiHost}/api/wechat/scan_login`,{openid:this.userInfo.openid,scene_key:this.sceneKey},function (data) {
+        $.post( `${this.apiHost}/api/wechat/scan_login`,{scene_key:this.sceneKey},function (data) {
             if (data.code == 200) {
                 toast.success(data.msg);
                 if (data.data) {

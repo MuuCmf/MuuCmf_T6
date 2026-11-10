@@ -209,20 +209,13 @@ class WechatOfficialAccount extends Api
     public function scanLogin()
     {
         if (request()->isPost()) {
-            $openid = input('post.openid');
-            $scene_key = input('post.scene_key');
-
-            // 扫码会话绑定校验：提交的 openid 必须与 scene_key 对应的扫码用户一致，
-            // 防止攻击者伪造他人 openid 冒用登录
-            $qrcode_login = (new QrcodeLogin())->where('scene_key', $scene_key)->find();
-            if (!$qrcode_login) {
+            $scene_key = input('post.scene_key', '', 'trim');
+            // openid / unionid 取自微信回调写入的扫码会话，不采信前端传参，避免伪造他人身份
+            $scan = (new QrcodeLogin())->getScanIdentity((string)$scene_key);
+            if (!$scan) {
                 return $this->error('二维码已失效，请重新扫码');
             }
-            $scan_metadata = json_decode($qrcode_login['metadata'], true);
-            $trusted_openid = $scan_metadata['openid'] ?? '';
-            if ($trusted_openid === '' || $trusted_openid !== $openid) {
-                return $this->error('扫码信息不匹配，请重新扫码');
-            }
+            $trusted_openid = $scan['openid'];
 
             $map = [
                 ['openid', '=', $trusted_openid],
@@ -243,26 +236,16 @@ class WechatOfficialAccount extends Api
                 MemberSync::where($map)->delete();
             }
 
-            //初次扫码注册（使用已通过绑定校验的扫码信息，openid 为微信回调写入的可信值）
+            //初次扫码注册（openid / unionid 均为微信回调写入的可信值）
             if (empty($uid)) {
-                $oauth_info = $scan_metadata;
-                if (!$oauth_info) {
-                    return $this->error('没有授权信息');
-                }
-                //开放平台ID
-                $unionid = '';
-                if (isset($oauth_info['unionid'])) {
-                    $unionid = $oauth_info['unionid'];
-                }
-                //处理用户数据
                 $data = [
-                    'openid'    =>  $oauth_info['openid'],
-                    'unionid'   =>  $unionid,
+                    'openid'    =>  $trusted_openid,
+                    'unionid'   =>  $scan['unionid'],
                     'oauth_type' =>  'weixin_h5',
                     'shopid'    =>  $this->shopid,
                     'nickname'  =>  rand_nickname(config('system.USER_NICKNAME_PREFIX')),
-                    'avatar' => !empty($oauth_info['headimgurl']) ? $oauth_info['headimgurl'] : '',
-                    'sex' => !empty($oauth_info['sex']) ? $oauth_info['sex'] : 0,
+                    'avatar'    =>  $scan['headimgurl'],
+                    'sex'       =>  $scan['sex'],
                 ];
                 $user = $MemberModel->oauth($this->shopid, $data);
                 $MemberModel->updateLogin($user['uid']);
@@ -294,8 +277,10 @@ class WechatOfficialAccount extends Api
         ]);
         if (!empty($data)) {
             $data = json_decode($data['metadata'], true);
-            // 信息脱敏：仅返回前端展示所需的昵称/头像，不暴露 openid/unionid 等敏感标识
+            // 信息脱敏：仅返回前端展示所需的昵称/头像与前端本就持有的 scene_key，
+            // 不暴露 openid/unionid 等敏感标识；绑定/登录接口凭 scene_key 由服务端读取身份
             $safe = [
+                'scene_key' => $scene_key,
                 'nickname' => $data['nickname'] ?? '',
                 'headimgurl' => $data['headimgurl'] ?? '',
                 'sex' => $data['sex'] ?? 0,

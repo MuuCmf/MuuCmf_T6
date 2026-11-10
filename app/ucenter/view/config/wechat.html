@@ -109,9 +109,8 @@
             scan_qrcode.callback = function(){
                 // 显示扫码完成
                 $('.bind .qrcode .blur').removeClass('hidden');
-                console.log(scan_qrcode.userInfo)
-                // 绑定用户
-                $.post("{:url('ucenter/Config/wechat')}", scan_qrcode.userInfo, function (res) {
+                // 绑定用户：只回传 scene_key，身份标识由服务端从扫码会话读取
+                $.post("{:url('ucenter/Config/wechat')}", {scene_key: scan_qrcode.userInfo.scene_key}, function (res) {
                     handle_ajax(res);
                 })
             }

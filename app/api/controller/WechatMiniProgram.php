@@ -68,28 +68,29 @@ class WechatMiniProgram extends Api
         if (!isset($result['openid'])) {
             return $this->error($result['errmsg']);
         }
-        //查询是否注册过
-        $map = [];
-        $map[] = ['openid', '=', $result['openid']];
-        $map[] = ['type', '=', 'weixin_mp'];
-        $user = $this->MemberSyncModel->getDataByMap($map);
-        if (!empty($user)) {
-            $user = query_user($user['uid'], ['uid', 'nickname', 'avatar', 'email', 'mobile', 'realname', 'sex', 'score']);
-            // 仅正常状态（status=1）用户允许静默登录；已删除(-1)/禁用(0)一律拒绝，避免删除后仍自动签发 token
-            if (is_array($user) && isset($user['status']) && (int)$user['status'] === 1) {
-                $this->MemberModel->updateLogin($user['uid']);
-                $token = JWTAuth::builder(['uid' => $user['uid']]);
-                $token = 'Bearer ' . $token;
-                $res = [
-                    'token'     => $token
-                ];
-                return $this->success('success', $res);
-            } else {
-                return $this->error('error', '用户已禁用或删除');
-            }
-        } else {
-            return $this->error('error', '没有查询到用户信息');
+        // 统一走会员授权解析：命中 openid 时回填 unionid、命中 unionid 时归到其它端已注册的会员，
+        // 都未命中才以默认资料建号（静默登录不再要求用户先走授权登录）
+        $data = [
+            'unionid'    => $result['unionid'] ?? '',
+            'openid'     => $result['openid'],
+            'oauth_type' => 'weixin_mp',
+            'nickname'   => '',
+            'avatar'     => '',
+            'sex'        => 0,
+        ];
+        $member = $this->MemberModel->oauth($this->shopid, $data);
+        $user = query_user($member['uid'], ['uid', 'nickname', 'avatar', 'email', 'mobile', 'realname', 'sex', 'score']);
+        // 仅正常状态（status=1）用户允许静默登录；已删除(-1)/禁用(0)一律拒绝，避免删除后仍自动签发 token
+        if (is_array($user) && isset($user['status']) && (int)$user['status'] === 1) {
+            $this->MemberModel->updateLogin($user['uid']);
+            $token = JWTAuth::builder(['uid' => $user['uid']]);
+            $token = 'Bearer ' . $token;
+            $res = [
+                'token'     => $token
+            ];
+            return $this->success('success', $res);
         }
+        return $this->error('error', '用户已禁用或删除');
     }
 
     /**
@@ -102,65 +103,41 @@ class WechatMiniProgram extends Api
         if (!isset($oauth['openid'])) {
             return $this->error($oauth['errmsg']);
         }
-        //查询是否注册过
-        $map[] = ['openid', '=', $oauth['openid']];
-        $map[] = ['type', '=', 'weixin_mp'];
-        $user = $this->MemberSyncModel->getDataByMap($map);
-        // 已登录过
-        if (!empty($user)) {
-            $existing = query_user($user['uid'], ['uid', 'nickname', 'avatar', 'email', 'mobile', 'realname', 'sex', 'score']);
-            if (is_array($existing) && isset($existing['status'])) {
-                if ((int)$existing['status'] === 0) {
-                    // 禁用账号不允许登录
-                    return $this->error('用户已被禁用');
-                } elseif ((int)$existing['status'] === 1) {
-                    $user = $existing;
-                    $this->MemberModel->updateLogin($user['uid']);
-                } else {
-                    // 已删除账号（status=-1）不复用旧账号，继续走下方创建流程，允许重新注册
-                    $user = null;
-                }
-            } else {
-                $user = null;
+        // encryptedData 仅用于补全昵称头像：小程序端已改用 chooseAvatar + 昵称输入，
+        // 且 getUserProfile 自基础库 2.27.1 起已回收、可能返回空加密串，
+        // 因此解密失败不再拦截登录，昵称头像由登录后的资料提交接口补齐
+        $result = null;
+        if (!empty($params['encrypted_data']) && !empty($params['iv'])) {
+            try {
+                $result = MiniProgramServer::decryptData($oauth['session_key'], $params['iv'], $params['encrypted_data']);
+            } catch (\Throwable $e) {
+                $result = null;
             }
         }
-        if (empty($user)) {
-            // 未登录过 / 已删除，创建用户
-            // encryptedData 仅用于补全昵称头像：小程序端已改用 chooseAvatar + 昵称输入，
-            // 且 getUserProfile 自基础库 2.27.1 起已回收、可能返回空加密串，
-            // 因此解密失败不再拦截登录，直接以 openid 建号，昵称头像由登录后的资料提交接口补齐
-            $result = null;
-            if (!empty($params['encrypted_data']) && !empty($params['iv'])) {
-                try {
-                    $result = MiniProgramServer::decryptData($oauth['session_key'], $params['iv'], $params['encrypted_data']);
-                } catch (\Throwable $e) {
-                    $result = null;
-                }
-            }
-            $decrypted = is_array($result) && isset($result['openId'], $result['nickName']);
-            if ($decrypted) {
-                $nickname = $result['nickName'];
-                if ($nickname == '微信用户') {
-                    $nickname = rand_nickname(config('system.USER_NICKNAME_PREFIX'));
-                }
-                $avatar = $result['avatarUrl'] ?? '';
-                $sex = $result['gender'] ?? 0;
-            } else {
+        $decrypted = is_array($result) && isset($result['openId'], $result['nickName']);
+        if ($decrypted) {
+            $nickname = $result['nickName'];
+            if ($nickname == '微信用户') {
                 $nickname = rand_nickname(config('system.USER_NICKNAME_PREFIX'));
-                $avatar = '';
-                $sex = 0;
             }
-            $data = [
-                'unionid'   => $oauth['unionid'] ?? '',
-                'openid'    => $oauth['openid'],
-                'nickname'  => $nickname,
-                'avatar'    => $avatar,
-                'sex'       => $sex,
-                'shopid'    => $params['shopid'],
-                'oauth_type' => 'weixin_mp'
-            ];
-            $user = $this->MemberModel->oauth($this->shopid, $data);
+            $avatar = $result['avatarUrl'] ?? '';
+            $sex = $result['gender'] ?? 0;
+        } else {
+            $nickname = rand_nickname(config('system.USER_NICKNAME_PREFIX'));
+            $avatar = '';
+            $sex = 0;
         }
+        $data = [
+            'unionid'   => $oauth['unionid'] ?? '',
+            'openid'    => $oauth['openid'],
+            'nickname'  => $nickname,
+            'avatar'    => $avatar,
+            'sex'       => $sex,
+            'shopid'    => $this->shopid,
+            'oauth_type' => 'weixin_mp'
+        ];
+        // 统一走会员授权解析：已有记录回填 unionid、跨端按 unionid 归因，避免各端各自建号
+        $user = $this->MemberModel->oauth($this->shopid, $data);
 
         // 签发 token 前再次校验用户状态，避免已删除/禁用账号拿到登录态
         if ($user && isset($user['status']) && (int)$user['status'] === 1) {

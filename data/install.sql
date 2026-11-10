@@ -956,7 +956,9 @@ CREATE TABLE IF NOT EXISTS `muucmf_member_sync` (
   `type` varchar(40) NOT NULL COMMENT 'weixin_h5微信公众号 weixin_app微信小程序',
   `create_time` int(11) UNSIGNED NOT NULL COMMENT '创建时间',
   `update_time` int(11) UNSIGNED NOT NULL COMMENT '更新时间',
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_shop_type_openid` (`shopid`, `type`, `openid`),
+  KEY `idx_shop_unionid` (`shopid`, `unionid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='会员同步';
 
 -- --------------------------------------------------------

@@ -5,6 +5,7 @@ namespace app\common\model;
 use think\Exception;
 use think\facade\Db;
 use think\facade\Config;
+use think\facade\Log;
 use app\common\model\AuthGroup;
 use app\common\model\ActionLog;
 use app\common\model\ScoreType;
@@ -820,11 +821,40 @@ class Member extends Base
     }
 
     /**
+     * 同一开放平台下可共用 unionid 的 type 分组
+     * 微信开放平台：公众号 / 小程序（含历史 weixin_app）/ APP 互通；
+     * 抖音、企业微信各自独立，避免不同平台 unionid 碰撞串号。
+     */
+    private function oauthUnionScope(string $oauthType): array
+    {
+        if (strpos($oauthType, 'douyin') === 0) {
+            return ['douyin_mp', 'douyin_app'];
+        }
+        if (strpos($oauthType, 'weixin_work') === 0) {
+            return ['weixin_work'];
+        }
+        return ['weixin_h5', 'weixin_mp', 'weixin_app'];
+    }
+
+    /**
+     * 判断是否为唯一索引冲突（用于并发建号重试）
+     */
+    private function isDuplicateKeyError(\Throwable $e): bool
+    {
+        $message = $e->getMessage();
+        return strpos($message, 'Duplicate entry') !== false
+            || strpos($message, '1062') !== false;
+    }
+
+    /**
      * 第三方平台授权登录
      */
     public function oauth(int $shopid, array $data)
     {
         $syncModel = new MemberSync();
+        $oauthType = (string)($data['oauth_type'] ?? '');
+        $scope = $this->oauthUnionScope($oauthType);
+        $unionid = trim((string)($data['unionid'] ?? ''));
         // 授权记录按店铺隔离；历史数据存在 shopid=0 的存量记录，精确匹配失败时回退兼容
         $findSync = function (array $map) use ($syncModel, $shopid) {
             $sync = $syncModel->where(array_merge($map, [['shopid', '=', $shopid]]))->find();
@@ -834,74 +864,94 @@ class Member extends Base
 
             return $syncModel->where(array_merge($map, [['shopid', '=', 0]]))->find();
         };
-        //是否已有授权信息
-        $sync = $findSync([['openid', '=', $data['openid']]]);
-        // 初始化授权记录id
-        $sync_id = 0;
-        if ($sync) {
-            $sync_id = $sync['id'];
-            $uid = $sync['uid'];
-            $has_member = $this->where([
+        // 会员仍可用（正常 / 待审核）才复用，删除与禁用不复用
+        $findMember = function ($uid) use ($shopid) {
+            return $this->where([
                 ['uid', '=', $uid],
                 ['shopid', '=', $shopid],
                 ['status', 'in', [0, 1]]
             ])->find();
+        };
 
-            if ($has_member) {
-                return $has_member;
+        try {
+        Db::startTrans();
+
+        // ① 精确命中本端授权记录（按 type 分组，兼容 weixin_mp / weixin_app 历史数据）
+        $sync = $findSync([
+            ['openid', '=', $data['openid']],
+            ['type', 'in', $scope],
+        ]);
+        $sync_id = $sync ? (int)$sync['id'] : 0;
+
+        // ② 命中已有记录时回填 unionid：存量账号在启用开放平台后即可被另一端识别。
+        //    历史 unionid 无法离线回填，只能在每次登录拿到微信返回值时补齐。
+        if ($sync && $unionid !== '' && (string)($sync['unionid'] ?? '') !== $unionid) {
+            $otherOwner = $findSync([
+                ['unionid', '=', $unionid],
+                ['type', 'in', $scope],
+                ['uid', '<>', $sync['uid']],
+            ]);
+            if ($otherOwner) {
+                // 该 unionid 已分裂出两个账号，静默改绑会丢订单 / 余额，仅记录待人工合并
+                Log::write(sprintf(
+                    'member_sync unionid conflict: shopid=%d unionid=%s uid=%d other_uid=%d',
+                    $shopid, $unionid, $sync['uid'], $otherOwner['uid']
+                ), 'notice');
+            } else {
+                $syncModel->edit(['id' => $sync_id, 'unionid' => $unionid]);
             }
         }
 
-        //初始UID
-        $uid = 0;
-        // 开放平台 unionid 在公众号 / 小程序 / APP 间一致：命中说明该微信用户已在其它端注册过，
-        // 复用会员并只补建当前端的授权记录，避免公众号与小程序各自建号产生两个用户。
-        // member 按店铺隔离，复用前需校验会员归属当前店铺，避免跨店串号。
-        if (!empty($data['unionid'])) {
-            $union = $findSync([['unionid', '=', $data['unionid']]]);
-            if ($union) {
-                $union_member = $this->where([
-                    ['uid', '=', $union['uid']],
-                    ['shopid', '=', $shopid],
-                    ['status', 'in', [0, 1]]
-                ])->find();
+        // ③ 已有授权记录且会员有效 → 复用，不重复建号
+        if ($sync && ($member = $findMember($sync['uid']))) {
+            Db::commit();
+            return $member;
+        }
 
-                if ($union_member) {
-                    // 复用当前 openid 的旧记录（如原会员已删除）或新增当前端的授权记录
-                    $sync_result = $syncModel->edit([
-                        'id'      => $sync_id,
-                        'uid'     => $union['uid'],
-                        'shopid'  => $shopid,
-                        'openid'  => $data['openid'],
-                        'type'    => $data['oauth_type'],
-                        'unionid' => $data['unionid'],
-                    ]);
-                    if (!$sync_result) {
-                        throw new Exception('存入用户授权记录失败');
-                    }
-
-                    return $union_member;
+        // ④ unionid 归因：命中说明该用户已在其它端注册，复用会员并补建当前端授权记录，
+        //    一个 uid 下可挂多条 member_sync（公众号 / 小程序各一条），避免多端各自建号。
+        if ($unionid !== '') {
+            $union = $findSync([
+                ['unionid', '=', $unionid],
+                ['type', 'in', $scope],
+            ]);
+            if ($union && ($union_member = $findMember($union['uid']))) {
+                // 复用当前 openid 的旧记录（如原会员已删除）或新增当前端的授权记录
+                $sync_result = $syncModel->edit([
+                    'id'      => $sync_id,
+                    'uid'     => $union['uid'],
+                    'shopid'  => $shopid,
+                    'openid'  => $data['openid'],
+                    'type'    => $oauthType,
+                    'unionid' => $unionid,
+                ]);
+                if (!$sync_result) {
+                    throw new Exception('存入用户授权记录失败');
                 }
+
+                Db::commit();
+                return $union_member;
             }
         }
 
         // 过滤掉emoji表情符号
-        $nickname = filter_emoji($data['nickname']);
+        $nickname = filter_emoji((string)($data['nickname'] ?? ''));
         // 验证昵称
         $match = preg_match('/^(?!_|\s\')[A-Za-z0-9_|\x80-\xff\s\']+$/', $nickname);
         if (!$match) {
             $nickname = rand_nickname(Config::get('system.USER_NICKNAME_PREFIX'));
         }
+        // ⑤ 未命中 → 新建会员
         $member_data = [
             'shopid'    => $shopid,
             'nickname'  => $nickname,
             'username'  => rand_username(''),
             'password'  => user_md5('123456', Config::get('auth.auth_key')),
-            'avatar'    => $data['avatar'],
-            'sex'       => $data['sex'],
+            'avatar'    => $data['avatar'] ?? '',
+            'sex'       => $data['sex'] ?? 0,
             'status'    => 1,
             'reg_ip' => request()->ip(),
-            'reg_channel' => $data['oauth_type']
+            'reg_channel' => $oauthType
         ];
         //写入会员表
         $result = $this->save($member_data);
@@ -917,10 +967,10 @@ class Member extends Base
             'shopid'    => $shopid,
             'uid'       => $uid,
             'openid'    => $data['openid'],
-            'type'      => $data['oauth_type']
+            'type'      => $oauthType
         ];
-        if (!empty($data['unionid'])) {
-            $sync_data['unionid'] = $data['unionid'];
+        if ($unionid !== '') {
+            $sync_data['unionid'] = $unionid;
         }
 
         //存入授权记录
@@ -931,7 +981,17 @@ class Member extends Base
         $actionLog = new ActionLog();
         $actionLog->add('reg', 'member', 1, $uid);
 
+        Db::commit();
         return $this->where('uid', $uid)->find();
+        } catch (\Throwable $e) {
+            Db::rollback();
+            // 并发下被 uk_shop_type_openid 拦住：另一请求已建号，重查一次即可拿到同一 uid
+            if ($this->isDuplicateKeyError($e) && empty($data['_retry'])) {
+                $data['_retry'] = 1;
+                return $this->oauth($shopid, $data);
+            }
+            throw $e;
+        }
     }
 
     /**
