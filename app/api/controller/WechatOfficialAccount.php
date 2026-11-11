@@ -211,17 +211,25 @@ class WechatOfficialAccount extends Api
                         if (isset($message['Event']) && $message['Event'] == 'subscribe') {
                             $msg = new Media($item['media_id'], 'mpnews');
                         } else {
-                            $news = json_decode($item['material_json'], true);
-                            $news = $news['content']['news_item'][0];
-                            $items = [
-                                new NewsItem([
-                                    'title' => $news['title'],
-                                    'description' => $news['digest'],
+                            //图文素材可能包含多篇文章，逐条组装为多图文消息
+                            $material = json_decode($item['material_json'], true);
+                            $newsList = $material['content']['news_item'] ?? [];
+                            $items = [];
+                            foreach ($newsList as $news) {
+                                if (empty($news['url'])) {
+                                    continue;
+                                }
+                                $items[] = new NewsItem([
+                                    'title' => $news['title'] ?? '',
+                                    //摘要为空时回退标题，避免微信因 description 为空拒发
+                                    'description' => !empty($news['digest']) ? $news['digest'] : ($news['title'] ?? ''),
                                     'url' => $news['url'],
-                                    'image' => $news['thumb_url']
-                                ]),
-                            ];
-                            $msg = new News($items);
+                                    'image' => $news['thumb_url'] ?? '',
+                                ]);
+                            }
+                            if (!empty($items)) {
+                                $msg = new News($items);
+                            }
                         }
                         break;
                     case 'image':

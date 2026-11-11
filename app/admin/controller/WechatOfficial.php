@@ -4,6 +4,7 @@ namespace app\admin\controller;
 
 use think\Exception;
 use think\exception\ValidateException;
+use think\facade\Log;
 use app\common\model\WechatAutoReply;
 use app\common\model\WechatConfig;
 use app\admin\validate\Account as AccountValidate;
@@ -219,15 +220,27 @@ class WechatOfficial extends Admin
      */
     public function material()
     {
-        $type = input('type', 'text', 'trim');
-        $page = input('page', 1, 'intval');
-        $pageSize = input('page_size', 20, 'intval');
+        //微信素材接口仅支持 image/video/voice/news 四种类型
+        $type = input('type', 'image', 'trim');
+        if (!in_array($type, ['image', 'video', 'voice', 'news'], true)) {
+            return $this->error('素材类型不正确');
+        }
+        $page = max(1, input('page', 1, 'intval'));
+        //微信接口单次返回上限为 20 条
+        $pageSize = min(20, max(1, input('page_size', 20, 'intval')));
 
         $offset = ($page - 1) * $pageSize;
-        $data = \app\common\facade\wechat\OfficialAccount::getMaterialList($type, $offset, $pageSize);
+        try {
+            $data = \app\common\facade\wechat\OfficialAccount::getMaterialList($type, $offset, $pageSize);
+        } catch (\Throwable $e) {
+            Log::error('[wechat] 获取素材列表异常：' . $e->getMessage());
+            return $this->error('获取素材失败，请检查公众号配置');
+        }
+
         if (isset($data['item'])) {
             return  $this->success('success', $data);
-        } elseif (isset($data['errmsg'])) {
+        } elseif (!empty($data['errmsg'])) {
+            Log::error('[wechat] 获取素材列表失败：' . json_encode($data, JSON_UNESCAPED_UNICODE));
             return $this->error($data['errmsg']);
         }
         return $this->error('请检查公众号配置');
