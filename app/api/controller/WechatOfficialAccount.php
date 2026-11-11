@@ -19,6 +19,7 @@ use EasyWeChat\Kernel\Messages\Video;
 use EasyWeChat\Kernel\Messages\Voice;
 use thans\jwt\facade\JWTAuth;
 use think\Exception;
+use think\facade\Log;
 
 /**
  * 微信公众号服务
@@ -51,30 +52,72 @@ class WechatOfficialAccount extends Api
      */
     public function callback()
     {
-        //实例化公众号
-        $app = OfficialAccount::getApp();
-        //获取消息类型
-        $message = $app->server->getMessage();
-        if (isset($message['MsgType'])) {
-            $map = [
-                ['status', '=', 1],
-            ];
-            switch ($message['MsgType']) {
-                case 'event': //事件
-                    $this->doEvent($message);
-                    break;
-                default:
-                    //自动回复消息
-                    $map[] = ['type', '=', 2];
-                    $map[] = ['keyword', '=', $message['Content']];
-                    $map[] = ['status', '=', 1];
-                    $this->doMessage($message, $map);
-                    break;
+        //服务器配置验证（GET + echostr）：校验签名后原样返回 echostr
+        $echostr = input('param.echostr');
+        if (request()->isGet() && !empty($echostr)) {
+            if ($this->checkServerSignature()) {
+                return response($echostr)->contentType('text/plain');
             }
-            $app->server->serve();
+            return response('')->code(403);
         }
-        //token 回调
-        OfficialAccount::serverOAath();
+
+        try {
+            //实例化公众号
+            $app = OfficialAccount::getApp();
+            //获取消息类型
+            $message = $app->server->getMessage();
+            if (isset($message['MsgType'])) {
+                switch ($message['MsgType']) {
+                    case 'event': //事件
+                        $this->doEvent($message);
+                        break;
+                    default:
+                        //自动回复消息（图片/语音等非文本消息无 Content，按空关键字处理）
+                        $map = [
+                            ['status', '=', 1],
+                            ['type', '=', 2],
+                            ['keyword', '=', $message['Content'] ?? ''],
+                        ];
+                        $this->doMessage($message, $map);
+                        break;
+                }
+            }
+            //被动响应输出
+            $response = $app->server->serve();
+            $content = (string)$response->getContent();
+            return response($content)->contentType('application/xml');
+        } catch (\Throwable $e) {
+            $this->logWechatError('公众号消息处理异常：' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+            //兜底：仍向微信返回 success，避免公众号提示服务故障
+            return response('success')->contentType('text/plain');
+        }
+    }
+
+    /**
+     * 记录公众号业务异常
+     * @param string $msg
+     */
+    private function logWechatError(string $msg): void
+    {
+        Log::error('[wechat] ' . $msg);
+    }
+
+    /**
+     * 校验微信服务器配置请求签名（token 验证）
+     * @return bool
+     */
+    private function checkServerSignature(): bool
+    {
+        $signature = (string)input('param.signature', '');
+        $timestamp = (string)input('param.timestamp', '');
+        $nonce     = (string)input('param.nonce', '');
+        if ($signature === '' || $timestamp === '' || $nonce === '') {
+            return false;
+        }
+        $token = OfficialAccount::getApp()->config->get('token');
+        $params = [$token, $timestamp, $nonce];
+        sort($params, SORT_STRING);
+        return sha1(implode($params)) === $signature;
     }
 
     /**
@@ -86,9 +129,10 @@ class WechatOfficialAccount extends Api
         switch ($message['Event']) {
             case 'subscribe':
                 //关注消息
-                $map[] = ['type', '=', 1];
-                $map[] = ['status', '=', 1];
-                $this->doMessage($message, $map);
+                $this->doMessage($message, [
+                    ['type', '=', 1],
+                    ['status', '=', 1],
+                ]);
                 break;
             case 'scan':
                 break;
@@ -102,28 +146,43 @@ class WechatOfficialAccount extends Api
                 $event_key_str = substr($event_key_str, strlen('qrscene_'));
             }
             $event_key = convert_url_query($event_key_str);
-            if (isset($event_key['islogin'])) {
-                //获取用户信息
-                $user_info = OfficialAccount::getApp()->user->get($message['FromUserName']);
+            if (is_array($event_key) && isset($event_key['islogin'])) {
+                //缺少 scene_key 时无法关联扫码会话，直接忽略
+                $scene_key = (string)($event_key['scene_key'] ?? '');
+                if ($scene_key === '') {
+                    return;
+                }
+                //获取用户信息（接口异常时仅记日志，不中断回调响应）
+                try {
+                    $user_info = OfficialAccount::getApp()->user->get($message['FromUserName']);
+                } catch (\Throwable $e) {
+                    $this->logWechatError('获取用户信息失败：' . $e->getMessage());
+                    return;
+                }
                 //保存扫码信息
                 $qrcode_login = [
-                    'scene_key' => $event_key['scene_key'],
+                    'scene_key' => $scene_key,
                     'metadata' => json_encode($user_info)
                 ];
 
                 $QrcodeLoginModel = (new QrcodeLogin());
                 //是否登录过
-                $has_login = $QrcodeLoginModel->where('scene_key', $event_key['scene_key'])->count();
+                $has_login = $QrcodeLoginModel->where('scene_key', $scene_key)->count();
                 if ($has_login == 0) {
                     $QrcodeLoginModel->edit($qrcode_login);
                     //登录消息
-                    $map[] = ['type', '=', 3];
-                    $map[] = ['status', '=', 1];
-                    $this->doMessage($message, $map);
+                    $this->doMessage($message, [
+                        ['type', '=', 3],
+                        ['status', '=', 1],
+                    ]);
                 } else {
                     //消息通知
-                    $msg = new Text('二维码已失效,请刷新后重试');
-                    OfficialAccount::getApp()->customer_service->message($msg)->to($message['FromUserName'])->send();
+                    try {
+                        $msg = new Text('二维码已失效,请刷新后重试');
+                        OfficialAccount::getApp()->customer_service->message($msg)->to($message['FromUserName'])->send();
+                    } catch (\Throwable $e) {
+                        $this->logWechatError('客服消息发送失败：' . $e->getMessage());
+                    }
                 }
             }
         }
@@ -175,8 +234,16 @@ class WechatOfficialAccount extends Api
                         $msg = new Video($item['media_id']);
                         break;
                 }
-                //消息通知
-                OfficialAccount::getApp()->customer_service->message($msg)->to($message['FromUserName'])->send();
+                //消息类型非法时 $msg 为空，跳过该条，避免中断后续回复
+                if ($msg === null) {
+                    continue;
+                }
+                //消息通知（发送失败仅记日志，不影响其余回复与回调响应）
+                try {
+                    OfficialAccount::getApp()->customer_service->message($msg)->to($message['FromUserName'])->send();
+                } catch (\Throwable $e) {
+                    $this->logWechatError('自动回复发送失败：' . $e->getMessage());
+                }
             }
         }
     }

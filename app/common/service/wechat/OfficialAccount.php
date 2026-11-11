@@ -33,6 +33,9 @@ class OfficialAccount extends Wechat
         return [
             'app_id' => $data['appid'],
             'secret' => $data['secret'],
+            //服务器配置校验与安全模式（加密消息）依赖 token / aes_key，缺失会导致签名校验失败、消息无法解密
+            'token' => $data['token'] ?? '',
+            'aes_key' => $data['encoding_aes_key'] ?? '',
             'response_type' => 'array',
             //生成日志
             'log' => $this->log(),

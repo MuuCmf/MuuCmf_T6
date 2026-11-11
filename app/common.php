@@ -404,7 +404,8 @@ if (!function_exists('convert_url_query')) {
             foreach ($queryParts as $param)
             {
                 $item = explode('=', $param);
-                $params[$item[0]] = $item[1];
+                //参数段不含 = 时按空值处理，避免 PHP8 下 Undefined array key 告警被转为异常
+                $params[$item[0]] = $item[1] ?? '';
             }
             return $params;
         }

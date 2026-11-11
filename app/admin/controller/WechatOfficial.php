@@ -148,9 +148,19 @@ class WechatOfficial extends Admin
                 $data['msg_type'] = $data['material_type'] ?? 'text';
             }
 
-            // 验证data['type'] == 0的数据仅能有一条
-            if ($data['type'] == 1 && $this->autoReplyModel->where(['shopid' => $this->shopid, 'type' => 1, 'status' => 1])->count() > 0) {
-                return $this->error('关注公众号只能设置一条自动回复');
+            // 关注回复仅允许一条启用记录；编辑时需排除自身，否则会命中当前记录导致无法保存
+            if ((int)($data['type'] ?? 0) === 1) {
+                $existsQuery = $this->autoReplyModel->where([
+                    ['shopid', '=', $this->shopid],
+                    ['type', '=', 1],
+                    ['status', '=', 1],
+                ]);
+                if ($aId > 0) {
+                    $existsQuery->where('id', '<>', $aId);
+                }
+                if ($existsQuery->count() > 0) {
+                    return $this->error('关注公众号只能设置一条自动回复');
+                }
             }
 
             if (!empty($data['material_json'])) {
