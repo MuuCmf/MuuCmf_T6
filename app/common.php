@@ -708,3 +708,16 @@ if (!function_exists('is_module_installed')) {
         }
     }
 }
+
+if (!function_exists('like_escape')) {
+
+    /**
+     * 转义 LIKE 查询中的通配符，避免用户输入的 % _ 导致全表模糊匹配
+     * @param string $keyword 用户输入关键词
+     * @return string
+     */
+    function like_escape($keyword)
+    {
+        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], (string) $keyword);
+    }
+}
