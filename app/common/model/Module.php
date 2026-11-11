@@ -287,6 +287,13 @@ class Module extends Base
             }
         }
 
+        // 模块专属消息模板由模块自身 info/message_templates.sql 提供，安装时重放（幂等）
+        try {
+            \app\common\service\message\ModuleTemplateSeeder::replayApp($module['name']);
+        } catch (\Throwable $e) {
+            // 模板种子失败不影响模块安装
+        }
+
         $module['is_setup'] = 1;
         // 写入数据库
         $rs = $this->update($module);
@@ -349,6 +356,10 @@ class Module extends Base
                         Db::execute($value);
                     }
                 }
+            }
+            if ($withoutData == 1) {
+                // 模块专属消息模板与渠道行由装配器按 app 清理，避免卸载残留
+                \app\common\service\message\ModuleTemplateSeeder::purge($module['name']);
             }
 
             Db::commit();

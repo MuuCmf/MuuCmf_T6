@@ -9,6 +9,9 @@ use think\facade\Db;
  *
  * message_type 与 message_template 都是店铺级数据（平台种子 shopid=0 不会被店铺用户看到），
  * 因此在新店铺首次进入消息中心/首次发送系统模板时按店铺补齐，保证安装后即可用。
+ *
+ * 本类只维护平台通用模板（common.* / order.*）；模块专属模板由各模块的
+ * info/message_templates.sql 提供，经 ModuleTemplateSeeder 重放，不在此处内联定义。
  */
 class MessageSeed
 {
@@ -102,6 +105,7 @@ class MessageSeed
 
     /**
      * 默认模板（5 个 P0 场景）
+     * 各应用场景的模板在应用内安装、更新时写入
      *
      * @param int $shopid
      * @return void
@@ -237,175 +241,6 @@ class MessageSeed
                         'title'   => '退款到账',
                         'content' => '<p>订单 {{order_no}} 的退款 {{amount}} 元已到账，请注意查收。</p>',
                         'extra'   => ['type_code' => 'order'],
-                    ],
-                ],
-            ],
-            [
-                'code'         => 'minishop.erp_alert',
-                'app'          => 'minishop',
-                'scene'        => 'erp_alert',
-                'name'         => '快麦ERP告警',
-                'description'  => 'ERP 凭证或会话异常时通知店铺运营',
-                'level'        => MessageLevel::TRANSACTION,
-                'variables'    => ['title', 'content'],
-                'fallback'     => ['inbox'],
-                'always_inbox' => 1,
-                'frequency'    => null,
-                // 运营告警默认发给平台管理员，可在模板编辑页改为运营用户组
-                'targets'      => ['type' => 'uids', 'value' => [1]],
-                'channels'     => [
-                    'inbox' => [
-                        'title'   => '{{title}}',
-                        'content' => '<p>{{title}}</p><p>{{content}}</p>',
-                        'extra'   => ['type_code' => 'system'],
-                    ],
-                ],
-            ],
-            [
-                'code'         => 'scoreshop.exchange_success',
-                'app'          => 'scoreshop',
-                'scene'        => 'exchange_success',
-                'name'         => '积分兑换成功通知',
-                'description'  => '积分商城兑换成功后通知用户',
-                'level'        => MessageLevel::TRANSACTION,
-                'variables'    => ['order_no', 'product_name', 'quantity', 'points', 'exchange_time'],
-                'fallback'     => ['inbox'],
-                'always_inbox' => 1,
-                'frequency'    => null,
-                'channels'     => [
-                    'inbox' => [
-                        'title'   => '兑换成功',
-                        'content' => '<p>您的兑换订单 {{order_no}} 已成功提交。</p><p>商品：{{product_name}} × {{quantity}}</p><p>消耗积分：{{points}}</p><p>兑换时间：{{exchange_time}}</p>',
-                        'extra'   => ['type_code' => 'order', 'description' => '订单 {{order_no}} 兑换成功'],
-                    ],
-                ],
-            ],
-            [
-                'code'         => 'scoreshop.exchange_success_admin',
-                'app'          => 'scoreshop',
-                'scene'        => 'exchange_success_admin',
-                'name'         => '积分兑换运营通知',
-                'description'  => '积分商城兑换成功后通知店铺运营',
-                'level'        => MessageLevel::TRANSACTION,
-                'variables'    => ['order_no', 'nickname', 'uid', 'product_name', 'quantity', 'points', 'exchange_time'],
-                'fallback'     => ['inbox'],
-                'always_inbox' => 1,
-                'frequency'    => null,
-                // 运营通知默认发给平台管理员，可在模板编辑页改为运营用户组
-                'targets'      => ['type' => 'uids', 'value' => [1]],
-                'channels'     => [
-                    'inbox' => [
-                        'title'   => '有新的积分兑换订单',
-                        'content' => '<p>{{nickname}}（UID {{uid}}）兑换了 {{product_name}} × {{quantity}}，消耗 {{points}} 积分。</p><p>订单号：{{order_no}}</p><p>时间：{{exchange_time}}</p>',
-                        'extra'   => ['type_code' => 'order'],
-                    ],
-                ],
-            ],
-            [
-                'code'         => 'scoreshop.order_shipped',
-                'app'          => 'scoreshop',
-                'scene'        => 'order_shipped',
-                'name'         => '积分兑换发货通知',
-                'description'  => '积分商城订单发货后通知用户',
-                'level'        => MessageLevel::TRANSACTION,
-                'variables'    => ['order_no', 'product_name', 'quantity', 'delivery_info', 'delivery_time'],
-                'fallback'     => ['inbox'],
-                'always_inbox' => 1,
-                'frequency'    => null,
-                'channels'     => [
-                    'inbox' => [
-                        'title'   => '您的兑换商品已发货',
-                        'content' => '<p>订单 {{order_no}} 已发货。</p><p>商品：{{product_name}} × {{quantity}}</p><p>发货信息：{{delivery_info}}</p><p>发货时间：{{delivery_time}}</p>',
-                        'extra'   => ['type_code' => 'order', 'description' => '订单 {{order_no}} 已发货'],
-                    ],
-                ],
-            ],
-            [
-                'code'         => 'svip.expire_remind',
-                'app'          => 'svip',
-                'scene'        => 'expire_remind',
-                'name'         => '会员到期提醒',
-                'description'  => '会员到期前 7/3/1 天提醒',
-                'level'        => MessageLevel::MARKETING,
-                'variables'    => ['nickname', 'expire_time'],
-                'fallback'     => ['inbox'],
-                'always_inbox' => 1,
-                'frequency'    => ['max_times' => 3, 'window_hours' => 168],
-                'channels'     => [
-                    'inbox' => [
-                        'title'   => '会员即将到期',
-                        'content' => '<p>{{nickname}}，您的会员将于 {{expire_time}} 到期，续费可继续享受会员权益。</p>',
-                        'extra'   => ['type_code' => 'marketing'],
-                    ],
-                ],
-            ],
-            [
-                'code'         => 'appstore.license_expire',
-                'app'          => 'appstore',
-                'scene'        => 'license_expire',
-                'name'         => '应用授权到期提醒',
-                'description'  => '应用商店升级服务到期前 7/3/1 天提醒用户续费',
-                'level'        => MessageLevel::TRANSACTION,
-                'variables'    => ['app_name', 'domain', 'end_time', 'days_left'],
-                'fallback'     => ['inbox'],
-                'always_inbox' => 1,
-                'frequency'    => null,
-                'channels'     => [
-                    'inbox' => [
-                        'title'   => '应用授权即将到期',
-                        'content' => '<p>您的应用 {{app_name}}（域名 {{domain}}）升级服务将于 {{end_time}} 到期，剩余 {{days_left}} 天。</p><p>请及时续费，以免影响应用正常使用。</p>',
-                        'extra'   => ['type_code' => 'order'],
-                    ],
-                    // 微信模板 ID 由后台模板编辑页填写；field_map 为默认字段映射，可按实际模板调整
-                    'wechat_oa' => [
-                        'title'   => '',
-                        'content' => '',
-                        'extra'   => [
-                            'template_id' => '',
-                            'field_map'   => [
-                                'thing1'  => 'app_name',
-                                'thing2'  => 'domain',
-                                'time3'   => 'end_time',
-                                'number4' => 'days_left',
-                            ],
-                            'url'         => '',
-                        ],
-                        'var_map' => [],
-                    ],
-                    'wechat_mp' => [
-                        'title'   => '',
-                        'content' => '',
-                        'extra'   => [
-                            'template_id' => '',
-                            'field_map'   => [
-                                'thing1'  => 'app_name',
-                                'thing2'  => 'domain',
-                                'time3'   => 'end_time',
-                                'number4' => 'days_left',
-                            ],
-                            'page'        => '',
-                        ],
-                        'var_map' => [],
-                    ],
-                ],
-            ],
-            [
-                // SCRM SOP / 客户旅程的「站内信通知会员」动作；企微触达不在此模板范围内
-                'code'         => 'scrm.sop_notice',
-                'app'          => 'scrm',
-                'scene'        => 'sop_notice',
-                'name'         => 'SOP/旅程会员通知',
-                'description'  => 'SOP 与客户旅程的站内信通知会员动作，营销级别受频控、免打扰与退订治理',
-                'level'        => MessageLevel::MARKETING,
-                'variables'    => ['customer_name', 'flow_title', 'content'],
-                'fallback'     => ['inbox'],
-                'always_inbox' => 1,
-                'frequency'    => ['max_times' => 3, 'window_hours' => 168],
-                'channels'     => [
-                    'inbox' => [
-                        'title'   => '{{flow_title}}',
-                        'content' => '<p>{{customer_name}}，{{content}}</p>',
-                        'extra'   => ['type_code' => 'marketing'],
                     ],
                 ],
             ],

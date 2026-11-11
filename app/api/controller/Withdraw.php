@@ -77,8 +77,9 @@ class Withdraw extends Api
             
             //最低金额
             if ($data['price'] < intval($config['min_price']) * 100) throw new Exception('提现金额最少为' . $config['min_price'] . '元');
-            //最大金额
-            if ($data['price'] > intval($config['max_price']) * 100) throw new Exception('提现金额最多为' . $config['max_price'] . '元');
+            //最大金额（配置为 0 时表示不限制最大金额）
+            $max_price = intval($config['max_price']);
+            if ($max_price > 0 && $data['price'] > $max_price * 100) throw new Exception('提现金额最多为' . $max_price . '元');
 
             //查询今日提现次数
             $today_unixtime = dayTime(); //今日时间戳

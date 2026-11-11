@@ -242,6 +242,13 @@ class Upgrade
             }
         }
 
+        // 模块专属模板定义已下沉到各模块 info/message_templates.sql，升级后重放补齐
+        try {
+            \app\common\service\message\ModuleTemplateSeeder::replayAll();
+        } catch (\Throwable $e) {
+            // 模板种子失败不影响升级主流程
+        }
+
         return true;
     }
 

@@ -665,7 +665,7 @@ INSERT INTO `muucmf_extend_config` (`id`, `name`, `type`, `title`, `group`, `ext
 (39, 'WITHDRAW_TAX_RATE', 'num', '提现税率', 'withdraw', '', ' 默认千分之五（千分比）', 0, 1645410586, 1, '5', 2),
 (40, 'WITHDRAW_DAY_NUM', 'num', '每日可提现次数', 'withdraw', '', '一天最多可提现多少次', 0, 0, 1, '5', 3),
 (41, 'WITHDRAW_MIN_PRICE', 'num', '单次最小提现金额（单位：元）', 'withdraw', '', '一次最少提现金额', 0, 1659669533, 1, '1', 4),
-(42, 'WITHDRAW_MAX_PRICE', 'num', '单次最大提现金额（单位：元）', 'withdraw', '', '一次最大提现金额', 0, 1659669547, 1, '500', 5),
+(42, 'WITHDRAW_MAX_PRICE', 'num', '单次最大提现金额（单位：元）', 'withdraw', '', '一次最大提现金额，填 0 表示不限制最大金额', 0, 1659669547, 1, '500', 5),
 (43, 'WX_PAY_CERT', 'file', '微信支付cert证书', 'weixinpay', '', '', 0, 0, 1, '', 0),
 (44, 'WX_PAY_KEY', 'file', '微信支付Key证书', 'weixinpay', '', '', 0, 0, 1, '', 0),
 (45, 'VOD_TENCENT_KEY_SWITCH', 'radio', 'key防盗链开关', 'tencent_vod', '0:不启用\r\n1:启用', '腾讯云点播key防盗链开关', 0, 0, 1, '0', 0),

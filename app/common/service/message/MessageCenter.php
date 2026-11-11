@@ -535,7 +535,9 @@ class MessageCenter
             if ($e->getErrorCode() !== 'template_not_found') {
                 throw $e;
             }
+            // 平台通用模板由 MessageSeed 逐店补齐；模块专属模板由模块自身 SQL 种子重放补齐
             (new MessageSeed())->ensure($shopid);
+            ModuleTemplateSeeder::replay($code);
             $template = $resolver->get($shopid, $code, false);
             if ($template === null) {
                 throw $e;

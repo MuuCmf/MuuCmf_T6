@@ -735,3 +735,6 @@ ALTER TABLE `muucmf_member_sync`
 -- WHERE unionid IS NOT NULL AND unionid <> ''
 --   AND type IN ('weixin_h5', 'weixin_mp', 'weixin_app')
 -- GROUP BY shopid, unionid HAVING uid_cnt > 1;
+
+-- 提现配置：单次最大提现金额为 0 时表示不限制最大金额，同步字段说明
+UPDATE `muucmf_extend_config` SET `remark` = '一次最大提现金额，填 0 表示不限制最大金额' WHERE `name` = 'WITHDRAW_MAX_PRICE';
