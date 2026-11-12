@@ -48,6 +48,31 @@ class Lifecycle
         if ($revertDistribution) {
             self::revertDistribution($shopid, $orderNo);
         }
+        // 创作者分佣挂在 capital_flow.app='creator'，可能归属任意内容应用订单，
+        // 不能依赖订单 app 解析策略，统一在此按订单号冲正（幂等，无记录为空操作）
+        self::revertCreatorCommission($shopid, $orderNo);
+    }
+
+    /**
+     * 冲正已入账的创作者分佣（幂等；模块未安装或异常时仅记录日志，不阻断主流程）
+     * @param int $shopid 店铺ID
+     * @param string $orderNo 订单号
+     * @return void
+     */
+    public static function revertCreatorCommission(int $shopid, string $orderNo): void
+    {
+        if ($orderNo === '' || !ModuleGuard::installed('creator')) {
+            return;
+        }
+        $class = 'app\\creator\\service\\Orders';
+        if (!class_exists($class) || !method_exists($class, 'revert')) {
+            return;
+        }
+        try {
+            $class::revert($shopid, $orderNo);
+        } catch (\Throwable $e) {
+            Log::error('[创作者] 分佣冲正失败，order_no=' . $orderNo . '：' . $e->getMessage());
+        }
     }
 
     /**
