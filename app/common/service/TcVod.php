@@ -59,24 +59,41 @@ class TcVod
      */
     public function getKeyMediaUrl($media_url, $exper = 0)
     {
-        $key = config('extend.VOD_TENCENT_KEY_VALUE');
+        $media_url = (string)$media_url;
+        $key = (string)config('extend.VOD_TENCENT_KEY_VALUE');
+        // 空地址或缺少防盗链 Key 时直接返回，避免生成只有查询串的无效播放地址
+        if ($media_url === '' || $key === '') {
+            return $media_url;
+        }
 
         try {
-            $dir_arr = explode('/', $media_url);
-
-            $dir = '/' . $dir_arr[3] . '/' . $dir_arr[4] . '/';
-            $t = time() + 7200;
-            $t = dechex($t);
-            if ($exper == 0) {
-                $sign = md5($key . $dir . $t);
-                $return_media_url = $media_url . '?t=' . $t . '&sign=' . $sign;
-            } else {
-                $sign = md5($key . $dir . $t . $exper);
-                $return_media_url = $media_url . '?t=' . $t . '&exper=' . $exper . '&sign=' . $sign;
+            // 用 URL 路径解析签名目录，避免 explode 受协议、端口、自定义域名层级影响
+            $path = parse_url($media_url, PHP_URL_PATH);
+            $dirs = array_values(array_filter(explode('/', (string)$path), 'strlen'));
+            // 至少要有「目录 + 文件名」两段
+            if (count($dirs) < 2) {
+                return $media_url;
+            }
+            // 保持原有签名口径：取路径前两级目录（标准 VOD 地址即文件所在完整目录）
+            $dir = '/';
+            for ($i = 0; $i < min(2, count($dirs) - 1); $i++) {
+                $dir .= $dirs[$i] . '/';
             }
 
-            return $return_media_url;
-        } catch (Exception $e) {
+            $t = dechex(time() + 7200);
+            $exper = intval($exper);
+            if ($exper > 0) {
+                $sign = md5($key . $dir . $t . $exper);
+                $query = 't=' . $t . '&exper=' . $exper . '&sign=' . $sign;
+            } else {
+                $sign = md5($key . $dir . $t);
+                $query = 't=' . $t . '&sign=' . $sign;
+            }
+
+            // 地址已带 query 时用 & 拼接，否则会出现两个 ? 导致签名失效
+            $separator = (strpos($media_url, '?') === false) ? '?' : '&';
+            return $media_url . $separator . $query;
+        } catch (\Throwable $e) {
             return $media_url;
         }
     }

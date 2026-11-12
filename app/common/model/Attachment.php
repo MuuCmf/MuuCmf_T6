@@ -710,13 +710,14 @@ class Attachment extends Base
             return $info;
         } else {
             // 远程图片处理
-            if (strtolower($driver) == 'oss' || strtolower($driver) == 'tencent') {
-                $src = config('extend.OSS_ALIYUN_BUCKET_DOMAIN') . '/attachment/' . $attachment['attachment'] . '?x-oss-process=image/resize,m_fill,h_' . $height . ',w_' . $width;
+            // aliyun / tencent 是上传驱动配置值，历史附件表可能沿用，需归到对应云厂商
+            if (strtolower($driver) == 'oss' || strtolower($driver) == 'aliyun') {
+                $src = get_attachment_domain('OSS_ALIYUN_BUCKET_DOMAIN') . '/attachment/' . $attachment['attachment'] . '?x-oss-process=image/resize,m_fill,h_' . $height . ',w_' . $width;
                 $info['src'] = $src;
             }
 
-            if (strtolower($driver) == 'cos' || strtolower($driver) == 'aliyun') {
-                $src = config('extend.COS_TENCENT_BUCKET_DOMAIN') . '/attachment/' . $attachment['attachment'] . '?imageView2/1/w/' . $width . '/h/' . $height;
+            if (strtolower($driver) == 'cos' || strtolower($driver) == 'tencent') {
+                $src = get_attachment_domain('COS_TENCENT_BUCKET_DOMAIN') . '/attachment/' . $attachment['attachment'] . '?imageView2/1/w/' . $width . '/h/' . $height;
                 $info['src'] = $src;
             }
 
@@ -839,12 +840,13 @@ class Attachment extends Base
             $image->save($file_path);
         } else {
             // 远程图片处理
-            if (strtolower($driver) == 'aliyun') {
-                $attachment = config('extend.OSS_ALIYUN_BUCKET_DOMAIN') . '/attachment/' . $attachment . '?x-oss-process=image/crop,x_' . $x . ',y_' . $y . ',w_' . $w . ',h_' . $h;
+            // 附件表 driver 为 oss/cos，历史数据可能沿用上传驱动值 aliyun/tencent
+            if (strtolower($driver) == 'oss' || strtolower($driver) == 'aliyun') {
+                $attachment = get_attachment_domain('OSS_ALIYUN_BUCKET_DOMAIN') . '/attachment/' . $attachment . '?x-oss-process=image/crop,x_' . $x . ',y_' . $y . ',w_' . $w . ',h_' . $h;
             }
 
-            if (strtolower($driver) == 'tencent') {
-                $attachment = config('extend.COS_TENCENT_BUCKET_DOMAIN') . '/attachment/' . $attachment . '?imageMogr2/cut/' . $w . 'x' . $h . 'x' . $x . 'x' . $y;
+            if (strtolower($driver) == 'cos' || strtolower($driver) == 'tencent') {
+                $attachment = get_attachment_domain('COS_TENCENT_BUCKET_DOMAIN') . '/attachment/' . $attachment . '?imageMogr2/cut/' . $w . 'x' . $h . 'x' . $x . 'x' . $y;
             }
         }
 
@@ -1168,6 +1170,64 @@ class Attachment extends Base
         }
         $this->directSignErr = '未知存储驱动：' . $provider;
         return false;
+    }
+
+    /**
+     * 生成私有读写 Bucket 的音视频播放用 GET 签名地址
+     *
+     * directSignUrl() 签的是 PUT 上传，私有 Bucket 播放需要 GET 签名；
+     * 对象键必须与上传侧一致：attachment/<附件相对路径>。
+     *
+     * @param string $driver     oss|cos
+     * @param string $attachment 附件相对路径（不含 attachment/ 前缀）
+     * @param int    $expireSec  有效期（秒）
+     * @return string 签名 URL；配置缺失或签名失败返回空串，由调用方回退公开地址
+     */
+    public function signPlayUrl($driver, $attachment, $expireSec = 7200)
+    {
+        $object = 'attachment/' . ltrim((string)$attachment, '/');
+        $expireSec = max(60, intval($expireSec));
+
+        if ($driver === 'oss') {
+            $accessKeyId = config('extend.OSS_ALIYUN_ACCESSKEYID');
+            $accessKeySecret = config('extend.OSS_ALIYUN_ACCESSKEYSECRET');
+            $endpoint = (string)config('extend.OSS_ALIYUN_ENDPOINT');
+            $bucket = config('extend.OSS_ALIYUN_BUCKET');
+            if (empty($accessKeyId) || empty($accessKeySecret) || empty($endpoint) || empty($bucket)) {
+                return '';
+            }
+            if (strpos($endpoint, 'http://') !== 0 && strpos($endpoint, 'https://') !== 0) {
+                $endpoint = 'https://' . $endpoint;
+            }
+            try {
+                $ossClient = new OssClient($accessKeyId, $accessKeySecret, $endpoint);
+                return (string)$ossClient->signUrl($bucket, $object, $expireSec, OssClient::OSS_HTTP_GET);
+            } catch (\Throwable $e) {
+                return '';
+            }
+        }
+
+        if ($driver === 'cos') {
+            $secretId = config('extend.COS_TENCENT_SECRETID');
+            $secretKey = config('extend.COS_TENCENT_SECRETKEY');
+            $region = config('extend.COS_TENCENT_REGION');
+            $bucket = config('extend.COS_TENCENT_BUCKET');
+            if (empty($secretId) || empty($secretKey) || empty($region) || empty($bucket)) {
+                return '';
+            }
+            try {
+                $cosClient = new CosClient([
+                    'region' => $region,
+                    'schema' => 'https',
+                    'credentials' => ['secretId' => $secretId, 'secretKey' => $secretKey],
+                ]);
+                return (string)$cosClient->getObjectUrl($bucket, $object, '+' . $expireSec . ' seconds');
+            } catch (\Throwable $e) {
+                return '';
+            }
+        }
+
+        return '';
     }
 
     /**

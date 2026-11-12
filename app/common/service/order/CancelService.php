@@ -73,6 +73,7 @@ class CancelService
             $this->rollbackStock($order);
 
             Db::commit();
+
             return true;
         } catch (\Throwable $e) {
             // 必须兜住 TypeError / Error，否则常驻 Worker 会留下未结束的事务

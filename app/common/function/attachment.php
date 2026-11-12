@@ -884,6 +884,28 @@ if (!function_exists('get_pic')) {
     }
 }
 
+if (!function_exists('get_attachment_domain')) {
+    /**
+     * 归一化对象存储访问域名：补协议、去尾部斜杠
+     *
+     * 后台 OSS 配置项未提示必须带协议，历史配置常填成
+     * bucket.oss-cn-xxx.aliyuncs.com 或末尾带 /；直接拼接会得到
+     * 相对路径或 //attachment/，导致音视频资源 404。
+     */
+    function get_attachment_domain($configKey)
+    {
+        $domain = trim((string)config('extend.' . $configKey));
+        if ($domain === '') {
+            return '';
+        }
+        $domain = rtrim($domain, '/');
+        if (stripos($domain, 'http://') !== 0 && stripos($domain, 'https://') !== 0) {
+            $domain = 'https://' . $domain;
+        }
+        return $domain;
+    }
+}
+
 if (!function_exists('get_attachment_src')) {
     /**
      * 附件路径
@@ -929,15 +951,53 @@ if (!function_exists('get_attachment_src')) {
         }
         // 阿里云OSS
         if ($driver == 'oss') {
-            return config('extend.OSS_ALIYUN_BUCKET_DOMAIN') . '/attachment/' . $attachment;
+            return get_attachment_domain('OSS_ALIYUN_BUCKET_DOMAIN') . '/attachment/' . ltrim($attachment, '/');
         }
         // 腾讯云COS
         if ($driver == 'cos') {
-            return config('extend.COS_TENCENT_BUCKET_DOMAIN') . '/attachment/' . $attachment;
+            return get_attachment_domain('COS_TENCENT_BUCKET_DOMAIN') . '/attachment/' . ltrim($attachment, '/');
         }
 
         // 其余驱动（如云点播 tcvod）由业务侧另行拼接地址，保持原有返回 null 的语义
         return null;
+    }
+}
+
+if (!function_exists('get_attachment_play_src')) {
+    /**
+     * 音视频播放地址：私有读写 Bucket 下发有时效的 GET 签名地址，
+     * 公共读 Bucket / local / 云点播保持 get_attachment_src() 原行为。
+     *
+     * 仅播放链路使用；图片、缩略图等仍走 get_attachment_src()，
+     * 避免给可公开缓存的资源附加每次都变化的签名参数。
+     *
+     * @param string      $attachment 附件相对路径或完整 URL
+     * @param string|null $driver     已知驱动（传入可避免回查附件表）
+     * @param int         $expireSec  签名有效期（秒）
+     */
+    function get_attachment_play_src($attachment, $driver = null, $expireSec = 7200)
+    {
+        if (empty($attachment)) {
+            return $attachment;
+        }
+        // 完整 URL（VOD 媒资地址 / 历史数据）不属于对象存储对象键
+        if (strpos($attachment, 'http://') !== false || strpos($attachment, 'https://') !== false) {
+            return get_attachment_src($attachment, $driver);
+        }
+        if ($driver === null) {
+            $driver = (new \app\common\model\Attachment())->where('attachment', '=', $attachment)->value('driver');
+        }
+        $driver = strtolower((string)$driver);
+        $configKey = $driver === 'oss' ? 'OSS_ALIYUN_PRIVATE'
+            : ($driver === 'cos' ? 'COS_TENCENT_PRIVATE' : '');
+
+        if ($configKey !== '' && intval(config('extend.' . $configKey)) === 1) {
+            $signed = (new \app\common\model\Attachment())->signPlayUrl($driver, $attachment, $expireSec);
+            if ($signed !== '') {
+                return $signed;
+            }
+        }
+        return get_attachment_src($attachment, $driver === '' ? null : $driver);
     }
 }
 

@@ -9,6 +9,7 @@ use app\common\model\RefundLog;
 use app\common\service\aftersale\executor\RefundExecutor;
 use app\common\service\aftersale\executor\RefundResultUnknownException;
 use app\common\service\aftersale\policy\PolicyRegistry;
+use app\common\service\message\MessageCenter;
 
 /**
  * 售后中心门面
@@ -303,6 +304,16 @@ class RefundCenter
         }
 
         Log::info('[售后申请] order_no=' . $fresh['order_no'] . '，refund_no=' . $refundNo . '，refund_to=' . $target);
+
+        // 售后进度：事务提交后通知用户与运营，失败不影响申请结果
+        self::notifyProgress($refundNo, 'apply', '售后申请已提交，等待商家审核');
+        self::notifyAppliedToAdmin(
+            $refundNo,
+            (string)$fresh['order_no'],
+            (string)($fresh['app'] ?? ''),
+            intval($amount),
+            intval($now)
+        );
 
         return [
             'refund_no'  => $refundNo,
@@ -942,6 +953,8 @@ class RefundCenter
             Db::rollback();
             throw $e;
         }
+
+        self::notifyProgress($refundNo, 'reject', '售后申请未通过', $remark);
     }
 
     /**
@@ -996,6 +1009,8 @@ class RefundCenter
             Db::rollback();
             throw $e;
         }
+
+        self::notifyProgress($refundNo, 'return', '商家已同意退货，请寄回商品', $remark);
     }
 
     /**
@@ -1053,6 +1068,83 @@ class RefundCenter
         } catch (\Throwable $e) {
             Db::rollback();
             throw $e;
+        }
+
+        self::notifyProgress($refundNo, 'close', '售后单已关闭', $reason);
+    }
+
+    /**
+     * 售后进度通知（用户侧）：申请、退货、拒绝、关闭各自独立 biz_key，互不覆盖
+     *
+     * @param string $refundNo   退款单号
+     * @param string $scene      进度场景（apply/return/reject/close）
+     * @param string $statusText 状态文案
+     * @param string $remark     备注
+     * @return void
+     */
+    private static function notifyProgress(string $refundNo, string $scene, string $statusText, string $remark = ''): void
+    {
+        try {
+            $row = Db::name('refund')->where('refund_no', $refundNo)->find();
+            if (empty($row)) {
+                return;
+            }
+            $shopid = intval($row['shopid'] ?? 0);
+            $uid = intval($row['uid'] ?? 0);
+            if ($shopid < 0 || $uid <= 0) {
+                return;
+            }
+            $products = Db::name('orders')->where('order_no', (string)$row['order_no'])->value('products');
+            $products = is_string($products) ? (json_decode($products, true) ?: []) : (array)$products;
+
+            MessageCenter::send('order.aftersale_progress', [
+                'type'  => 'uids',
+                'value' => [$uid],
+            ], [
+                'order_no'     => (string)$row['order_no'],
+                'product_name' => (string)($products['title'] ?? '商品'),
+                'status_text'  => $statusText,
+                'remark'       => $remark,
+            ], [
+                'shopid'   => $shopid,
+                'biz_key'  => 'aftersale_' . $refundNo . '_' . $scene,
+                'channels' => ['inbox'],
+            ]);
+        } catch (\Throwable $e) {
+            // 售后状态已落库，通知异常不得反向影响售后流程
+            Log::warning('[message] aftersale notify failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * 新售后申请通知（运营侧）
+     *
+     * @param string $refundNo  退款单号
+     * @param string $orderNo   订单号
+     * @param string $app       订单所属应用
+     * @param int    $refundFee 退款金额（分）
+     * @param int    $applyTime 申请时间
+     * @return void
+     */
+    private static function notifyAppliedToAdmin(string $refundNo, string $orderNo, string $app, int $refundFee, int $applyTime): void
+    {
+        try {
+            $shopid = intval(Db::name('refund')->where('refund_no', $refundNo)->value('shopid'));
+            MessageCenter::send('order.aftersale_applied_admin', [
+                'type'  => 'template',
+                'value' => [],
+            ], [
+                'order_no'   => $orderNo,
+                'app_name'   => $app,
+                'refund_fee' => number_format($refundFee / 100, 2, '.', ''),
+                'apply_time' => $applyTime > 0 ? date('Y-m-d H:i:s', $applyTime) : date('Y-m-d H:i:s'),
+            ], [
+                'shopid'   => $shopid,
+                'biz_key'  => 'aftersale_' . $refundNo . '_admin',
+                'channels' => ['inbox'],
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('[message] aftersale admin notify failed: ' . $e->getMessage());
         }
     }
 

@@ -3,6 +3,8 @@
 namespace app\common\service;
 
 use think\Exception;
+use think\facade\Log;
+use app\common\service\message\MessageCenter;
 use app\common\model\Module as ModuleModel;
 use app\common\model\Orders as OrdersModel;
 use app\common\logic\Orders as OrdersLogic;
@@ -271,6 +273,26 @@ class VipOrders extends OrdersLogic
         }
         // 更新VIP会员数据
         (new VipModel)->edit($vip_edit_data);
+
+        // 会员卡开通/续费通知：失败仅记录日志，不影响开通结果
+        try {
+            MessageCenter::send(
+                'common.vip_card_activated',
+                ['type' => 'uids', 'value' => [intval($uid)]],
+                [
+                    'card_name' => (string)($vip_card_data['title'] ?? '会员卡'),
+                    'order_no'  => (string)$order_info['order_no'],
+                    'end_time'  => intval($end_time) > 0 ? date('Y-m-d', intval($end_time)) : '永久有效',
+                ],
+                [
+                    'shopid'   => intval($shopid),
+                    'biz_key'  => 'vip_' . (string)$order_info['order_no'],
+                    'channels' => ['inbox'],
+                ]
+            );
+        } catch (\Throwable $e) {
+            Log::warning('[message] vip card activated notify failed: ' . $e->getMessage());
+        }
 
         //分销处理
         $is_install = (new ModuleModel())->checkInstalled('distribution');

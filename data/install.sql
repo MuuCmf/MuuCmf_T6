@@ -670,6 +670,8 @@ INSERT INTO `muucmf_extend_config` (`id`, `name`, `type`, `title`, `group`, `ext
 (44, 'WX_PAY_KEY', 'file', '微信支付Key证书', 'weixinpay', '', '', 0, 0, 1, '', 0),
 (45, 'VOD_TENCENT_KEY_SWITCH', 'radio', 'key防盗链开关', 'tencent_vod', '0:不启用\r\n1:启用', '腾讯云点播key防盗链开关', 0, 0, 1, '0', 0),
 (46, 'VOD_TENCENT_KEY_VALUE', 'string', '防盗链 Key', 'tencent_vod', '', '腾讯云点播 防盗链Key值', 0, 0, 1, '', 0),
+(100, 'OSS_ALIYUN_PRIVATE', 'radio', '私有读写播放签名', 'aliyun_oss', '0:公共读\r\n1:私有读写', 'Bucket 为私有读写时必须开启，音视频播放地址将生成有时效的 GET 签名 URL', 0, 0, 1, '0', 0),
+(101, 'COS_TENCENT_PRIVATE', 'radio', '私有读写播放签名', 'tencent_cos', '0:公共读\r\n1:私有读写', 'Bucket 为私有读写时必须开启，音视频播放地址将生成有时效的 GET 签名 URL', 0, 0, 1, '0', 0),
 (47, 'WX_PAY_CERT_SERIAL', 'string', '微信支付商户API证书序列号', 'weixinpay', '', '微信支付商户API证书序列号', 0, 0, 1, '', 0),
 (48, 'VOD_TENCENT_PROCEDURE', 'radio', '自适应转码加密任务流', 'tencent_vod', '0:不启用\r\n1:启用', '启用后会触发系统预置自适应码流加密任务SimpleAesEncryptPreset.', 0, 1679403460, 1, '1', 0),
 (49, 'VOD_TENCENT_PLAYER_KEY', 'string', '播放秘钥', 'tencent_vod', '', '分发播放设置-默认分发配置信息内播放秘钥，仅启用KEY防盗链后有效.', 0, 0, 1, '', 0),

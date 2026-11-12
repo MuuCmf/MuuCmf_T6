@@ -738,3 +738,26 @@ ALTER TABLE `muucmf_member_sync`
 
 -- 提现配置：单次最大提现金额为 0 时表示不限制最大金额，同步字段说明
 UPDATE `muucmf_extend_config` SET `remark` = '一次最大提现金额，填 0 表示不限制最大金额' WHERE `name` = 'WITHDRAW_MAX_PRICE';
+
+-- ---------- 13. 私有读写 Bucket 音视频播放 GET 签名配置 ----------
+-- 背景：OSS / COS Bucket 为私有读写时，播放器拿公开直链会 403；
+--       get_attachment_play_src() 在这两项开启后会生成有时效的 GET 签名 URL。
+-- 说明：install.sql 仅作用于全新安装，存量站点需执行本节补齐扩展配置。
+-- 幂等：仅按 name 判断是否存在，不覆盖管理员已修改的 value；
+--       不显式指定 id，避免与存量库自增 id 冲突（代码按 name 读取配置）。
+-- 默认值 0 表示公共读；私有读写 Bucket 请到后台「扩展配置」把对应项改为 1。
+INSERT INTO `muucmf_extend_config`
+  (`name`, `type`, `title`, `group`, `extra`, `remark`, `create_time`, `update_time`, `status`, `value`, `sort`)
+SELECT 'OSS_ALIYUN_PRIVATE', 'radio', '私有读写播放签名', 'aliyun_oss', '0:公共读\r\n1:私有读写',
+       'Bucket 为私有读写时必须开启，音视频播放地址将生成有时效的 GET 签名 URL',
+       0, 0, 1, '0', 0
+FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM `muucmf_extend_config` WHERE `name` = 'OSS_ALIYUN_PRIVATE');
+
+INSERT INTO `muucmf_extend_config`
+  (`name`, `type`, `title`, `group`, `extra`, `remark`, `create_time`, `update_time`, `status`, `value`, `sort`)
+SELECT 'COS_TENCENT_PRIVATE', 'radio', '私有读写播放签名', 'tencent_cos', '0:公共读\r\n1:私有读写',
+       'Bucket 为私有读写时必须开启，音视频播放地址将生成有时效的 GET 签名 URL',
+       0, 0, 1, '0', 0
+FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM `muucmf_extend_config` WHERE `name` = 'COS_TENCENT_PRIVATE');
