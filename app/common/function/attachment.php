@@ -20,6 +20,9 @@ if (!function_exists('single_image_upload')) {
         $api = url('api/file/upload', ['enforce' => $enforce]);
 
         $name = preg_replace('/\[.*?\]/', '', $name);
+        // 图片路径来自数据库/用户上传，进入 img src、data-id 与 input value 前必须转义
+        $image = htmlspecialchars((string)$image, ENT_QUOTES, 'UTF-8');
+        $image_path = htmlspecialchars((string)$image_path, ENT_QUOTES, 'UTF-8');
         $html = <<<EOF
         <div class="single-image-upload image-upload controls">
             <div class="upload-img-box">

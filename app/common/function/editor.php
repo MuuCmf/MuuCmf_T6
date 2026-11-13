@@ -68,8 +68,12 @@ function ueditor($id = 'myeditor', $name = 'content', $default='', $config='', $
         $config
     }";
 
+    // script 属于 raw text 元素，只有 </script 能提前闭合并注入脚本；
+    // 不能整体 htmlspecialchars（UEditor 会读到转义后的字面文本），只中和该序列。
+    $safeDefault = str_ireplace('</script', '<\/script', (string)$default);
+
     $tmp = '
-    <script type="text/plain" name="'.$name.'" id="'.$id.'" style="'.$style.';">'.$default.'</script>
+    <script type="text/plain" name="'.$name.'" id="'.$id.'" style="'.$style.';">'.$safeDefault.'</script>
     <script type="text/javascript" charset="utf-8" src="/static/common/lib/ueditor/ueditor.config.js"></script>
     <script type="text/javascript" charset="utf-8" src="/static/common/lib/ueditor/ueditor.all.min.js"></script>
     <script>
