@@ -202,21 +202,7 @@ CREATE TABLE IF NOT EXISTS `muucmf_author_group` (
   PRIMARY KEY (`id`) USING BTREE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='角色分组' ROW_FORMAT=COMPACT;
 
---
--- 表的结构 `muucmf_author_follow`
---
-
-DROP TABLE IF EXISTS `muucmf_author_follow`;
-CREATE TABLE IF NOT EXISTS `muucmf_author_follow` (
-  `id` int(11) unsigned NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  `shopid` int(11) unsigned NOT NULL COMMENT '平台ID',
-  `uid` int(11) unsigned NOT NULL COMMENT '谁关注',
-  `author_id` int(11) unsigned NOT NULL COMMENT '关注谁',
-  `status` TINYINT(2) NOT NULL COMMENT '状态',
-  `create_time` int(11) unsigned NOT NULL COMMENT '创建时间',
-  `update_time` int(11) unsigned NOT NULL COMMENT '更新时间',
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='创造者关注表' ROW_FORMAT=COMPACT;
+-- --------------------------------------------------------
 
 --
 -- 表的结构 `muucmf_auth_group`
@@ -817,12 +803,19 @@ CREATE TABLE IF NOT EXISTS `muucmf_field_setting` (
 DROP TABLE IF EXISTS `muucmf_follow`;
 CREATE TABLE IF NOT EXISTS `muucmf_follow` (
   `id` int(11) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  `follow_who` int(11) NOT NULL COMMENT '关注谁',
-  `who_follow` int(11) NOT NULL COMMENT '谁关注',
+  `shopid` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '店铺ID',
+  `who_follow` int(11) NOT NULL COMMENT '谁关注（用户UID）',
+  `follow_who` int(11) NOT NULL COMMENT '关注谁（作者绑定用户UID）',
+  `author_id` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '关注来源作者ID',
+  `status` tinyint(2) NOT NULL DEFAULT '1' COMMENT '状态 0取消 1关注',
   `create_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '创建时间',
+  `update_time` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '更新时间',
   `alias` varchar(40) DEFAULT NULL COMMENT '备注',
   `group_id` int(11) UNSIGNED NOT NULL DEFAULT '0' COMMENT '分组ID',
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_shop_who_follow` (`shopid`,`who_follow`,`follow_who`),
+  KEY `idx_shop_author_who` (`shopid`,`author_id`,`who_follow`),
+  KEY `idx_shop_follow_who_status` (`shopid`,`follow_who`,`status`)
 ) ENGINE=InnoDB  DEFAULT CHARSET=utf8mb4 COMMENT='关注表' ROW_FORMAT=COMPACT;
 
 -- --------------------------------------------------------

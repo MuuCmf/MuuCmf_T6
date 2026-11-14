@@ -5,7 +5,6 @@ namespace app\ucenter\controller;
 use think\facade\View;
 use app\common\model\Author as AuthorModel;
 use app\common\logic\Author as AuthorLogic;
-use app\common\model\AuthorFollow as AuthorFollowModel;
 use app\common\logic\AuthorFollow as AuthorFollowLogic;
 
 class Author extends Base
@@ -80,19 +79,8 @@ class Author extends Base
         }
         View::assign('data', $data);
 
-        // 查询是否已关注
-        $uid = get_uid();
-        $map = [
-            ['shopid', '=', $this->shopid],
-            ['uid', '=', $uid],
-            ['author_id', '=', $id],
-            ['status', '=', 1]
-        ];
-        $res = (new AuthorFollowModel())->where($map)->find();
-        $has_follow = false;
-        if ($res) {
-            $has_follow = true;
-        }
+        // 查询是否已关注（关注对象为作者绑定用户）
+        $has_follow = (new AuthorFollowLogic())->isFollow($this->shopid, get_uid(), $id);
         View::assign('has_follow', $has_follow);
 
         // 设置页面TITLE

@@ -761,3 +761,80 @@ SELECT 'COS_TENCENT_PRIVATE', 'radio', '私有读写播放签名', 'tencent_cos'
        0, 0, 1, '0', 0
 FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM `muucmf_extend_config` WHERE `name` = 'COS_TENCENT_PRIVATE');
+
+-- --------------------------------------------------------
+-- 关注数据迁移：muucmf_author_follow -> muucmf_follow
+-- 口径：关注对象为作者绑定用户（muucmf_author.uid），唯一键为店铺 + 关注者 + 被关注用户
+-- 说明：muucmf_author_follow 迁移后保留作备份，确认无误后再手工删除
+-- --------------------------------------------------------
+
+SET @exist := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_follow' AND COLUMN_NAME = 'shopid');
+SET @sql := IF(@exist = 0, 'ALTER TABLE `muucmf_follow` ADD `shopid` int(11) UNSIGNED NOT NULL DEFAULT ''0'' COMMENT ''店铺ID'' AFTER `id`', 'DO 0');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @exist := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_follow' AND COLUMN_NAME = 'author_id');
+SET @sql := IF(@exist = 0, 'ALTER TABLE `muucmf_follow` ADD `author_id` int(11) UNSIGNED NOT NULL DEFAULT ''0'' COMMENT ''关注来源作者ID'' AFTER `follow_who`', 'DO 0');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @exist := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_follow' AND COLUMN_NAME = 'status');
+SET @sql := IF(@exist = 0, 'ALTER TABLE `muucmf_follow` ADD `status` tinyint(2) NOT NULL DEFAULT ''1'' COMMENT ''状态 0取消 1关注'' AFTER `author_id`', 'DO 0');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @exist := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_follow' AND COLUMN_NAME = 'update_time');
+SET @sql := IF(@exist = 0, 'ALTER TABLE `muucmf_follow` ADD `update_time` int(11) UNSIGNED NOT NULL DEFAULT ''0'' COMMENT ''更新时间'' AFTER `create_time`', 'DO 0');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+DELETE f1 FROM `muucmf_follow` f1
+INNER JOIN `muucmf_follow` f2
+  ON f1.`shopid` = f2.`shopid`
+ AND f1.`who_follow` = f2.`who_follow`
+ AND f1.`follow_who` = f2.`follow_who`
+ AND f1.`id` < f2.`id`;
+
+SET @exist := (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_follow' AND INDEX_NAME = 'uk_shop_who_follow');
+SET @sql := IF(@exist = 0, 'ALTER TABLE `muucmf_follow` ADD UNIQUE KEY `uk_shop_who_follow` (`shopid`,`who_follow`,`follow_who`)', 'DO 0');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @exist := (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_follow' AND INDEX_NAME = 'idx_shop_author_who');
+SET @sql := IF(@exist = 0, 'ALTER TABLE `muucmf_follow` ADD KEY `idx_shop_author_who` (`shopid`,`author_id`,`who_follow`)', 'DO 0');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @exist := (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'muucmf_follow' AND INDEX_NAME = 'idx_shop_follow_who_status');
+SET @sql := IF(@exist = 0, 'ALTER TABLE `muucmf_follow` ADD KEY `idx_shop_follow_who_status` (`shopid`,`follow_who`,`status`)', 'DO 0');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+INSERT INTO `muucmf_follow`
+  (`shopid`,`who_follow`,`follow_who`,`author_id`,`status`,`create_time`,`update_time`)
+SELECT af.`shopid`, af.`uid`, a.`uid`, af.`author_id`, 1, af.`create_time`, af.`update_time`
+FROM `muucmf_author_follow` af
+INNER JOIN `muucmf_author` a ON a.`id` = af.`author_id`
+WHERE af.`status` = 1
+  AND af.`uid` > 0
+  AND a.`uid` > 0
+  AND af.`id` = (
+      SELECT MAX(af2.`id`)
+      FROM `muucmf_author_follow` af2
+      INNER JOIN `muucmf_author` a2 ON a2.`id` = af2.`author_id`
+      WHERE af2.`shopid` = af.`shopid`
+        AND af2.`uid` = af.`uid`
+        AND a2.`uid` = a.`uid`
+        AND af2.`status` = 1
+  )
+ON DUPLICATE KEY UPDATE
+  `author_id` = VALUES(`author_id`),
+  `status` = 1,
+  `update_time` = VALUES(`update_time`);

@@ -5,7 +5,7 @@ namespace app\api\controller;
 use app\common\controller\Api;
 use app\common\model\Author as AuthorModel;
 use app\common\logic\Author as AuthorLogic;
-use app\common\model\AuthorFollow as AuthorFollowModel;
+use app\common\model\Follow as FollowModel;
 use app\common\logic\AuthorFollow as AuthorFollowLogic;
 
 class Author extends Api
@@ -104,33 +104,16 @@ class Author extends Api
         $author_id = input('author_id', 0, 'intval');
         $uid = get_uid();
 
-        // 判断是否已关注
-        $map = [
-            ['shopid', '=', $this->shopid],
-            ['uid', '=', $uid],
-            ['author_id', '=', $author_id],
-        ];
-        $follow = (new AuthorFollowModel())->where($map)->find();
-
-        // 写入数据初始化
-        $data = [];
-        if ($follow) {
-            $data['id'] = $follow['id'];
-            if ($follow['status'] == 1) $data['status'] = 0;
-            if ($follow['status'] == 0) $data['status'] = 1;
-        } else {
-            $data['shopid'] = $this->shopid;
-            $data['uid'] = $uid;
-            $data['author_id'] = $author_id;
-            $data['status'] = 1;
+        if (empty($author_id)) {
+            return $this->error('缺少参数');
         }
 
-        $res = (new AuthorFollowModel())->edit($data);
-        if ($res) {
-            return $this->success($data['status'] ? '已关注' : '已取消');
+        $result = (new AuthorFollowLogic())->toggleFollow($this->shopid, $uid, $author_id);
+        if (empty($result['success'])) {
+            return $this->error($result['msg']);
         }
 
-        return $this->error('发生错误');
+        return $this->success($result['msg']);
     }
 
     /**
@@ -141,14 +124,7 @@ class Author extends Api
         $author_id = input('author_id', 0, 'intval');
         $uid = get_uid();
 
-        $map = [
-            ['shopid', '=', $this->shopid],
-            ['uid', '=', $uid],
-            ['author_id', '=', $author_id],
-            ['status', '=', 1]
-        ];
-        $res = (new AuthorFollowModel())->where($map)->find();
-        if ($res) {
+        if ((new AuthorFollowLogic())->isFollow($this->shopid, $uid, $author_id)) {
             return $this->success('已关注');
         }
 
@@ -176,11 +152,11 @@ class Author extends Api
         // 查询条件
         $map = [
             ['shopid', '=', $this->shopid],
-            ['uid', '=', $uid],
+            ['who_follow', '=', $uid],
             ['status', '=', 1]
         ];
         $fields = '*';
-        $lists = (new AuthorFollowModel())->getListByPage($map, $order, $fields, $rows);
+        $lists = (new FollowModel())->getListByPage($map, $order, $fields, $rows);
         $lists = $lists->toArray();
         foreach ($lists['data'] as &$val) {
             $val = (new AuthorFollowLogic())->formatData($val);
