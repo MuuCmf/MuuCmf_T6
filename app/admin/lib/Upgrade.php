@@ -232,9 +232,14 @@ class Upgrade
                 $sql = (new SqlFile())->getSqlFromFile($sql_path, false, ['muucmf_' => config('database.connections.mysql.prefix')]);
                 if ($sql) {
                     foreach ($sql as $s) {
+                        // 按 ";\n" 切分后，文件末尾会多出一条空语句；空 SQL 在 PHP 8 下会抛 ValueError，需直接跳过
+                        $s = trim($s);
+                        if ($s === '') {
+                            continue;
+                        }
                         try {
                             @Db::query($s);
-                        } catch (Exception $e) {
+                        } catch (\Throwable $e) {
                             //忽略错误 继续执行
                         }
                     }

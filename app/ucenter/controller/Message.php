@@ -51,6 +51,15 @@ class Message extends Base
             }
         }
         unset($val);
+
+        // 「全部消息」固定排在首位并默认选中（type_id=0 表示不限类型）
+        $total_unread = array_sum(array_map('intval', $unread));
+        array_unshift($type_list, [
+            'id'     => 0,
+            'title'  => '全部消息',
+            'unread' => $total_unread > 99 ? '99+' : $total_unread,
+        ]);
+
         View::assign('type_list', $type_list);
 
         return View::fetch();
