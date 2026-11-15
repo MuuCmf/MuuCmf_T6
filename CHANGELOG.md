@@ -1,5 +1,25 @@
 # 更新日志
 
+## 2.2.6.202601115_release
+
+> 更新范围：2.2.5.202601112_release → 2.2.6.202601115_release（2026-11-12 ~ 2026-11-15）
+> 本版本以用户关注体系合并（创作者关注与用户关注统一到 `follow` 表）、投稿能力框架、消息中心「全部消息」筛选与升级执行修复为主。
+
+1.【新增】新增用户关注接口：关注 / 取消、是否关注、列表与计数
+2.【新增】新增 `UserFollow` 逻辑层，关注互切并校验目标账号
+3.【重构】关注关系合并至 `muucmf_follow`
+4.【优化】创作者关注统一走新关注逻辑，关注对象为作者绑定用户
+5.【优化】关注 / 粉丝列表兼容新旧数据
+6.【新增】新增投稿能力框架：Provider 契约、默认实现与注册解析器
+7.【新增】articles 投稿 Provider 声明工作台路由与「文章管理」菜单
+8.【优化】投稿准入改为「模块已安装 + 平台支持应用」双门校验
+9.【优化】售后回滚新增创作者分佣冲正，幂等且异常仅记日志
+10.【修复】用户中心消息列表新增「全部消息」筛选与未读汇总
+11.【修复】升级执行跳过空 SQL，修复 PHP 8 下异常捕获
+12.【修复】单图上传转义图片路径
+
+> 升级说明：需执行 `data/upgrade.sql` 末尾新增部分（关注数据迁移，接第 13 节）：为 `muucmf_follow` 补齐 `shopid` / `author_id` / `status` / `update_time` 列，按 `shopid + who_follow + follow_who` 去重后加唯一键 `uk_shop_who_follow` 与 `idx_shop_author_who`、`idx_shop_follow_who_status` 两个索引，再将 `muucmf_author_follow` 中 `status=1` 的记录关联 `muucmf_author.uid` 迁入新表（重复关注按 `ON DUPLICATE KEY UPDATE` 合并）。**执行前务必备份 `muucmf_follow` 与 `muucmf_author_follow`**；`muucmf_author_follow` 迁移后保留作备份，确认无误后再手工 DROP。存量 `muucmf_follow` 行的 `shopid` 默认为 0，按店铺查询的历史数据需按实际店铺回填 `shopid` 才会展示；未绑定用户的作者（`muucmf_author.uid=0`）不参与迁移。全新安装的库已不含 `muucmf_author_follow`（`data/install.sql` 已移除该表），迁移语句仅适用于存量库，表不存在时报错可跳过。投稿能力按约定路径 `app/{app}/service/contribution/Provider.php` 自动发现，无需登记，未迁移的应用走空实现。本版本无新增菜单、权限节点与定时任务，无静态资源重建，无需重启队列与定时任务。执行后刷新缓存（`php think clear`）。版本号更新为 `2.2.6.202601115_release`。
+
 ## 2.2.5.202601112_release
 
 > 更新范围：2.2.4.202601111_release → 2.2.5.202601112_release（2026-11-11 ~ 2026-11-12）
