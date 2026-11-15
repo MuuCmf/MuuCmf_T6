@@ -75,6 +75,45 @@ class Cloud
     }
 
     /**
+     * 上报应用安装/升级记录
+     * 上报失败仅记录日志，不阻断安装/升级主流程
+     * @param string $app_name 应用唯一标识
+     * @param string $action install|upgrade
+     * @param string $from_version 升级前版本，安装时为空
+     * @param string $to_version 目标版本
+     * @param string $release_type 发行类型 release|opensource
+     * @return bool
+     */
+    public function reportAppRecord($app_name, $action, $from_version, $to_version, $release_type = 'release')
+    {
+        if (empty($app_name) || empty($to_version) || !in_array($action, ['install', 'upgrade'], true)) {
+            return false;
+        }
+
+        try {
+            $url = $this->api . 'app/report';
+            $result = curl_request($url, [
+                'auth_code'    => self::authCode(),
+                'app_name'     => $app_name,
+                'frame'        => 't6',
+                'action'       => $action,
+                'from_version' => (string)$from_version,
+                'to_version'   => (string)$to_version,
+                'release_type' => $release_type,
+            ]);
+            $result = json_decode($result, true);
+            if (is_array($result) && ($result['code'] ?? 0) == 200) {
+                return true;
+            }
+            trace('cloud app record report failed: ' . json_encode($result, JSON_UNESCAPED_UNICODE), 'error');
+        } catch (\Throwable $e) {
+            trace('cloud app record report exception: ' . $e->getMessage(), 'error');
+        }
+
+        return false;
+    }
+
+    /**
      * @title 生成授权码
      * @return string
      */

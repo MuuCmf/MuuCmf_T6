@@ -220,6 +220,16 @@ class Module extends Admin
                 $res = $this->ModuleModel->install($aName);
 
                 if ($res === true) {
+                    // 云端来源的应用安装完成后上报安装记录（失败不影响安装结果）
+                    try {
+                        $module = $this->ModuleModel->getModule($aName);
+                        if (!empty($module) && ($module['source'] ?? '') == 'cloud' && !empty($module['version'])) {
+                            (new CloudServer())->reportAppRecord($aName, 'install', '', $module['version']);
+                        }
+                    } catch (\Throwable $e) {
+                        trace('cloud app record report exception: ' . $e->getMessage(), 'error');
+                    }
+
                     return $this->success('安装成功。', '', cookie('__forward__'));
                 }
             } catch (Exception $e) {

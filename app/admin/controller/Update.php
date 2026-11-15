@@ -176,6 +176,9 @@ class Update extends Admin
                 //执行升级sql
                 $this->UpgradeServer->executeUpgradeSql($this->app_name);
 
+                // 升级前的本地版本号，用于上报升级记录
+                $local_version = $params['skip'] == 0 ? $this->UpgradeServer->version($this->app_name) : '';
+
                 // 更新版本号
                 if ($params['skip'] == 0) {
 
@@ -190,6 +193,11 @@ class Update extends Admin
                         //更新应用版本号
                         Db::name('module')->where('name', '=', $this->app_name)->update(['version' => $params['version']]);
                     }
+                }
+
+                // 上报应用安装/升级记录（失败不影响升级结果）
+                if (!empty($local_version) && $local_version != $params['version']) {
+                    (new Cloud())->reportAppRecord($this->app_name, 'upgrade', $local_version, $params['version']);
                 }
 
                 //队列 worker 与 crontab 调度器都是常驻进程，升级后需重新加载代码，
