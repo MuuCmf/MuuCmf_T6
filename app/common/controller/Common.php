@@ -11,7 +11,7 @@ use app\common\model\Module;
 use app\common\logic\Config as ConfigLogic;
 
 /**
- * 前台控制器基类
+ * PC前台控制器基类
  */
 class Common extends Base
 {

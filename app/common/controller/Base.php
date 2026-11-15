@@ -18,6 +18,7 @@ class Base
     private $debug = [];
     public $app_name;
     public $params;
+    // shopid为预留未使用字段，当前落库全部0
     public $shopid = 0;
 
     /**

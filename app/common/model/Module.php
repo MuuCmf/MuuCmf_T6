@@ -70,9 +70,15 @@ class Module extends Base
     {
         $url = config('cloud.api') . 'authorization/allapp';
         $domain = request()->host();
-        $result = curl_request($url, [
-            'domain'  =>  $domain,
-        ]);
+        $params = ['domain' => $domain];
+        // T-C：与云端 allapp 收紧同一发版，先带凭证再逐域名打开 auth_enforce
+        // 生成失败时保持旧行为，避免「重置应用」整体不可用
+        try {
+            $params['auth_code'] = \app\admin\lib\Cloud::authCode();
+        } catch (\Throwable $e) {
+            // 凭证不可用时回落为仅传域名，由云端灰度开关决定是否放行
+        }
+        $result = curl_request($url, $params);
 
         $result = json_decode($result, true);
         if (is_array($result) && $result['code'] == 200) {
