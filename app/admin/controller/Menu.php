@@ -116,10 +116,14 @@ class Menu extends Admin
                 $map_2_level[] = ['hide', '=', 0];
                 $menu_2_list = $this->MenuModel->where($map_2_level)->field('id,pid,title,url,icon,tip,type,module')->order('sort asc')->select()->toArray();
 
-                if (!empty($menu_2_list)) {
-                    $menus['group'] = $group;
-                    $menus['lists'] = $menu_2_list;
+                // 该分组下没有可见菜单（例如只包含隐藏权限节点）时跳过，避免使用未初始化的 $menus
+                if (empty($menu_2_list)) {
+                    continue;
                 }
+
+                $menus = [];
+                $menus['group'] = $group;
+                $menus['lists'] = $menu_2_list;
 
                 // 按照三级分类生成子菜单树
                 foreach ($menus['lists'] as $k2 => $v2) {
