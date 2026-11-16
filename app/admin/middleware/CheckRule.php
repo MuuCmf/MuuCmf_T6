@@ -35,6 +35,8 @@ class CheckRule extends Base
             'admin/module/cvlist',
             'admin/config/grouplist',
             'admin/extend/grouplist',
+            // S4-10：公共壳层需读取激活状态展示未激活横幅，仅返回是否激活，不含密钥
+            'admin/license/index',
         ];
 
         if (in_array($rule, $except)) {

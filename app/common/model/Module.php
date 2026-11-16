@@ -71,12 +71,21 @@ class Module extends Base
         $url = config('cloud.api') . 'authorization/allapp';
         $domain = request()->host();
         $params = ['domain' => $domain];
-        // T-C：与云端 allapp 收紧同一发版，先带凭证再逐域名打开 auth_enforce
+        // 与云端 allapp 同发版：先带凭证，再由域名 legacy_off 决定是否只接受签名
         // 生成失败时保持旧行为，避免「重置应用」整体不可用
         try {
             $params['auth_code'] = \app\admin\lib\Cloud::authCode();
         } catch (\Throwable $e) {
-            // 凭证不可用时回落为仅传域名，由云端灰度开关决定是否放行
+            // 凭证不可用时回落为仅传域名，由云端 legacy_off 决定是否放行
+        }
+        // S1：已激活则叠加签名参数；未激活时保持 auth_code 单通道
+        try {
+            $sig = \app\admin\lib\CloudSignature::payload('authorization.allapp');
+            if (!empty($sig)) {
+                $params = array_merge($params, $sig);
+            }
+        } catch (\Throwable $e) {
+            // 签名不可用时回落 legacy，不阻断「重置应用」
         }
         $result = curl_request($url, $params);
 

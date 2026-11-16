@@ -21,11 +21,18 @@ class Cloud
         $domain = request()->host();
         $ip   = request()->ip();
         $url = $this->api . 'request/record';
-        $result = curl_request($url, [
+        $post = [
             'domain'  =>  $domain,
             'ip' =>  $ip,
             'channel' => 'T6'
-        ]);
+        ];
+        // S1：已激活则叠加签名参数，避免关闭 legacy 后请求记录被拒
+        try {
+            $post = array_merge($post, CloudSignature::payload('request.record'));
+        } catch (\Throwable $e) {
+            trace('cloud signature payload exception: ' . $e->getMessage(), 'error');
+        }
+        $result = curl_request($url, $post);
         try {
             $result = json_decode($result, true);
             if (is_array($result) && $result['code'] == 0) {
@@ -41,37 +48,194 @@ class Cloud
     /**
      * 查询应用授权
      * app_name 应用唯一标识
+     *
+     * S0-C 宽限期状态机：云端可达时沿用原判定并清空宽限状态；云端不可达时按
+     * cloud.grace_hours 放行，超过宽限期返回 end_auth（fail-closed）。
+     * 缓存键追加激活态指纹，S1 激活后自动区分不同密钥实例。
+     *
+     * @param string $app_name 应用唯一标识
+     * @return array|bool
      */
     public function needAuthorization($app_name)
     {
-        $cacheKey = request()->host() . '_MUUCMF_CLOUD_AUTH_APP_' . $app_name;
+        $cacheKey = request()->host() . '_MUUCMF_CLOUD_AUTH_APP_' . $app_name
+            . '_' . substr(hash('sha256', (string)$this->activationFingerprint()), 0, 12);
         $cached = Cache::get($cacheKey);
         if ($cached !== null) {
             return $cached;
         }
 
         $url = $this->api . 'authorization/app';
-        $result = curl_request($url, [
+        $raw = '';
+        $post = [
             'app_name'  =>  $app_name,
             'auth_code' =>  self::authCode(),
             'frame' => 't6',
-        ]);
+        ];
+        // S1：已激活则叠加签名参数；未激活时签名参数为空，保持 legacy 单通道
         try {
-            $result = json_decode($result, true);
-            if (is_array($result) && $result['code'] == 0) {
-                // 未授权：缓存 5 分钟（期间持续拦截）
-                Cache::set($cacheKey, $result, 300);
-                return $result;
-            }
+            $post = array_merge($post, CloudSignature::payload('authorization.app', (string) $app_name));
+        } catch (\Throwable $e) {
+            trace('cloud signature payload exception: ' . $e->getMessage(), 'error');
+        }
+        try {
+            $raw = curl_request($url, $post);
         } catch (ValidateException $e) {
-            // 云端异常：fail-closed 降级，短缓存 1 分钟避免雪崩
-            Cache::set($cacheKey, false, 60);
-            return false;
+            trace('cloud auth request validate exception: ' . $e->getMessage(), 'error');
+        } catch (\Throwable $e) {
+            trace('cloud auth request exception: ' . $e->getMessage(), 'error');
         }
 
-        // 已授权 / 云端返回非预期（fail-open 放行）：短缓存 1 分钟避免频繁打云端
+        $decoded = is_string($raw) ? json_decode($raw, true) : null;
+        $verdict = $this->classifyCloudResponse($decoded);
+
+        // 云端不可达或非预期响应：走持久化三态宽限，不再静默 fail-open
+        if ($verdict === 'unreachable') {
+            return $this->graceFallback($cacheKey);
+        }
+
+        // 云端可达：清空断网计数；deny 立即拒绝，不受宽限保护
+        $this->clearAuthState();
+        if ($verdict === 'deny') {
+            Cache::set($cacheKey, $decoded, 60);
+            return $decoded;
+        }
         Cache::set($cacheKey, true, 60);
         return true;
+    }
+
+    /**
+     * 云端响应三分类（纯函数，供验收脚本直接断言）
+     * @param mixed $decoded
+     * @return string allow|deny|unreachable
+     */
+    public function classifyCloudResponse($decoded): string
+    {
+        if (!is_array($decoded) || !array_key_exists('code', $decoded)) {
+            return 'unreachable';
+        }
+        return (int)$decoded['code'] === 0 ? 'deny' : 'allow';
+    }
+
+    /**
+     * 宽限期三态判定（纯函数，不读写文件，便于验收脚本注入时间）
+     *
+     * @param array $state      上一次状态
+     * @param int   $now        当前时间戳
+     * @param int   $graceHours 宽限小时数，0 表示严格模式
+     * @return array{allow:bool,state:array}
+     */
+    public function graceDecision(array $state, int $now, int $graceHours): array
+    {
+        $normalized = [
+            'first_fail_at' => (int)($state['first_fail_at'] ?? 0),
+            'last_fail_at'  => (int)($state['last_fail_at'] ?? 0),
+            'fail_count'    => (int)($state['fail_count'] ?? 0),
+        ];
+        if ($normalized['first_fail_at'] <= 0 || $normalized['first_fail_at'] > $now) {
+            $normalized['first_fail_at'] = $now;
+        }
+        $normalized['last_fail_at'] = $now;
+        $normalized['fail_count']++;
+
+        $grace = $graceHours * 3600;
+        $allow = $grace > 0 && ($now - $normalized['first_fail_at']) <= $grace;
+        return ['allow' => $allow, 'state' => $normalized];
+    }
+
+    /**
+     * 云端不可达时的宽限处理：状态持久化到 data/cloud_auth_state.json
+     * @param string $cacheKey
+     * @return array|bool
+     */
+    private function graceFallback(string $cacheKey)
+    {
+        $decision = $this->graceDecision($this->authState(), time(), (int)config('cloud.grace_hours', 72));
+        $this->saveAuthState($decision['state']);
+
+        if ($decision['allow']) {
+            trace('cloud auth unreachable, within grace: ' . json_encode($decision['state']), 'error');
+            Cache::set($cacheKey, true, 60);
+            return true;
+        }
+
+        $denied = [
+            'code' => 0,
+            'msg'  => '授权校验服务不可达，已超过宽限期',
+            'data' => 'end_auth',
+        ];
+        trace('cloud auth unreachable, grace exceeded: ' . json_encode($decision['state']), 'error');
+        Cache::set($cacheKey, $denied, 60);
+        return $denied;
+    }
+
+    /**
+     * 状态文件路径（与 public/ 同级，非 docroot）
+     * 多节点部署需放共享卷，或改写为 Redis key cloud_auth_state_<host>。
+     */
+    protected function authStateFile(): string
+    {
+        return root_path() . 'data/cloud_auth_state.json';
+    }
+
+    /**
+     * 读取状态文件：缺失、损坏时返回零值，下次写入自动修复
+     */
+    private function authState(): array
+    {
+        $file = $this->authStateFile();
+        $raw = is_file($file) ? (string)@file_get_contents($file) : '';
+        $data = json_decode($raw, true);
+        if (!is_array($data)) {
+            return ['first_fail_at' => 0, 'last_fail_at' => 0, 'fail_count' => 0];
+        }
+        return [
+            'first_fail_at' => (int)($data['first_fail_at'] ?? 0),
+            'last_fail_at'  => (int)($data['last_fail_at'] ?? 0),
+            'fail_count'    => (int)($data['fail_count'] ?? 0),
+        ];
+    }
+
+    /**
+     * .tmp -> rename 原子落盘，避免读到半截 JSON；只读 0640
+     */
+    private function saveAuthState(array $state): void
+    {
+        $file = $this->authStateFile();
+        $dir = dirname($file);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0777, true);
+        }
+        $tmp = $file . '.' . getmypid() . '.tmp';
+        if (@file_put_contents($tmp, json_encode($state), LOCK_EX) === false) {
+            trace('cloud auth state write failed: ' . $tmp, 'error');
+            return;
+        }
+        @chmod($tmp, 0640);
+        if (!@rename($tmp, $file)) {
+            @unlink($tmp);
+            trace('cloud auth state rename failed: ' . $file, 'error');
+        }
+    }
+
+    /**
+     * 云端恢复可达时清零（仅文件已存在时写，减少无谓 IO）
+     * 清 runtime 缓存不会重置该计数。
+     */
+    private function clearAuthState(): void
+    {
+        if (!is_file($this->authStateFile())) {
+            return;
+        }
+        $this->saveAuthState(['first_fail_at' => 0, 'last_fail_at' => 0, 'fail_count' => 0]);
+    }
+
+    /**
+     * 激活态指纹：激活页落盘密钥后返回密钥指纹，用于隔离激活前后的缓存判定
+     */
+    protected function activationFingerprint(): string
+    {
+        return CloudSignature::fingerprint();
     }
 
     /**
@@ -92,7 +256,7 @@ class Cloud
 
         try {
             $url = $this->api . 'app/report';
-            $result = curl_request($url, [
+            $post = [
                 'auth_code'    => self::authCode(),
                 'app_name'     => $app_name,
                 'frame'        => 't6',
@@ -100,7 +264,10 @@ class Cloud
                 'from_version' => (string)$from_version,
                 'to_version'   => (string)$to_version,
                 'release_type' => $release_type,
-            ]);
+            ];
+            // S1：签名参数与 auth_code 双通道并存，滚动发版期间互不影响
+            $post = array_merge($post, CloudSignature::payload('app.report', (string) $app_name));
+            $result = curl_request($url, $post);
             $result = json_decode($result, true);
             if (is_array($result) && ($result['code'] ?? 0) == 200) {
                 return true;

@@ -99,6 +99,15 @@ class Upgrade
         $source = $this->api . "upgrade/download?" . http_build_query($params);
         //地址追加授权域名
         $source .= "&auth_code=" . urlencode(Cloud::authCode());
+        // S1：签名参数与 auth_code 双通道并存；GET 请求的签名参数走 query
+        try {
+            $sig = CloudSignature::payload('upgrade.download', (string) ($params['app_name'] ?? ''));
+            if (!empty($sig)) {
+                $source .= "&" . http_build_query($sig);
+            }
+        } catch (\Throwable $e) {
+            trace('cloud signature payload exception: ' . $e->getMessage(), 'error');
+        }
         $ch = curl_init(); //初始化一个cURL会话
         curl_setopt($ch, CURLOPT_URL, $source); //抓取url
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1); //是否显示头信息
@@ -268,12 +277,19 @@ class Upgrade
         } else {
             $url = $url . "upgrade/app/version";
         }
-        $result = curl_request($url, [
+        $post = [
             'app_name'  =>  $app_name,
             'frame' => 't6',
             'version' =>  $version,
             'auth_code' => $auth_code
-        ]);
+        ];
+        // S1：已激活则叠加签名参数，scope 固定为 upgrade.version
+        try {
+            $post = array_merge($post, CloudSignature::payload('upgrade.version', (string) $app_name));
+        } catch (\Throwable $e) {
+            trace('cloud signature payload exception: ' . $e->getMessage(), 'error');
+        }
+        $result = curl_request($url, $post);
 
         try {
             $result = json_decode($result, true);

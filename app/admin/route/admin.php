@@ -407,6 +407,16 @@ Route::group('capitalflow', function () {
     Route::get('list', 'admin/CapitalFlow/list');
 });
 
+// 域名授权激活（S1）
+Route::group('license', function () {
+    // 激活状态（不回显密钥）
+    Route::get('index', 'admin/License/index');
+    // 导入云端下发的密钥并落盘 data/license/domain.secret
+    Route::post('import', 'admin/License/import');
+    // 自助激活：用授权码向云端换取密钥并落盘
+    Route::post('activate', 'admin/License/activate');
+});
+
 // 智能体管理路由
 Route::group('muu_agent', function () {
     // 基础信息
