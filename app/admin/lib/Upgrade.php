@@ -75,6 +75,8 @@ class Upgrade
                 'data/version.ini',
                 'public/favicon.ico'
             ];
+            // 归一化分隔符并折叠重复斜杠，堵 config//queue.php 这类子串匹配绕过
+            $path = preg_replace('#/+#', '/', str_replace('\\', '/', (string) $path));
             foreach ($ignore_paths as $item) {
                 if (strpos($path, $item) !== false) {
                     return true;
@@ -113,20 +115,26 @@ class Upgrade
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1); //是否显示头信息
         //curl_setopt($ch, CURLOPT_SSLVERSION, 3);//传递一个包含SSL版本的长参数
         curl_setopt($ch, CURLINFO_HEADER_OUT, true); //TRUE 时追踪句柄的请求字符串，从 PHP 5.1.3 开始可用。这个很关键，就是允许你查看请求header
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, FALSE);
+        // 强制校验证书链与主机名：升级通道传输的是可执行代码，关闭校验等于给中间人开门
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
         $data = curl_exec($ch); // 执行一个cURL会话
         $response = curl_getinfo($ch);
         $error = curl_error($ch); //返回一条最近一次cURL操作明确的文本的错误信息。
         curl_close($ch); //关闭一个cURL会话并且释放所有资源
-        //处理返回的错误信息
-        if ($response['content_type'] != 'application/octet-stream') {
-            $error = json_decode($data, true);
-            throw new Exception($error['msg'], $error['code']);
-        }
-
+        //处理返回的错误信息：curl 层错误（含 TLS 校验失败）必须先于内容类型判断抛出
         if ($error) {
             throw new Exception($error);
+        }
+        if ($response['content_type'] != 'application/octet-stream') {
+            $error = json_decode($data, true);
+            throw new Exception($error['msg'] ?? '云端返回异常', (int) ($error['code'] ?? 0));
+        }
+
+        // 写盘前复验内容 md5：清单下发的 md5 是唯一完整性锚点，不复验则换包无从发现
+        $expect_md5 = strtolower((string) ($params['md5'] ?? ''));
+        if ($expect_md5 !== '' && md5((string) $data) !== $expect_md5) {
+            throw new Exception('下载文件校验失败，已丢弃');
         }
 
         //备份文件

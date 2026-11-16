@@ -124,10 +124,15 @@ class Update extends Admin
     {
         if (request()->isAjax()) {
             $params = request()->param();
-            $path = $params['file']; //文件路径
+            $path = str_replace('\\', '/', (string) $params['file']); //文件路径
             $md5 = $params['md5']; //文件md5
             $app_name = $this->app_name; //应用标识
             $version = $params['version']; //应用类型
+            // 写入路径必须落在根目录内：拒绝绝对路径与目录穿越，防云端字节写到 webroot 之外
+            if ($path === '' || strpos($path, '..') !== false
+                || $path[0] === '/' || preg_match('#^[a-zA-Z]:#', $path)) {
+                return $this->error('文件路径不合法');
+            }
             $local_path = root_path() . $path;
             $local_version = $this->UpgradeServer->version($app_name); //本地版本
             $upgrade = get_upgrade_status($local_version, $version); //版本号对比
@@ -179,25 +184,33 @@ class Update extends Admin
                 // 升级前的本地版本号，用于上报升级记录
                 $local_version = $params['skip'] == 0 ? $this->UpgradeServer->version($this->app_name) : '';
 
-                // 更新版本号
+                // 更新版本号：以云端当前发布版本为准，不信任客户端提交值
+                $target_version = '';
                 if ($params['skip'] == 0) {
+
+                    // 向云端确认当前发布版本；获取失败则中止 finish，避免本地标新到错误版本
+                    $cloud = $this->UpgradeServer->cloudVersion(['app_name' => $this->app_name]);
+                    $target_version = trim((string) ($cloud['data']['version'] ?? ''));
+                    if ($target_version === '' || $target_version === '服务器错误') {
+                        throw new Exception('无法获取云端发布版本，请稍后重试完成升级');
+                    }
 
                     // 系统更新
                     if ($this->app_name == 'system') {
                         // 更改root_path() . 'data/version.ini'文件内容为版本号
-                        file_put_contents(root_path() . 'data/version.ini', $params['version']);
+                        file_put_contents(root_path() . 'data/version.ini', $target_version);
                         
                         //更新系统版本号
                         //$this->UpgradeServer->downFile($params, root_path() . 'data/version.ini');
                     } else {
                         //更新应用版本号
-                        Db::name('module')->where('name', '=', $this->app_name)->update(['version' => $params['version']]);
+                        Db::name('module')->where('name', '=', $this->app_name)->update(['version' => $target_version]);
                     }
                 }
 
                 // 上报应用安装/升级记录（失败不影响升级结果）
-                if (!empty($local_version) && $local_version != $params['version']) {
-                    (new Cloud())->reportAppRecord($this->app_name, 'upgrade', $local_version, $params['version']);
+                if (!empty($local_version) && $target_version !== '' && $local_version != $target_version) {
+                    (new Cloud())->reportAppRecord($this->app_name, 'upgrade', $local_version, $target_version);
                 }
 
                 //队列 worker 与 crontab 调度器都是常驻进程，升级后需重新加载代码，
