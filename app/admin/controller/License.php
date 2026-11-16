@@ -176,6 +176,80 @@ class License extends Admin
     }
 
     /**
+     * 自动获取授权码：域名归属验证通过后由云端下发
+     *
+     * 流程：向云端申请一次性验证串 → 写入站点 public 目录 → 云端回连校验 →
+     * 通过后返回授权码。验证文件在本次请求内写入并立即删除，不在站点留存。
+     * 需要云端能够访问本站（内网/断网站点不适用），失败时仍可手动粘贴授权码。
+     *
+     * @return \think\Response
+     */
+    public function fetchCode()
+    {
+        if (!request()->isPost()) {
+            return $this->error('请求方式错误');
+        }
+
+        $domain = strtolower(trim((string) request()->host()));
+        if ($domain === '') {
+            return $this->error('无法识别当前域名，获取授权码失败');
+        }
+
+        try {
+            $raw = curl_request(config('cloud.api') . 'authorization/challenge', ['domain' => $domain]);
+            $res = json_decode((string) $raw, true);
+        } catch (\Throwable $e) {
+            trace('cloud license challenge exception: ' . $e->getMessage(), 'error');
+            return $this->error('云端不可达，暂时无法自动获取，请手动粘贴授权码');
+        }
+        if (!is_array($res)) {
+            return $this->error('云端响应异常，请手动粘贴授权码');
+        }
+        if ((int) ($res['code'] ?? 0) !== 200) {
+            return $this->error((string) ($res['msg'] ?? '无法获取授权码，请手动粘贴'));
+        }
+
+        $data     = is_array($res['data'] ?? null) ? $res['data'] : [];
+        $token    = strtolower(trim((string) ($data['token'] ?? '')));
+        $filename = (string) ($data['filename'] ?? '');
+        if (!preg_match('/^[0-9a-f]{32}$/', $token) || !preg_match('/^[a-z0-9._-]{1,64}$/', $filename)) {
+            return $this->error('云端返回数据异常，请手动粘贴授权码');
+        }
+
+        $file = public_path() . $filename;
+        if (@file_put_contents($file, $token, LOCK_EX) === false) {
+            return $this->error('站点 public 目录不可写，无法自动获取，请手动粘贴授权码');
+        }
+
+        try {
+            $raw = curl_request(config('cloud.api') . 'authorization/claim', [
+                'domain' => $domain,
+                'token'  => $token,
+            ]);
+            $res = json_decode((string) $raw, true);
+        } catch (\Throwable $e) {
+            @unlink($file);
+            trace('cloud license claim exception: ' . $e->getMessage(), 'error');
+            return $this->error('云端不可达，暂时无法自动获取，请手动粘贴授权码');
+        }
+        @unlink($file);
+
+        if (!is_array($res)) {
+            return $this->error('云端响应异常，请手动粘贴授权码');
+        }
+        if ((int) ($res['code'] ?? 0) !== 200) {
+            return $this->error((string) ($res['msg'] ?? '自动获取失败，请手动粘贴授权码'));
+        }
+
+        $code = trim((string) ($res['data']['code'] ?? ''));
+        if (!preg_match('/^[0-9a-f]{32}$/i', $code)) {
+            return $this->error('云端返回授权码异常，请手动粘贴');
+        }
+
+        return $this->success('已获取授权码', ['code' => $code]);
+    }
+
+    /**
      * 密钥原子落盘
      *
      * @param string $secret  64 位十六进制密钥
