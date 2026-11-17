@@ -569,8 +569,15 @@ if (!function_exists('version_contrast')) {
      */
     function version_contrast($versionA,$versionB)
     {
-        if ($versionA>2147483646 || $versionB>2147483646) {
-            throw new Exception('版本号,位数太大暂不支持!','101');
+        // 仅拦截「单个纯数字版本号」溢出（如 20251118001 这类日期流水号）；
+        // 不能直接拿字符串与整数比大小：PHP 8 下非数字字符串会按字符串比较，
+        // "3.0.0" > "2147483646" 成立，会把 3.x~9.x 的正常版本号误判为位数太大
+        foreach ([$versionA, $versionB] as $versionCheck) {
+            $versionCheck = (string)$versionCheck;
+            if (strpos($versionCheck, '.') === false && is_numeric($versionCheck)
+                && (float)$versionCheck > 2147483646) {
+                throw new Exception('版本号,位数太大暂不支持!','101');
+            }
         }
         $dm = '.';
         $verListA = explode($dm, (string)$versionA);
