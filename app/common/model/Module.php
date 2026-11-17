@@ -2,6 +2,7 @@
 
 namespace app\common\model;
 
+use app\common\service\CloudAppSource;
 use think\facade\Db;
 use think\Exception;
 
@@ -207,14 +208,18 @@ class Module extends Base
         }
 
         $module = [];
+        $isNewLocal = [];
         foreach ($dir as $subdir) {
             if (file_exists(APP_PATH . '/' . $subdir . '/info/info.php') && $subdir != '.' && $subdir != '..') {
                 // 获取配置数据
                 $info = $this->getInfo($subdir);
                 $info['sort'] = 0;
                 $info['source'] = 'local';
-                // 合并数据表内模块
-                $module_info = $this->getModule($info['name']);
+                // 合并数据表内模块（此处跳过单条云端判定，避免逐个应用发请求，
+                // 循环结束后统一批量判定、纠正来源并拦截重名）
+                $module_info = $this->getModule($info['name'], '*', false);
+                // 无库记录的本地目录才算「新登记」，重名拦截只针对这类应用
+                $isNewLocal[(string) $info['name']] = empty($module_info);
                 if ($module_info) {
                     $info = array_merge($info, $module_info);
                     $info['id'] = $module_info['id'];
@@ -227,8 +232,37 @@ class Module extends Base
         }
 
         if (!empty($module)) {
-            //写入数据库
-            $this->saveAll($module);
+            // 一次批量云端判定：既用于重名拦截，也用于历史来源纠正
+            $cloudStates = CloudAppSource::versions(array_column($module, 'name'));
+            $cloudNames = [];
+            $conflicts = [];
+            $registered = [];
+            foreach ($module as $item) {
+                $name = (string) $item['name'];
+                if (empty($cloudStates[$name]['exists'])) {
+                    $registered[] = $item;
+                    continue;
+                }
+                // 标识唯一：本地应用禁止占用云端已发布标识，重名直接拒绝登记
+                if (!empty($isNewLocal[$name])) {
+                    $conflicts[] = $name;
+                    continue;
+                }
+                // 已有库记录：云端已发布即按云端应用处理，纠正历史 local 标记
+                $registered[] = $item;
+                $cloudNames[] = $name;
+            }
+
+            if (!empty($registered)) {
+                $this->saveAll($registered);
+            }
+            CloudAppSource::heal($cloudNames);
+
+            if (!empty($conflicts)) {
+                $this->error = '应用标识与云端应用重名，已拒绝登记：' . implode('、', $conflicts)
+                    . '。请使用唯一标识后重新刷新应用。';
+                trace('local app name conflicts with cloud app: ' . implode(',', $conflicts), 'error');
+            }
         }
 
         // 获取所有本地未安装应用
@@ -257,6 +291,11 @@ class Module extends Base
         $log = '';
 
         $module = $this->getModule($name);
+
+        if (empty($module)) {
+            // 未登记通常意味着本地目录标识与云端应用重名被拒，或应用已被移除
+            throw new Exception('应用不存在或标识与云端应用重名，请检查应用标识');
+        }
 
         if ($module['is_setup'] == 1) {
             throw new Exception('应用已安装');
@@ -442,9 +481,11 @@ class Module extends Base
     /**
      * 通过name来获取应用
      * @param $name 应用名
+     * @param string $field 查询字段
+     * @param bool $resolveSource 是否按云端发布状态纠正来源标记
      * @return array|mixed
      */
-    public function getModule($name, $field = '*')
+    public function getModule($name, $field = '*', $resolveSource = true)
     {
         if ($name == 'admin' || $name == 'common' || $name == 'channel' || $name == 'ucenter') {
             return false;
@@ -453,6 +494,14 @@ class Module extends Base
         $info = $this->where('name', $name)->field($field)->find();
         if ($info) {
             $info = $info->toArray();
+            // 全局强制云端来源：库内 source 可能因 allapp 同步失败、历史数据或
+            // 本地目录重建停留在 local，这里以云端是否已发布为准纠正，
+            // 避免版本检测、安装拦截、运行时授权等入口按旧标记漏判。
+            if ($resolveSource && array_key_exists('source', $info) && (string) $info['source'] !== 'cloud') {
+                if (CloudAppSource::isCloud($name)) {
+                    $info['source'] = 'cloud';
+                }
+            }
             if (empty($info['icon'])) {
                 //图标所在位置为模块静态目录下（推荐）
                 if (defined('PUBLIC_PATH') && file_exists(PUBLIC_PATH . '/static/' . $name . '/images/icon.png')) {

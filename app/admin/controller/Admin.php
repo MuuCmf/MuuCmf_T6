@@ -8,6 +8,7 @@ use app\common\controller\Base;
 use app\common\model\Menu;
 use app\common\model\AuthRule;
 use app\common\model\Module as ModuleModel;
+use app\common\service\CloudAppSource;
 use app\common\logic\Config as ConfigLogic;
 use app\admin\lib\Cloud;
 
@@ -75,8 +76,9 @@ class Admin extends Base
      */
     protected function checkAppAuthorization($module)
     {
-        // 仅校验已安装的云端应用，本地内置应用不受影响
-        if (empty($module) || ($module['source'] ?? '') !== 'cloud' || (int) ($module['is_setup'] ?? 0) !== 1) {
+        // 仅校验已安装的云端商业应用：框架内置应用不受影响，
+        // 避免授权页、应用商店等自救入口被「未购买」判定锁死
+        if (empty($module) || !CloudAppSource::requiresLicense($module)) {
             return;
         }
 

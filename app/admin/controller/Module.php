@@ -6,6 +6,7 @@ use think\Exception;
 use think\facade\Cache;
 use app\admin\lib\Upgrade as UpgradeServer;
 use app\admin\lib\Cloud as CloudServer;
+use app\common\service\CloudAppSource;
 use app\common\model\Menu as MenuModel;
 use app\common\model\Module as ModuleModel;
 use app\common\model\AuthRule;
@@ -56,7 +57,6 @@ class Module extends Admin
 
         $rows = min(100, max(1, (int)input('rows', 15, 'intval')));
 
-        $upgradeServer = new UpgradeServer();
         $modules = $this->ModuleModel->getListByPage($map, 'sort desc,id desc', '*', $rows);
         $cloud = new CloudServer();
         // 分页项可能是模型对象，直接 array_column 无法读取 name，需通过数组访问取值
@@ -64,7 +64,7 @@ class Module extends Admin
         foreach ($modules as $module) {
             $itemNames[] = $module['name'];
         }
-        $cloudVersions = $this->fetchCloudVersions($upgradeServer, $itemNames);
+        $cloudVersions = $this->fetchCloudVersions($itemNames);
 
         $cloudNames = [];
         $authNames = [];
@@ -85,6 +85,8 @@ class Module extends Admin
             $item['new_version'] = $existsInCloud && !empty($versionInfo['version'])
                 ? $versionInfo['version']
                 : $item['version'];
+            // 版本状态：6 表示测试版，仅测试域名可见
+            $item['version_status'] = $existsInCloud ? (int) ($versionInfo['status'] ?? 1) : 1;
             $item['upgrade'] = get_upgrade_status($item['version'], $item['new_version']) ? 1 : 0;
 
             // 授权过期检测只针对已安装的云端应用，批量请求后续统一回填
@@ -126,9 +128,7 @@ class Module extends Admin
 
         // 批量纠正来源标记，避免逐行写库
         if (!empty($cloudNames)) {
-            $this->ModuleModel->where('name', 'in', $cloudNames)
-                ->where('source', '<>', 'cloud')
-                ->update(['source' => 'cloud']);
+            CloudAppSource::heal($cloudNames);
         }
 
         // 批量授权检测：仅已安装的云端应用需要回填过期状态
@@ -148,56 +148,16 @@ class Module extends Admin
 
     /**
      * 批量获取云端应用版本信息
-     * @param UpgradeServer $upgradeServer 升级服务
+     *
+     * 统一走 CloudAppSource，与 getModule 的全局来源判定共用同一份缓存，
+     * 保证列表页与详情、安装、运行时授权口径一致。
+     *
      * @param array $names 应用标识列表
      * @return array name => ['exists' => bool, 'version' => string]
      */
-    private function fetchCloudVersions(UpgradeServer $upgradeServer, array $names): array
+    private function fetchCloudVersions(array $names): array
     {
-        $names = array_values(array_unique(array_filter(array_map('strval', $names))));
-        if (empty($names)) {
-            return [];
-        }
-        sort($names);
-
-        $cacheKey = 'module_cloud_versions_' . md5(
-            request()->host() . '|t6|'
-            . \app\admin\lib\CloudSignature::fingerprint() . '|'
-            . implode(',', $names)
-        );
-        $cached = Cache::get($cacheKey);
-        if (is_array($cached)) {
-            return $cached;
-        }
-
-        try {
-            $result = $upgradeServer->cloudVersionBatch($names);
-        } catch (\Throwable $e) {
-            trace('module cloud batch version exception: ' . $e->getMessage(), 'error');
-            return [];
-        }
-        if (!is_array($result) || (int)($result['code'] ?? 0) !== 200) {
-            return [];
-        }
-
-        $apps = $result['data']['apps'] ?? [];
-        if (!is_array($apps)) {
-            return [];
-        }
-
-        $map = [];
-        foreach ($apps as $name => $info) {
-            if (!is_array($info)) {
-                continue;
-            }
-            $map[(string) $name] = [
-                'exists' => !empty($info['exists']),
-                'version' => (string) ($info['version'] ?? ''),
-            ];
-        }
-        Cache::tag('module_cloud')->set($cacheKey, $map, 300);
-
-        return $map;
+        return CloudAppSource::versions($names);
     }
 
     /**
@@ -354,15 +314,18 @@ class Module extends Admin
         $name = input('name', '', 'text');
         $module = $this->ModuleModel->getModule($name, 'name, version, is_setup, source');
         if (!empty($module)) {
-            $upgradeServer = new UpgradeServer();
-            
-            if ($module['source'] == 'cloud') {
-                //获取云端版本更新列表
-                $result = $upgradeServer->cloudVersionList(['app_name' => $module['name']]);
+            // 非云端应用没有云端版本记录，直接返回明确错误，
+            // 避免沿用旧的 $result 未定义分支
+            if ($module['source'] != 'cloud') {
+                return $this->error('该应用不是云端应用');
             }
+            $upgradeServer = new UpgradeServer();
+            //获取云端版本更新列表
+            $result = $upgradeServer->cloudVersionList(['app_name' => $module['name']]);
 
-            if($result['code'] != 200){
-                return $this->error($result['data']);
+            if ((int)($result['code'] ?? 0) !== 200) {
+                $msg = $result['msg'] ?? $result['data'] ?? '获取云端版本列表失败';
+                return $this->error(is_string($msg) ? $msg : '获取云端版本列表失败');
             }
 
             return $this->success('success', $result['data']);
@@ -411,8 +374,9 @@ class Module extends Admin
         if (request()->isPost()) {
             try {
                 // 云端应用安装/重新安装只在授权有效时允许（到期、未授权、未激活均拒绝）
+                // 框架内置应用豁免，避免自救入口被云端「未购买」判定拦住
                 $module = $this->ModuleModel->getModule($aName);
-                if (!empty($module) && ($module['source'] ?? '') === 'cloud') {
+                if (!empty($module) && ($module['source'] ?? '') === 'cloud' && !CloudAppSource::isInfraApp($aName)) {
                     $state = (new CloudServer())->appState($aName);
                     if ($state['state'] !== 'ok') {
                         return $this->error(CloudServer::stateMessage($state['state'], 'install'));
@@ -425,7 +389,8 @@ class Module extends Admin
                     // 云端来源的应用安装完成后上报安装记录（失败不影响安装结果）
                     try {
                         $module = $this->ModuleModel->getModule($aName);
-                        if (!empty($module) && ($module['source'] ?? '') == 'cloud' && !empty($module['version'])) {
+                        if (!empty($module) && ($module['source'] ?? '') == 'cloud' && !empty($module['version'])
+                            && !CloudAppSource::isInfraApp($aName)) {
                             (new CloudServer())->reportAppRecord($aName, 'install', '', $module['version']);
                         }
                     } catch (\Throwable $e) {
@@ -474,6 +439,11 @@ class Module extends Admin
     {
         $cloudSynced = $this->ModuleModel->reload();
         Cache::tag('module_cloud')->clear();
+        // 标识重名被拒的本地应用需要优先回显，否则用户只看到「重置成功」而应用消失
+        $conflict = (string) ($this->ModuleModel->error ?? '');
+        if ($conflict !== '') {
+            return $this->error($conflict);
+        }
         if (!$cloudSynced) {
             return $this->error('本地应用已刷新，云端应用同步失败，请检查激活状态后重试');
         }
