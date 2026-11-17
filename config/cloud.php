@@ -9,7 +9,8 @@ return [
     'record_download' => false,
     // 域名授权观测层：仅记录通道分布，不改变任何请求的判定结果
     'auth_observe' => env('cloud.auth_observe', true),
-    // 断网宽限小时数；0 为严格模式（断网即拒），仅对要求强合规的私有化客户按需开启
+    // 断网宽限小时数：仅云端使用，随授权查询成功响应下发；租户端不读取本地配置，
+    // 避免租户改大该值实现长期离线；0 为严格模式（断网即拒），云端下发时收敛到 0-168
     'grace_hours' => env('cloud.grace_hours', 72),
     // 签名时间戳允许偏差（秒），NTP 覆盖不足时可放宽到 600
     'sig_window' => env('cloud.sig_window', 600),

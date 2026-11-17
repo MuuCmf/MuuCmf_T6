@@ -9,6 +9,7 @@ use app\common\model\Menu;
 use app\common\model\AuthRule;
 use app\common\model\Module as ModuleModel;
 use app\common\logic\Config as ConfigLogic;
+use app\admin\lib\Cloud;
 
 /**
  * 控制器基础类
@@ -51,6 +52,8 @@ class Admin extends Base
         // 当前应用模块信息
         $module = (new ModuleModel())->getModule($this->app_name);
         View::assign('module', $module);
+        // 云端应用运行时授权校验（未授权/未激活禁止进入，到期仅由安装升级入口拦截）
+        $this->checkAppAuthorization($module);
         //当前管理菜单
         $admin_menu = $this->getMenus();
         View::assign('admin_menu', $admin_menu);
@@ -58,6 +61,43 @@ class Admin extends Base
         View::assign('auth_user', query_user(is_login()));
         //框架版本号
         View::assign('version', $this->version());
+    }
+
+    /**
+     * 云端应用运行时授权校验
+     *
+     * 口径：
+     * - 未授权 / 未激活或已失效 / 云端不可达超宽限：禁止进入应用
+     * - 授权到期：允许继续使用，仅由安装、升级入口拦截
+     *
+     * @param array|bool $module 当前应用模块信息
+     * @throws \think\exception\HttpResponseException
+     */
+    protected function checkAppAuthorization($module)
+    {
+        // 仅校验已安装的云端应用，本地内置应用不受影响
+        if (empty($module) || ($module['source'] ?? '') !== 'cloud' || (int) ($module['is_setup'] ?? 0) !== 1) {
+            return;
+        }
+
+        $state = (new Cloud())->appState($this->app_name);
+        if (!in_array($state['state'], ['unlicensed', 'invalid_activation', 'offline_expired'], true)) {
+            return;
+        }
+
+        $result = [
+            'code' => 0,
+            'msg'  => Cloud::stateMessage($state['state']),
+            'data' => $state['state'],
+            'url'  => '/admin/license',
+            'wait' => 3,
+        ];
+        if (request()->isJson() || request()->isAjax()) {
+            $response = json($result);
+        } else {
+            $response = view(config('app.dispatch_error_tmpl'), $result);
+        }
+        throw new \think\exception\HttpResponseException($response);
     }
 
     /**

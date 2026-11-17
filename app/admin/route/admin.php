@@ -416,6 +416,8 @@ Route::group('license', function () {
     // 自助激活：用授权码向云端换取密钥并落盘
     Route::post('activate', 'admin/License/activate');
     Route::post('fetchcode', 'admin/License/fetchCode');
+    // 用本地激活态校验云端是否仍接受当前密钥
+    Route::post('check', 'admin/License/check');
 });
 
 // 智能体管理路由

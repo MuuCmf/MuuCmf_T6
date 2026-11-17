@@ -109,6 +109,20 @@ class Update extends Admin
     {
         $version = input('version');
         $app_name = input('app_name');
+        // 到期/未授权/未激活的应用禁止获取安装、升级包（升级按钮仍展示，拦截在执行环节）
+        if (!empty($app_name) && $app_name !== 'system') {
+            $state = (new Cloud())->appState($app_name);
+            if ($state['state'] !== 'ok') {
+                $scene = input('scene', 'upgrade', 'text');
+                // 操作级拦截：仅返回提示文案，不携带授权失败标识 data，
+                // 避免前端全局拦截器跳转授权页，让用户在升级/安装弹窗内看到失败原因
+                return json([
+                    'code' => 0,
+                    'msg'  => Cloud::stateMessage($state['state'], $scene === 'setup' ? 'install' : 'upgrade'),
+                    'data' => '',
+                ]);
+            }
+        }
         $auth_code = Cloud::authCode();
         // 生成请求json
         $result = $this->UpgradeServer->buildJson($app_name, $version, $auth_code);
@@ -219,6 +233,9 @@ class Update extends Admin
 
                 //入口域名/IP 变更后旧授权码仍会缓存 30 分钟，提前失效避免后续检查更新误报未授权
                 Cache::delete(request()->host() . '_MUUCMF_CLOUD_AUTH');
+
+                //应用升级完成后清理应用管理列表的云端状态缓存
+                Cache::tag('module_cloud')->clear();
 
                 //返回
                 return $this->success('更新完成');

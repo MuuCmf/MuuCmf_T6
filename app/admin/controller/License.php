@@ -38,6 +38,55 @@ class License extends Admin
     }
 
     /**
+     * 用本地激活态校验云端状态
+     *
+     * 重新签一次 authorization.allapp 探测云端是否仍接受当前密钥
+     * （云端管理员重置密钥后本地副本即过期，此接口可主动发现该状态）。
+     * 只返回校验结论与本地激活元信息，不回显密钥。
+     *
+     * @return \think\Response
+     */
+    public function check()
+    {
+        $activation = CloudSignature::activation();
+        if (empty($activation)) {
+            // 未激活作为结构化结果返回，便于应用管理页据此展示引导横幅而非报错
+            return $this->success('', [
+                'valid'         => false,
+                'not_activated' => true,
+                'msg'           => '本机未激活，请先完成激活',
+            ]);
+        }
+
+        $sig = CloudSignature::payload('authorization.allapp');
+        try {
+            $raw = curl_request(
+                config('cloud.api') . 'authorization/allapp',
+                array_merge(['domain' => (string) $activation['domain']], $sig)
+            );
+            $res = json_decode((string) $raw, true);
+        } catch (\Throwable $e) {
+            trace('cloud license check exception: ' . $e->getMessage(), 'error');
+            return $this->error('云端不可达，校验失败，请稍后重试');
+        }
+        if (!is_array($res)) {
+            return $this->error('云端响应异常，校验失败，请稍后重试');
+        }
+
+        $valid = (int) ($res['code'] ?? 0) === 200;
+
+        return $this->success('', [
+            'valid'     => $valid,
+            'msg'       => $valid
+                ? '云端校验通过，签名通道可用'
+                : (string) ($res['msg'] ?? '云端拒绝了当前签名'),
+            'domain'    => (string) $activation['domain'],
+            'key_id'    => (string) $activation['key_id'],
+            'issued_at' => $activation['issued_at'] > 0 ? date('Y-m-d H:i:s', (int) $activation['issued_at']) : '',
+        ]);
+    }
+
+    /**
      * 导入密钥并落盘
      *
      * 落盘前用待激活密钥签名调用一次云端 allapp，确认域名可用；

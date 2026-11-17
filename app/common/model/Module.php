@@ -56,17 +56,19 @@ class Module extends Base
 
     /**
      * 重置应用
+     * @return bool 云端应用同步是否成功
      */
-    public function reload()
+    public function reload(): bool
     {
         $this->getLocalApp();
-        $this->getCloudAuthApp();
+        return $this->getCloudAuthApp();
     }
 
     /**
      * 同步云端授权应用
+     * @return bool 同步是否成功
      */
-    public function getCloudAuthApp()
+    public function getCloudAuthApp(): bool
     {
         $url = config('cloud.api') . 'authorization/allapp';
         $domain = request()->host();
@@ -94,7 +96,11 @@ class Module extends Base
             // 写入应用模块表
             // 查询存在应用
             $has = $this->column('name');
-            $list = $result['data'];
+            $list = $result['data'] ?? [];
+            if (!is_array($list)) {
+                trace('cloud allapp sync failed: invalid data', 'error');
+                return false;
+            }
             $data = [];
             foreach ($list as $v) {
                 // 排除版本未发布的
@@ -129,7 +135,47 @@ class Module extends Base
             }
 
             $this->saveAll($data);
+
+            // 仅已购口径：清理已不在授权清单内的未安装云端应用。
+            // 只删「纯云端行」：已安装或本地目录仍存在的应用一律保留，
+            // 避免撤权后站点无法继续使用/续费，也避免误删随包内置应用。
+            // 只有云端成功返回完整清单才会走到这里，失败已提前 return false。
+            $syncedNames = [];
+            foreach ($list as $v) {
+                if (!empty($v['app']['name']) && !empty($v['app']['version'])) {
+                    $syncedNames[] = (string) $v['app']['name'];
+                }
+            }
+            $stale = $this->where('source', 'cloud')
+                ->where('is_setup', 0)
+                ->when(!empty($syncedNames), function ($query) use ($syncedNames) {
+                    $query->where('name', 'not in', $syncedNames);
+                })
+                ->field('id,name')
+                ->select()
+                ->toArray();
+            $removeIds = [];
+            foreach ($stale as $row) {
+                if (!is_dir(APP_PATH . $row['name'])) {
+                    $removeIds[] = $row['id'];
+                }
+            }
+            if (!empty($removeIds)) {
+                $removed = $this->where('id', 'in', $removeIds)->delete();
+                if ($removed) {
+                    trace('cloud app sync removed ' . $removed . ' unpurchased rows', 'info');
+                }
+            }
+            return true;
         }
+
+        // 云端同步失败不再静默：刷新应用是用户主动操作，失败需要回显（多为激活密钥失效）
+        trace(
+            'cloud allapp sync failed: '
+            . (is_array($result) ? json_encode($result, JSON_UNESCAPED_UNICODE) : 'invalid response'),
+            'error'
+        );
+        return false;
     }
 
     /**
@@ -172,7 +218,9 @@ class Module extends Base
                 if ($module_info) {
                     $info = array_merge($info, $module_info);
                     $info['id'] = $module_info['id'];
-                    $info['source'] = 'local';
+                    // 保留库内来源标记：云端安装的应用同样有本地目录与 info.php，
+                    // 无条件改写为 local 会永久丢失 cloud 标记（allapp 同步失败时无法自愈）
+                    $info['source'] = !empty($module_info['source']) ? (string) $module_info['source'] : 'local';
                 }
                 $module[] = $info;
             }

@@ -3,6 +3,7 @@
 namespace app\admin\controller;
 
 use think\Exception;
+use think\facade\Cache;
 use app\admin\lib\Upgrade as UpgradeServer;
 use app\admin\lib\Cloud as CloudServer;
 use app\common\model\Menu as MenuModel;
@@ -13,6 +14,8 @@ class Module extends Admin
 {
     protected MenuModel $MenuModel;
     protected ModuleModel $ModuleModel;
+    /** @var array 应用 info.php 请求级缓存 */
+    protected array $moduleInfoCache = [];
 
     /**
      * 构造方法
@@ -51,31 +54,43 @@ class Module extends Admin
                 break;
         };
 
-        $rows = (int)input('rows', 15, 'intval');
+        $rows = min(100, max(1, (int)input('rows', 15, 'intval')));
 
         $upgradeServer = new UpgradeServer();
         $modules = $this->ModuleModel->getListByPage($map, 'sort desc,id desc', '*', $rows);
         $cloud = new CloudServer();
-        foreach ($modules as &$item) {
-            // 云端应用数据处理
-            if ($item['source'] == 'cloud') {
-                $result = $upgradeServer->cloudVersion([
-                    'app_name' => $item['name'],
-                    'appid'    => $item['appid']
-                ]);
-                $item['new_version'] = isset($result['data']['version']) ? $result['data']['version'] : $item['version'];
-                $item['upgrade'] = get_upgrade_status($item['version'], $item['new_version']) ? 1 : 0;
+        // 分页项可能是模型对象，直接 array_column 无法读取 name，需通过数组访问取值
+        $itemNames = [];
+        foreach ($modules as $module) {
+            $itemNames[] = $module['name'];
+        }
+        $cloudVersions = $this->fetchCloudVersions($upgradeServer, $itemNames);
 
-                $item['expired'] = 0;
-                $auth = $cloud->needAuthorization($item['name']);
-                if (is_array($auth) && $auth['code'] == 0 && $auth['data'] == 'end_auth') {
-                    $item['expired'] = 1;
-                }
+        $cloudNames = [];
+        $authNames = [];
+        foreach ($modules as &$item) {
+            // 云端已发布应用口径：批量接口返回 exists=true 即视为云端存在。
+            // 命中后先纠正 source，再执行升级/授权检测，避免历史 local 标记漏检。
+            $versionInfo = $cloudVersions[$item['name']] ?? [];
+            $existsInCloud = !empty($versionInfo['exists']);
+
+            if ($existsInCloud && $item['source'] !== 'cloud') {
+                $item['source'] = 'cloud';
+                $cloudNames[] = $item['name'];
             }
-            // 本地应用数据处理
-            if ($item['source'] == 'local') {
-                // 获取文件配置信息
-                $info = $this->ModuleModel->getModule($item['name']);
+
+            // 升级检测不依赖 source 标记与授权校验状态：
+            // 云端批量版本接口是公开接口，密钥过期（云端重置后未重新激活）时
+            // allapp 同步会失败，若仍按 source 过滤就可能漏掉新版本提示
+            $item['new_version'] = $existsInCloud && !empty($versionInfo['version'])
+                ? $versionInfo['version']
+                : $item['version'];
+            $item['upgrade'] = get_upgrade_status($item['version'], $item['new_version']) ? 1 : 0;
+
+            // 授权过期检测只针对已安装的云端应用，批量请求后续统一回填
+            $item['expired'] = 0;
+            if ($item['source'] == 'cloud' && $item['is_setup'] == 1) {
+                $authNames[] = $item['name'];
             }
 
             //获取应用图标
@@ -102,17 +117,195 @@ class Module extends Admin
 
             // 判断管理端是否支持SPA单页应用
             $item['entry_spa'] = false;
-            if (file_exists(base_path() . $item['name'] . '/info/info.php')) {
-                $info = require base_path() . $item['name'] . '/info/info.php';
-                if (isset($info['entry_spa']) && $info['entry_spa'] == true) {
-                    $item['entry_spa'] = true;
-                }
+            $info = $this->getModuleInfo($item['name']);
+            if (isset($info['entry_spa']) && $info['entry_spa'] == true) {
+                $item['entry_spa'] = true;
             }
         }
         unset($item);
 
+        // 批量纠正来源标记，避免逐行写库
+        if (!empty($cloudNames)) {
+            $this->ModuleModel->where('name', 'in', $cloudNames)
+                ->where('source', '<>', 'cloud')
+                ->update(['source' => 'cloud']);
+        }
+
+        // 批量授权检测：仅已安装的云端应用需要回填过期状态
+        $authStatus = $this->fetchAuthorizationBatch($cloud, $authNames);
+        if (!empty($authStatus)) {
+            foreach ($modules as &$item) {
+                if (!empty($authStatus[$item['name']]['expired'])) {
+                    $item['expired'] = 1;
+                }
+            }
+            unset($item);
+        }
+
         // ajax请求返回数据
         return $this->success('success', $modules);
+    }
+
+    /**
+     * 批量获取云端应用版本信息
+     * @param UpgradeServer $upgradeServer 升级服务
+     * @param array $names 应用标识列表
+     * @return array name => ['exists' => bool, 'version' => string]
+     */
+    private function fetchCloudVersions(UpgradeServer $upgradeServer, array $names): array
+    {
+        $names = array_values(array_unique(array_filter(array_map('strval', $names))));
+        if (empty($names)) {
+            return [];
+        }
+        sort($names);
+
+        $cacheKey = 'module_cloud_versions_' . md5(
+            request()->host() . '|t6|'
+            . \app\admin\lib\CloudSignature::fingerprint() . '|'
+            . implode(',', $names)
+        );
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        try {
+            $result = $upgradeServer->cloudVersionBatch($names);
+        } catch (\Throwable $e) {
+            trace('module cloud batch version exception: ' . $e->getMessage(), 'error');
+            return [];
+        }
+        if (!is_array($result) || (int)($result['code'] ?? 0) !== 200) {
+            return [];
+        }
+
+        $apps = $result['data']['apps'] ?? [];
+        if (!is_array($apps)) {
+            return [];
+        }
+
+        $map = [];
+        foreach ($apps as $name => $info) {
+            if (!is_array($info)) {
+                continue;
+            }
+            $map[(string) $name] = [
+                'exists' => !empty($info['exists']),
+                'version' => (string) ($info['version'] ?? ''),
+            ];
+        }
+        Cache::tag('module_cloud')->set($cacheKey, $map, 300);
+
+        return $map;
+    }
+
+    /**
+     * 批量获取应用授权状态
+     * @param CloudServer $cloud 云端服务
+     * @param array $names 应用标识列表
+     * @return array name => ['authorized' => bool, 'expired' => bool, 'auth_data' => string]
+     */
+    private function fetchAuthorizationBatch(CloudServer $cloud, array $names): array
+    {
+        $names = array_values(array_unique(array_filter(array_map('strval', $names))));
+        if (empty($names)) {
+            return [];
+        }
+        sort($names);
+
+        $cacheKey = 'module_cloud_auth_' . md5(
+            request()->host() . '|'
+            . \app\admin\lib\CloudSignature::fingerprint() . '|'
+            . implode(',', $names)
+        );
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        try {
+            $result = $cloud->needAuthorizationBatch($names);
+        } catch (\Throwable $e) {
+            trace('module cloud batch auth exception: ' . $e->getMessage(), 'error');
+            return [];
+        }
+
+        $status = (string) ($result['status'] ?? '');
+        if ($status === 'denied' || $status === 'unsupported') {
+            // 云端可达但批量口径失败（密钥失效、批量接口未部署）：逐应用复核，
+            // 避免授权到期提示静默丢失；网络不可达不回退，防止列表页被多次超时拖慢
+            $map = $this->fetchAuthorizationSingle($cloud, array_slice($names, 0, 50));
+            if (!empty($map)) {
+                Cache::tag('module_cloud')->set($cacheKey, $map, 60);
+            }
+            return $map;
+        }
+        if ($status !== 'ok') {
+            return [];
+        }
+
+        $map = $result['apps'] ?? [];
+        if (!is_array($map)) {
+            return [];
+        }
+        Cache::tag('module_cloud')->set($cacheKey, $map, 60);
+
+        return $map;
+    }
+
+    /**
+     * 逐应用复核授权状态（批量接口失败时的兜底）
+     * @param CloudServer $cloud 云端服务
+     * @param array $names 应用标识列表
+     * @return array name => ['authorized' => bool, 'expired' => bool, 'auth_data' => string]
+     */
+    private function fetchAuthorizationSingle(CloudServer $cloud, array $names): array
+    {
+        $map = [];
+        foreach ($names as $name) {
+            try {
+                $state = $cloud->needAuthorization($name);
+            } catch (\Throwable $e) {
+                trace('module cloud single auth exception: ' . $e->getMessage(), 'error');
+                continue;
+            }
+            if ($state === true) {
+                $map[$name] = ['authorized' => true, 'expired' => false, 'auth_data' => ''];
+                continue;
+            }
+            if (!is_array($state)) {
+                continue;
+            }
+            $authData = (string) ($state['data'] ?? '');
+            $map[$name] = [
+                'authorized' => false,
+                'expired' => $authData === 'end_auth',
+                'auth_data' => $authData,
+            ];
+        }
+
+        return $map;
+    }
+
+    /**
+     * 读取应用 info.php
+     * @param string $appName 应用标识
+     * @return array 应用配置，文件不存在或格式错误时返回空数组
+     */
+    private function getModuleInfo(string $appName): array
+    {
+        if (array_key_exists($appName, $this->moduleInfoCache)) {
+            return $this->moduleInfoCache[$appName];
+        }
+
+        $infoFile = base_path() . $appName . '/info/info.php';
+        if (!file_exists($infoFile)) {
+            return $this->moduleInfoCache[$appName] = [];
+        }
+
+        $info = require $infoFile;
+        return $this->moduleInfoCache[$appName] = is_array($info) ? $info : [];
     }
 
     /**
@@ -217,9 +410,18 @@ class Module extends Admin
 
         if (request()->isPost()) {
             try {
+                // 云端应用安装/重新安装只在授权有效时允许（到期、未授权、未激活均拒绝）
+                $module = $this->ModuleModel->getModule($aName);
+                if (!empty($module) && ($module['source'] ?? '') === 'cloud') {
+                    $state = (new CloudServer())->appState($aName);
+                    if ($state['state'] !== 'ok') {
+                        return $this->error(CloudServer::stateMessage($state['state'], 'install'));
+                    }
+                }
                 $res = $this->ModuleModel->install($aName);
 
                 if ($res === true) {
+                    Cache::tag('module_cloud')->clear();
                     // 云端来源的应用安装完成后上报安装记录（失败不影响安装结果）
                     try {
                         $module = $this->ModuleModel->getModule($aName);
@@ -257,6 +459,7 @@ class Module extends Admin
             if ($res === true) {
                 //删除module表中记录（菜单、权限、行为等已由模型卸载时清理）
                 $this->ModuleModel->where(['id' => $id])->delete();
+                Cache::tag('module_cloud')->clear();
                 return $this->success('卸载模块成功。', '', cookie('__forward__'));
             } else {
                 return $this->error($this->ModuleModel->error ?: '卸载模块失败。');
@@ -269,7 +472,11 @@ class Module extends Admin
      */
     public function reload()
     {
-        $this->ModuleModel->reload();
+        $cloudSynced = $this->ModuleModel->reload();
+        Cache::tag('module_cloud')->clear();
+        if (!$cloudSynced) {
+            return $this->error('本地应用已刷新，云端应用同步失败，请检查激活状态后重试');
+        }
         return $this->success('重置成功');
     }
 

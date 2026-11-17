@@ -1,0 +1,1 @@
+import{Tn as r,Wn as e}from"./element-plus-Fi0i8FqG.js";import{r as n}from"./index-B8LNNk2T.js";var s=n({},[["render",function(n,s){return e(),r("div")}]]);export{s as default};

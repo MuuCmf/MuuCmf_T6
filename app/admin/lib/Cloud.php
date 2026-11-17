@@ -49,8 +49,8 @@ class Cloud
      * 查询应用授权
      * app_name 应用唯一标识
      *
-     * S0-C 宽限期状态机：云端可达时沿用原判定并清空宽限状态；云端不可达时按
-     * cloud.grace_hours 放行，超过宽限期返回 end_auth（fail-closed）。
+     * S0-C 宽限期状态机：云端可达时沿用原判定、清空宽限状态并保存云端下发的策略；
+     * 云端不可达时按最近一次下发策略放行，超过宽限期返回 offline_expired（fail-closed）。
      * 缓存键追加激活态指纹，S1 激活后自动区分不同密钥实例。
      *
      * @param string $app_name 应用唯一标识
@@ -94,14 +94,187 @@ class Cloud
             return $this->graceFallback($cacheKey);
         }
 
-        // 云端可达：清空断网计数；deny 立即拒绝，不受宽限保护
+        // 云端可达：清空断网计数并保存云端下发策略；deny 立即拒绝，不受宽限保护
         $this->clearAuthState();
+        $this->storeGracePolicy($decoded);
         if ($verdict === 'deny') {
             Cache::set($cacheKey, $decoded, 60);
             return $decoded;
         }
         Cache::set($cacheKey, true, 60);
         return true;
+    }
+
+    /**
+     * 应用授权状态归一
+     *
+     * 把 needAuthorization() 的返回收敛成统一状态，供进入应用、安装、升级共用：
+     * - ok                 授权有效，可使用、安装、升级
+     * - unlicensed         未购买/盗版，禁止使用
+     * - expired            已购但到期，允许使用，禁止安装与升级
+     * - invalid_activation 未激活/密钥/签名失效，禁止使用
+     * - offline_expired    云端不可达且超过宽限期，禁止使用
+     *
+     * @param string $app_name 应用唯一标识
+     * @return array{state:string,msg:string,data:string}
+     */
+    public function appState($app_name)
+    {
+        // 请求级缓存：同一请求内多个控制器实例化时不重复请求云端
+        static $memo = [];
+        $key = strtolower((string) $app_name);
+        if (isset($memo[$key])) {
+            return $memo[$key];
+        }
+
+        $result = $this->needAuthorization($app_name);
+        if ($result === true) {
+            return $memo[$key] = ['state' => 'ok', 'msg' => '', 'data' => ''];
+        }
+
+        $msg = is_array($result) ? (string) ($result['msg'] ?? '') : '';
+        $data = is_array($result) ? (string) ($result['data'] ?? '') : '';
+        return $memo[$key] = [
+            'state' => $this->classifyAuthFailure($data, $msg),
+            'msg'   => $msg,
+            'data'  => $data,
+        ];
+    }
+
+    /**
+     * 失败原因归类：优先使用云端显式 data 码，兼容旧云端按文案兜底
+     */
+    protected function classifyAuthFailure(string $data, string $msg): string
+    {
+        switch ($data) {
+            case 'tort':
+                return 'unlicensed';
+            case 'end_auth':
+                return 'expired';
+            case 'offline_expired':
+                return 'offline_expired';
+            case 'unactivated':
+            case 'sig_invalid':
+            case 'auth_code_invalid':
+                return 'invalid_activation';
+        }
+
+        // 旧云端只回文案时按关键字兜底，避免状态口径丢失
+        if ($msg !== '') {
+            if (strpos($msg, '到期') !== false || strpos($msg, '过期') !== false) {
+                return 'expired';
+            }
+            if (strpos($msg, '激活') !== false || strpos($msg, '签名') !== false || strpos($msg, '授权码') !== false) {
+                return 'invalid_activation';
+            }
+            if (strpos($msg, '授权') !== false) {
+                return 'unlicensed';
+            }
+        }
+        return 'invalid_activation';
+    }
+
+    /**
+     * 授权状态提示文案
+     *
+     * @param string $state appState() 返回的 state
+     * @param string $scene use / install / upgrade
+     */
+    public static function stateMessage(string $state, string $scene = 'use'): string
+    {
+        if ($state === 'expired') {
+            if ($scene === 'install') {
+                return '授权已到期，无法安装或重新安装，请续费后重试';
+            }
+            if ($scene === 'upgrade') {
+                return '授权已到期，无法升级，请续费后重试';
+            }
+            return '授权已到期，可继续使用当前版本，但无法安装或升级，请及时续费';
+        }
+        if ($state === 'unlicensed') {
+            return '未获取该应用授权，无法使用';
+        }
+        if ($state === 'offline_expired') {
+            return '授权校验服务不可达且已超过宽限期，请检查网络后重新激活';
+        }
+        return '站点未激活或授权已失效，请重新激活后再使用';
+    }
+
+    /**
+     * 批量应用授权查询
+     *
+     * status 用于让调用方区分失败类型，避免把「云端明确拒绝」和「云端不可达」混为一谈：
+     * - ok：拿到授权状态
+     * - denied：云端可达但凭证/参数被拒（如密钥失效），可按单应用口径复核
+     * - unsupported：云端可达但返回非预期结构（如批量接口尚未部署），可按单应用口径复核
+     * - unreachable：网络不可达，调用方不应逐应用重试，避免列表页被多次超时拖慢
+     *
+     * @param array $app_names 应用标识列表
+     * @return array{status:string,apps:array}
+     */
+    public function needAuthorizationBatch(array $app_names)
+    {
+        $app_names = array_values(array_unique(array_filter(array_map('strval', $app_names))));
+        if (empty($app_names)) {
+            return ['status' => 'ok', 'apps' => []];
+        }
+
+        $url = $this->api . 'authorization/apps';
+        $post = [
+            'app_names' => json_encode($app_names, JSON_UNESCAPED_UNICODE),
+            'auth_code' => self::authCode(),
+            'frame' => 't6',
+        ];
+        try {
+            $post = array_merge($post, CloudSignature::payload('authorization.apps', md5(implode(',', $app_names))));
+        } catch (\Throwable $e) {
+            trace('cloud batch auth signature exception: ' . $e->getMessage(), 'error');
+        }
+
+        try {
+            $raw = curl_request($url, $post);
+        } catch (ValidateException $e) {
+            trace('cloud batch auth request validate exception: ' . $e->getMessage(), 'error');
+            return ['status' => 'unreachable', 'apps' => []];
+        } catch (\Throwable $e) {
+            trace('cloud batch auth request exception: ' . $e->getMessage(), 'error');
+            return ['status' => 'unreachable', 'apps' => []];
+        }
+
+        if (!is_string($raw) || trim($raw) === '') {
+            return ['status' => 'unreachable', 'apps' => []];
+        }
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            // 有响应但不是 JSON：多为批量接口未部署（路由 404 返回 HTML），可按单应用接口复核
+            $status = strpos($raw, '<') !== false ? 'unsupported' : 'unreachable';
+            return ['status' => $status, 'apps' => []];
+        }
+        if ((int) ($decoded['code'] ?? 0) !== 200) {
+            return ['status' => 'denied', 'apps' => []];
+        }
+        $apps = $decoded['data']['apps'] ?? null;
+        if (!is_array($apps)) {
+            return ['status' => 'unsupported', 'apps' => []];
+        }
+
+        // 云端可达：与单应用检测保持一致，清空断网宽限计数并保存云端下发策略
+        $this->clearAuthState();
+        $this->storeGracePolicy($decoded);
+
+        $result = [];
+        foreach ($apps as $name => $info) {
+            if (!is_array($info)) {
+                continue;
+            }
+            $result[(string) $name] = [
+                'authorized' => !empty($info['authorized']),
+                'expired' => !empty($info['expired']),
+                'auth_data' => (string) ($info['auth_data'] ?? ''),
+            ];
+        }
+
+        return ['status' => 'ok', 'apps' => $result];
     }
 
     /**
@@ -150,7 +323,7 @@ class Cloud
      */
     private function graceFallback(string $cacheKey)
     {
-        $decision = $this->graceDecision($this->authState(), time(), (int)config('cloud.grace_hours', 72));
+        $decision = $this->graceDecision($this->authState(), time(), $this->gracePolicyHours());
         $this->saveAuthState($decision['state']);
 
         if ($decision['allow']) {
@@ -162,11 +335,76 @@ class Cloud
         $denied = [
             'code' => 0,
             'msg'  => '授权校验服务不可达，已超过宽限期',
-            'data' => 'end_auth',
+            'data' => 'offline_expired',
         ];
         trace('cloud auth unreachable, grace exceeded: ' . json_encode($decision['state']), 'error');
         Cache::set($cacheKey, $denied, 60);
         return $denied;
+    }
+
+    /**
+     * 保存云端下发的宽限策略
+     *
+     * 租户端本地 config 会随代码交付给租户，可被直接修改；策略改由云端下发并持久化，
+     * 租户无法通过改本地配置延长离线可用时间。
+     *
+     * @param mixed $decoded 云端原始响应
+     */
+    protected function storeGracePolicy($decoded): void
+    {
+        if (!is_array($decoded)) {
+            return;
+        }
+        $data = $decoded['data'] ?? null;
+        if (!is_array($data) || !isset($data['policy']) || !is_array($data['policy'])) {
+            return;
+        }
+        $hours = $data['policy']['grace_hours'] ?? null;
+        if (!is_numeric($hours)) {
+            return;
+        }
+        try {
+            // 保留 30 天，避免租户长期离线后策略丢失；期间每次云端可达都会刷新
+            Cache::tag('cloud_policy')->set($this->gracePolicyKey(), self::normalizeGraceHours($hours), 30 * 86400);
+        } catch (\Throwable $e) {
+            trace('cloud policy cache write failed: ' . $e->getMessage(), 'error');
+        }
+    }
+
+    /**
+     * 最近一次云端下发的宽限小时数
+     *
+     * 未收到过策略时按 72 小时兜底；取值收敛到 0-168，0 表示严格模式（断网即拒）。
+     */
+    public function gracePolicyHours(): int
+    {
+        try {
+            $hours = Cache::get($this->gracePolicyKey());
+        } catch (\Throwable $e) {
+            return 72;
+        }
+        if ($hours === null || $hours === false || $hours === '') {
+            return 72;
+        }
+        return self::normalizeGraceHours($hours);
+    }
+
+    /**
+     * 宽限小时数收敛：非法值按 0 处理，超过 168（7 天）按 168 处理
+     *
+     * @param mixed $hours
+     */
+    protected static function normalizeGraceHours($hours): int
+    {
+        return max(0, min(168, (int) $hours));
+    }
+
+    /**
+     * 策略缓存键：按站点隔离，避免多站点共用同一 Redis 时互相覆盖
+     */
+    protected function gracePolicyKey(): string
+    {
+        return request()->host() . '_MUUCMF_CLOUD_POLICY_GRACE_HOURS';
     }
 
     /**

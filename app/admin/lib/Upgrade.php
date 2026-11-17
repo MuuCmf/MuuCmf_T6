@@ -207,6 +207,104 @@ class Upgrade
         return $result;
     }
 
+    /**
+     * 批量获取云端应用最新版本
+     *
+     * @param array $appNames 应用标识列表
+     * @return array 云端返回结构
+     */
+    public function cloudVersionBatch(array $appNames)
+    {
+        $appNames = $this->normalizeAppNames($appNames);
+        if (empty($appNames)) {
+            return ['code' => 0, 'msg' => '应用参数不正确', 'data' => ['apps' => []]];
+        }
+
+        $api = $this->api . 'app/versions';
+        $params = [
+            'app_names' => json_encode(array_values($appNames), JSON_UNESCAPED_UNICODE),
+            'domain' => request()->host(),
+            'ip' => request()->ip(),
+            'frame' => 't6',
+        ];
+        // 已激活站点叠加签名，app_name 使用应用清单 hash，便于云端校验清单完整性
+        $signed = $params;
+        try {
+            $signed = array_merge($params, CloudSignature::payload('app.versions', md5(implode(',', $appNames))));
+        } catch (\Throwable $e) {
+            trace('cloud batch version signature exception: ' . $e->getMessage(), 'error');
+        }
+
+        $result = $this->requestCloudVersions($api, $signed);
+        if ((int) ($result['code'] ?? 0) === 200) {
+            return $result;
+        }
+
+        // 签名通道失败（激活密钥过期、云端重置密钥、服务器时钟超窗）时回退公开查询：
+        // 版本号与单应用 app/version 同为公开数据，升级提示不允许被授权状态阻断，
+        // 否则密钥失效的站点会静默丢失全部升级按钮。
+        if ($signed !== $params) {
+            trace(
+                'cloud batch version signed request failed, fallback to public: '
+                . json_encode($result, JSON_UNESCAPED_UNICODE),
+                'error'
+            );
+            $result = $this->requestCloudVersions($api, $params);
+        }
+
+        return $result;
+    }
+
+    /**
+     * 请求云端批量版本接口
+     *
+     * @param string $api    接口地址
+     * @param array  $params 请求参数
+     * @return array 云端返回结构，异常时返回 code=0
+     */
+    private function requestCloudVersions(string $api, array $params): array
+    {
+        try {
+            $output = curl_request($api, $params);
+        } catch (\Throwable $e) {
+            trace('cloud batch version request exception: ' . $e->getMessage(), 'error');
+            $output = '';
+        }
+
+        if (!is_json($output)) {
+            return ['code' => 0, 'msg' => '服务器错误', 'data' => ['apps' => []]];
+        }
+        $result = json_decode($output, true);
+
+        return is_array($result) ? $result : ['code' => 0, 'msg' => '服务器错误', 'data' => ['apps' => []]];
+    }
+
+    /**
+     * 规范化批量应用标识
+     *
+     * @param array $appNames
+     * @return array
+     */
+    private function normalizeAppNames(array $appNames): array
+    {
+        $result = [];
+        foreach ($appNames as $name) {
+            if (!is_string($name) && !is_numeric($name)) {
+                continue;
+            }
+            $name = trim((string) $name);
+            if ($name === '' || strlen($name) > 50 || !preg_match('/^[A-Za-z0-9_-]+$/', $name)) {
+                continue;
+            }
+            $result[$name] = $name;
+            if (count($result) >= 100) {
+                break;
+            }
+        }
+
+        return array_values($result);
+    }
+
     public function cloudVersionList($params = [])
     {
         $api = $this->api . 'app/version_list';
