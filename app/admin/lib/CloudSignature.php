@@ -29,6 +29,22 @@ class CloudSignature
     }
 
     /**
+     * 当前站点所用框架标识
+     *
+     * 云端按 frame 过滤应用（cloud_app.frame），租户请求与签名必须使用同一个值，
+     * 否则 t8 站点会按 t6 查询，应用被判定为「应用不存在」，授权过期状态恒为 0。
+     * 可用 .env 的 CLOUD_FRAME 覆盖，非法值回落 t6。
+     *
+     * @return string
+     */
+    public static function frame(): string
+    {
+        $frame = (string) config('cloud.frame', 't6');
+
+        return in_array($frame, ['t6', 't8'], true) ? $frame : 't6';
+    }
+
+    /**
      * 生成签名参数
      *
      * @param string $secret   明文密钥（64 位十六进制）
@@ -45,7 +61,7 @@ class CloudSignature
         $p = [
             'domain'   => $domain,
             'app_name' => $appName,
-            'frame'    => 't6',
+            'frame'    => self::frame(),
             'scope'    => $scope,
             'ts'       => $ts > 0 ? $ts : time(),
             'nonce'    => $nonce !== '' ? $nonce : bin2hex(random_bytes(8)),

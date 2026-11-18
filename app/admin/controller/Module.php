@@ -89,9 +89,10 @@ class Module extends Admin
             $item['version_status'] = $existsInCloud ? (int) ($versionInfo['status'] ?? 1) : 1;
             $item['upgrade'] = get_upgrade_status($item['version'], $item['new_version']) ? 1 : 0;
 
-            // 授权过期检测只针对已安装的云端应用，批量请求后续统一回填
+            // 授权过期检测覆盖全部云端应用：已购未安装（is_setup=0）的应用同样需要展示过期状态，
+            // 批量接口单次请求即可覆盖当前页，不存在逐条请求的性能问题
             $item['expired'] = 0;
-            if ($item['source'] == 'cloud' && $item['is_setup'] == 1) {
+            if ($item['source'] == 'cloud') {
                 $authNames[] = $item['name'];
             }
 
@@ -131,7 +132,7 @@ class Module extends Admin
             CloudAppSource::heal($cloudNames);
         }
 
-        // 批量授权检测：仅已安装的云端应用需要回填过期状态
+        // 批量授权检测：云端应用（含已购未安装）统一回填过期状态
         $authStatus = $this->fetchAuthorizationBatch($cloud, $authNames);
         if (!empty($authStatus)) {
             foreach ($modules as &$item) {

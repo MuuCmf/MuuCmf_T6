@@ -139,6 +139,15 @@ class Update extends Admin
                     'blockers' => $result['data']['preflight']['blockers'] ?? [],
                 ]);
             }
+            // 测试阶段（云端清单 status=6）：记下本次是测试版本，
+            // 收尾写版本号时用本次实际安装的版本，而不是云端正式发布版本，
+            // 否则装完测试版后本地版本号被写成正式版，后续「检查更新」会认为已是最新
+            if ((int) ($result['data']['status'] ?? 0) === 6) {
+                $this->UpgradeServer->updateState($app_name ?: 'system', (string) $version, function ($s) {
+                    $s['is_test'] = true;
+                    return $s;
+                });
+            }
         }
 
         return json($result);
@@ -463,11 +472,21 @@ class Update extends Admin
                     $target_version = '';
                     if ($skip === 0) {
 
-                        // 向云端确认当前发布版本；获取失败则中止 finish，避免本地标新到错误版本
-                        $cloud = $this->UpgradeServer->cloudVersion(['app_name' => $this->app_name]);
-                        $target_version = trim((string) ($cloud['data']['version'] ?? ''));
-                        if ($target_version === '' || $target_version === '服务器错误') {
-                            throw new Exception('无法获取云端发布版本，请稍后重试完成升级');
+                        if (!empty($state['is_test'])) {
+                            // 测试阶段安装：本次清单来自云端测试版本行（status=6），
+                            // 若仍写「云端正式版本号」，装完测试版后本地版本号就变成正式版，
+                            // 后续检查更新会误判为已是最新版，测试版再也迭代不动
+                            $target_version = trim((string) $version);
+                            if ($target_version === '') {
+                                throw new Exception('测试版本号缺失，请重新获取升级包');
+                            }
+                        } else {
+                            // 向云端确认当前发布版本；获取失败则中止 finish，避免本地标新到错误版本
+                            $cloud = $this->UpgradeServer->cloudVersion(['app_name' => $this->app_name]);
+                            $target_version = trim((string) ($cloud['data']['version'] ?? ''));
+                            if ($target_version === '' || $target_version === '服务器错误') {
+                                throw new Exception('无法获取云端发布版本，请稍后重试完成升级');
+                            }
                         }
 
                         // 系统更新

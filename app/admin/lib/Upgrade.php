@@ -48,8 +48,7 @@ class Upgrade
      */
     public function frame()
     {
-        $frame = (string) config('cloud.frame', 't6');
-        return in_array($frame, ['t6', 't8'], true) ? $frame : 't6';
+        return CloudSignature::frame();
     }
 
     /**
@@ -806,6 +805,7 @@ class Upgrade
                 'files'         => [],
                 'apply_cursor'  => 0,
                 'apply_failed'  => [],
+                'is_test'       => false,
                 'created_at'    => time(),
             ];
         }

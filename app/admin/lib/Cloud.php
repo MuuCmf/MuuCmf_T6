@@ -70,7 +70,7 @@ class Cloud
         $post = [
             'app_name'  =>  $app_name,
             'auth_code' =>  self::authCode(),
-            'frame' => 't6',
+            'frame' => CloudSignature::frame(),
         ];
         // S1：已激活则叠加签名参数；未激活时签名参数为空，保持 legacy 单通道
         try {
@@ -223,7 +223,7 @@ class Cloud
         $post = [
             'app_names' => json_encode($app_names, JSON_UNESCAPED_UNICODE),
             'auth_code' => self::authCode(),
-            'frame' => 't6',
+            'frame' => CloudSignature::frame(),
         ];
         try {
             $post = array_merge($post, CloudSignature::payload('authorization.apps', md5(implode(',', $app_names))));
@@ -497,7 +497,7 @@ class Cloud
             $post = [
                 'auth_code'    => self::authCode(),
                 'app_name'     => $app_name,
-                'frame'        => 't6',
+                'frame'        => CloudSignature::frame(),
                 'action'       => $action,
                 'from_version' => (string)$from_version,
                 'to_version'   => (string)$to_version,
