@@ -5,6 +5,9 @@
 return [
     //云端api
     'api' => "https://www.muucmf.cc/cloud/",//云端配置
+    // 本站点所用框架标识（t6 / t8）。租户端查询版本、下载、上报都带这个值，
+    // 历史实现写死 t6，t8 站点会拿不到自己的应用版本
+    'frame' => env('cloud.frame', 't6'),
     // 升级下载兜底采集：开启后授权应用成功下载升级包时写入升级记录（source=2）
     'record_download' => false,
     // 域名授权观测层：仅记录通道分布，不改变任何请求的判定结果

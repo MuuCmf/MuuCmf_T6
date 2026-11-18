@@ -3,6 +3,7 @@
 namespace app\admin\lib;
 
 use app\common\model\Module;
+use app\common\service\UpgradeIgnore;
 use think\Exception;
 use think\facade\Db;
 use think\exception\ValidateException;
@@ -11,9 +12,44 @@ class Upgrade
 {
     public $api;
 
+    /**
+     * 框架包忽略名单的兜底副本
+     *
+     * 与 app\common\service\UpgradeIgnore::paths() 必须逐项一致（tests/tenant_upgrade_local.php 有断言）。
+     * 存在的意义：老租户升级到本版本时，替换是按批推进的，Upgrade.php 落盘后依赖类可能还没落盘，
+     * 此时若直接 Class not found 会让整个升级流程中断且无法续做，必须能退回一份自带名单。
+     */
+    const IGNORE_FALLBACK = [
+        '.env',
+        'config/auth.php',
+        'config/cache.php',
+        'config/database.php',
+        'config/jwt.php',
+        'config/queue.php',
+        'runtime/',
+        '.idea',
+        '.gitignore',
+        'vendor/',
+        '_src/',
+        'data/version.ini',
+        'public/favicon.ico',
+    ];
+
     function __construct()
     {
         $this->api = config('cloud.api');
+    }
+
+    /**
+     * @title 当前站点所用框架标识
+     * 说明：历史实现把 t6 写死在请求参数里，t8 站点会拿 t6 的版本数据，
+     * 查询与升级全部落空。这里统一走配置，可用 .env 的 CLOUD_FRAME 覆盖。
+     * @return string
+     */
+    public function frame()
+    {
+        $frame = (string) config('cloud.frame', 't6');
+        return in_array($frame, ['t6', 't8'], true) ? $frame : 't6';
     }
 
     /**
@@ -40,7 +76,12 @@ class Upgrade
     {
         if ($app == 'system') {
             $path = $this->getAppRootPath($app) . 'data' . DIRECTORY_SEPARATOR . 'version.ini';
-            $version = file_get_contents($path);
+            // 文件缺失/不可读时不能直接 file_get_contents（会抛 warning 并返回 false，
+            // 后续版本比较拿到空串，表现为「永远提示可升级」）
+            if (!is_file($path) || !is_readable($path)) {
+                return '';
+            }
+            $version = trim((string) @file_get_contents($path));
         } else {
             $version = Module::where([
                 ['name', '=', $app],
@@ -57,27 +98,20 @@ class Upgrade
      */
     public function checkIgnoreFile($path, $app = 'system')
     {
-
-        // 仅框架升级检测
+        // 仅框架升级检测；名单与云端编译期共用一份定义（app\common\service\UpgradeIgnore），
+        // 避免云端把 .env / config/database.php / runtime 日志打进包、租户端再各自维护一份
         if ($app == 'system') {
-            $ignore_paths = [
-                '.env',
-                'config/auth.php',
-                'config/cache.php',
-                'config/database.php',
-                'config/jwt.php',
-                'config/queue.php',
-                'runtime/',
-                '.idea',
-                '.gitignore',
-                'vendor/',
-                '_src/',
-                'data/version.ini',
-                'public/favicon.ico'
-            ];
-            // 归一化分隔符并折叠重复斜杠，堵 config//queue.php 这类子串匹配绕过
+            // 先就地归一化（不能依赖尚未确认存在的类）
             $path = preg_replace('#/+#', '/', str_replace('\\', '/', (string) $path));
-            foreach ($ignore_paths as $item) {
+            if (!class_exists(UpgradeIgnore::class) && is_file(root_path() . 'app/common/service/UpgradeIgnore.php')) {
+                // 升级窗口内依赖类可能尚未落盘，先按固定路径加载一次（自动加载只认命名空间映射）
+                @include_once root_path() . 'app/common/service/UpgradeIgnore.php';
+            }
+            if (class_exists(UpgradeIgnore::class)) {
+                return UpgradeIgnore::isIgnored($path);
+            }
+            // 仍未加载成功：退回自带名单，绝不让「类不存在」把升级流程打死
+            foreach (self::IGNORE_FALLBACK as $item) {
                 if (strpos($path, $item) !== false) {
                     return true;
                 }
@@ -96,7 +130,7 @@ class Upgrade
     public function downFile(array $params, $save_path = '')
     {
         if(empty($params['frame'])){
-            $params['frame'] = 't6';
+            $params['frame'] = $this->frame();
         }
         $source = $this->api . "upgrade/download?" . http_build_query($params);
         //地址追加授权域名
@@ -1057,7 +1091,7 @@ class Upgrade
         $ip   = request()->ip();
         $params['domain'] = $domain;
         $params['ip'] = $ip;
-        $params['frame'] = 't6';
+        $params['frame'] = $this->frame();
         // 已激活站点叠加签名，云端据此判断测试版是否对当前域名可见
         $signed = $params;
         try {
@@ -1098,7 +1132,7 @@ class Upgrade
             'app_names' => json_encode(array_values($appNames), JSON_UNESCAPED_UNICODE),
             'domain' => request()->host(),
             'ip' => request()->ip(),
-            'frame' => 't6',
+            'frame' => $this->frame(),
         ];
         // 已激活站点叠加签名，app_name 使用应用清单 hash，便于云端校验清单完整性
         $signed = $params;
@@ -1185,7 +1219,7 @@ class Upgrade
         $ip   = request()->ip();
         $params['domain'] = $domain;
         $params['ip'] = $ip;
-        $params['frame'] = 't6';
+        $params['frame'] = $this->frame();
         $output = curl_request($api, $params);
         // 初始化返回数据
         $result = [
@@ -1532,7 +1566,7 @@ class Upgrade
         }
         $post = [
             'app_name'  =>  $app_name,
-            'frame' => 't6',
+            'frame' => $this->frame(),
             'version' =>  $version,
             'auth_code' => $auth_code
         ];
@@ -1570,8 +1604,12 @@ class Upgrade
                     $result['data']['removed'] = $removed;
 
                     foreach ($files as $file) {
-                        $entry = root_path() . $file['name'];
-                        if (!is_file($entry) || md5_file($entry) != $file['md5']) {
+                        $name = str_replace('\\', '/', (string) ($file['name'] ?? ''));
+                        $expected = strtolower((string) ($file['md5'] ?? ''));
+                        $entry = root_path() . $name;
+                        // md5 必须严格比较：'0e...' 这类字符串用 != 会互相相等，
+                        // 会把「内容已变化」的文件误判为已达标而跳过，升级后文件停留在旧版本
+                        if (!is_file($entry) || $expected === '' || md5_file($entry) !== $expected) {
                             $files_allowed[] = $file;
                         }
                     }

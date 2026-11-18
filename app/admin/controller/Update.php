@@ -66,7 +66,7 @@ class Update extends Admin
                 'backup_path' => $backup_path,
                 'app_name' => $this->app_name,
                 'scene' => 'upgrade',
-                'frame' => 't6',
+                'frame' => $this->UpgradeServer->frame(),
             ];
             return $this->success('success', $result);
         }
@@ -86,13 +86,13 @@ class Update extends Admin
         $version = input('version', '', 'text');
         $app_name = input('app_name', '', 'text');
         $scene = input('scene', 'upgrade', 'text');
-        $frame = input('frame', 't6', 'text');
+        $frame = input('frame', $this->UpgradeServer->frame(), 'text');
         $this->setTitle('在线更新');
 
         View::assign([
             'appName' => $app_name,
             'frame' => $frame,
-            'localVersion' => $this->UpgradeServer->version(),
+            'localVersion' => $this->UpgradeServer->version($app_name ?: 'system'),
             'upgradeVersion' => $version,
             'scene' => $scene,
             'authCode' => Cloud::authCode(),
